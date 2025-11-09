@@ -480,9 +480,24 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
         }
       }
 
-      validate(need(!is.null(weekly_flags) && nrow(weekly_flags), "No timeline data available"))
+      if (is.null(weekly_flags) || !nrow(weekly_flags)) {
+        return(
+          plotly::plot_ly(
+            data = data.frame(x = 0, y = 0, label = "No timeline data available"),
+            x = ~x, y = ~y, text = ~label,
+            type = "scatter", mode = "text", hoverinfo = "none"
+          ) %>%
+            plotly::layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list()
+            )
+        )
+      }
 
       df <- weekly_flags %>%
+        dplyr::filter(!is.na(week)) %>%
+        dplyr::mutate(quality_flag = as.character(quality_flag)) %>%
         dplyr::arrange(week, quality_flag)
 
       if (!isTRUE(input$include_flagged)) {
@@ -491,13 +506,24 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
       }
 
       if (!nrow(df)) {
-        return(plotly::plotly_empty(type = "bar"))
+        return(
+          plotly::plot_ly(
+            data = data.frame(x = 0, y = 0, label = "No timeline data available"),
+            x = ~x, y = ~y, text = ~label,
+            type = "scatter", mode = "text", hoverinfo = "none"
+          ) %>%
+            plotly::layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list()
+            )
+        )
       }
 
       preferred_levels <- c("Valid", "Missing barcode", "Missing lab ID", "Duplicate", "Barcode conflict")
       df$quality_flag <- factor(
-        as.character(df$quality_flag),
-        levels = unique(c(preferred_levels, setdiff(as.character(df$quality_flag), preferred_levels)))
+        df$quality_flag,
+        levels = unique(c(preferred_levels, setdiff(df$quality_flag, preferred_levels)))
       )
 
       plotly::plot_ly(

@@ -127,6 +127,27 @@ mod_data_manager_server <- function(id) {
         quality_clean <- analyze_data_quality(df_clean)
         
         # Combine both reports
+        flags_weekly <- NULL
+        if (is.data.frame(quality$row_flags_detailed) &&
+            all(c("date_sample", "reason") %in% names(quality$row_flags_detailed))) {
+          flags_weekly <- quality$row_flags_detailed %>%
+            dplyr::mutate(
+              date_sample = suppressWarnings(lubridate::as_date(date_sample)),
+              week = lubridate::floor_date(date_sample, "week"),
+              quality_flag = dplyr::case_when(
+                is.na(reason) | reason == "" | reason == "OK" ~ "Valid",
+                reason == "Duplicate key" ~ "Duplicate",
+                reason == "Barcode conflict" ~ "Barcode conflict",
+                reason == "Missing barcode" ~ "Missing barcode",
+                reason == "Missing lab ID" ~ "Missing lab ID",
+                TRUE ~ reason
+              )
+            ) %>%
+            dplyr::filter(!is.na(week)) %>%
+            dplyr::count(week, quality_flag, name = "n") %>%
+            dplyr::arrange(week, quality_flag)
+        }
+
         rv$quality_report <- list(
           summary = c(
             quality$summary,
@@ -139,15 +160,25 @@ mod_data_manager_server <- function(id) {
           duplicates = quality$duplicates,
           barcode_conflicts = quality$barcode_conflicts,
           completeness = quality_clean$completeness,
-          quality_flags = df_clean %>%
-            dplyr::count(quality_flag) %>%
-            dplyr::arrange(dplyr::desc(n)),
-          quality_flags_by_week = df_clean %>%
-            dplyr::filter(!is.na(date_sample)) %>%
-            dplyr::mutate(week = lubridate::floor_date(date_sample, "week")) %>%
-            dplyr::count(week, quality_flag, name = "n") %>%
-            dplyr::arrange(week, quality_flag),
-          row_flags = quality$row_flags
+          quality_flags = if (is.data.frame(quality$row_flags_detailed)) {
+            quality$row_flags_detailed %>%
+              dplyr::mutate(
+                flag = dplyr::case_when(
+                  reason == "OK" ~ "Valid",
+                  TRUE ~ "Invalid"
+                )
+              ) %>%
+              dplyr::count(flag, name = "n") %>%
+              dplyr::arrange(dplyr::desc(n)) %>%
+              dplyr::rename(quality_flag = flag)
+          } else {
+            df_clean %>%
+              dplyr::count(quality_flag) %>%
+              dplyr::arrange(dplyr::desc(n))
+          },
+          quality_flags_by_week = flags_weekly,
+          row_flags = quality$row_flags,
+          row_flags_detailed = quality$row_flags_detailed
         )
         
         # Step 5: Update filter choices

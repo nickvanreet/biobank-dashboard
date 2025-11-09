@@ -68,15 +68,15 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
       # Normalize barcode from either 'barcode' or 'code_barres_kps'
       .__barcode_norm = normalize_barcode(
         dplyr::coalesce(
-          dplyr::if_else("barcode" %in% names(.), barcode, NA_character_),
-          dplyr::if_else("code_barres_kps" %in% names(.), code_barres_kps, NA_character_)
+          if ("barcode" %in% names(.)) .data$barcode else NA_character_,
+          if ("code_barres_kps" %in% names(.)) .data$code_barres_kps else NA_character_
         )
       ),
       # Normalize numero/lab_id
       .__numero_norm = normalize_barcode(
         as.character(dplyr::coalesce(
-          dplyr::if_else("lab_id" %in% names(.), lab_id, NA_character_),
-          dplyr::if_else("numero" %in% names(.), as.character(numero), NA_character_)
+          if ("lab_id" %in% names(.)) .data$lab_id else NA_character_,
+          if ("numero" %in% names(.)) as.character(.data$numero) else NA_character_
         ))
       )
     )

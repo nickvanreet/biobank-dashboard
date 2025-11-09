@@ -409,12 +409,36 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
     output$quality_flags_timeline_plot <- plotly::renderPlotly({
       req(quality_report())
       report <- quality_report()
-      
+
+      weekly_flags <- report$quality_flags_by_week
+      has_weekly_flags <- is.data.frame(weekly_flags) &&
+        all(c("week", "quality_flag", "n") %in% names(weekly_flags))
+
+      if (has_weekly_flags && nrow(weekly_flags)) {
+        df <- weekly_flags %>%
+          dplyr::mutate(week = as.Date(week)) %>%
+          dplyr::arrange(week, quality_flag)
+
+        return(
+          plotly::plot_ly(
+            df,
+            x = ~week, y = ~n, color = ~quality_flag, type = "bar",
+            hovertemplate = "Week: %{x|%Y-%m-%d}<br>Flag: %{fullData.name}<br>Count: %{y}<extra></extra>"
+          ) %>%
+            plotly::layout(
+              barmode = "stack",
+              xaxis = list(title = "Week"),
+              yaxis = list(title = "Rows"),
+              legend = list(orientation = "h", y = -0.2)
+            )
+        )
+      }
+
       # Preferred: a table with per-row flag + date/date_sample
       has_flags_table <- is.data.frame(report$row_flags) &&
         ("quality_flag" %in% names(report$row_flags)) &&
         (any(c("date", "date_sample") %in% names(report$row_flags)))
-      
+
       if (has_flags_table) {
         df <- report$row_flags
         date_col <- if ("date" %in% names(df)) "date" else "date_sample"

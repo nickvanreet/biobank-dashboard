@@ -140,8 +140,14 @@ mod_data_manager_server <- function(id) {
           barcode_conflicts = quality$barcode_conflicts,
           completeness = quality_clean$completeness,
           quality_flags = df_clean %>%
-            count(quality_flag) %>%
-            arrange(desc(n))
+            dplyr::count(quality_flag) %>%
+            dplyr::arrange(dplyr::desc(n)),
+          quality_flags_by_week = df_clean %>%
+            dplyr::filter(!is.na(date_sample)) %>%
+            dplyr::mutate(week = lubridate::floor_date(date_sample, "week")) %>%
+            dplyr::count(week, quality_flag, name = "n") %>%
+            dplyr::arrange(week, quality_flag),
+          row_flags = quality$row_flags
         )
         
         # Step 5: Update filter choices

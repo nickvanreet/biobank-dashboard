@@ -24,9 +24,9 @@ mod_data_manager_ui <- function(id) {
     # Filters Section
     h5(icon("filter"), " Filters"),
     dateRangeInput(
-      ns("date_range"), 
+      ns("date_range"),
       "Sample Date",
-      start = Sys.Date() - config$ui$default_date_range_days,
+      start = as.Date("2025-04-01"),
       end = Sys.Date()
     ),
     selectInput(ns("filter_study"), "Study", 

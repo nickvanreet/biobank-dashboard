@@ -14,119 +14,109 @@ mod_data_quality_ui <- function(id) {
   
   nav_panel(
     title = "Data Quality",
-    icon = safe_icon("shield-check-fill"),
+    icon = icon("shield"),  # safer than "shield-alt"
     
-    # Summary cards
-    div(
-      class = "container-fluid",
-      
-      # KPI Value Boxes
-      layout_columns(
-        fill = FALSE,
-        col_widths = rep(2, 6),
+    div(class = "container-fluid",
         
-        value_box(
-          title = "Total Rows",
-          value = textOutput(ns("total_rows")),
-          showcase = safe_icon("database"),
-          theme = "primary"
+        # ==== KPIs (first 6, no 'Completeness') =================================
+        layout_column_wrap(
+          width = 1/4, fixed_width = TRUE, heights_equal = "row", gap = "12px",
+          
+          value_box(
+            title  = "Total Rows",
+            value  = textOutput(ns("total_rows")),
+            showcase = icon("database"),
+            theme  = "primary"
+          ),
+          value_box(
+            title  = "Valid Rows",
+            value  = textOutput(ns("valid_rows")),
+            showcase = icon("check-circle"),
+            theme  = "success"
+          ),
+          value_box(
+            title  = "Missing Barcode",
+            value  = textOutput(ns("missing_barcode")),
+            showcase = icon("exclamation-triangle"),
+            theme  = "warning"
+          ),
+          value_box(
+            title  = "Missing Lab ID",
+            value  = textOutput(ns("missing_labid")),
+            showcase = icon("exclamation-triangle"),
+            theme  = "warning"
+          ),
+          value_box(
+            title  = "Duplicates",
+            value  = textOutput(ns("duplicates")),
+            showcase = icon("copy"),
+            theme  = "danger"
+          ),
+          value_box(
+            title  = "Barcode Conflicts",
+            value  = textOutput(ns("conflicts")),
+            showcase = icon("barcode"),
+            theme  = "danger"
+          )
         ),
         
-        value_box(
-          title = "Valid Rows",
-          value = textOutput(ns("valid_rows")),
-          showcase = safe_icon("check-circle-fill"),
-          theme = "success"
+        # ==== CHARTS: quality over time + entries over time ======================
+        layout_columns(col_widths = c(6, 6), gap = "16px",
+                       card(
+                         card_header("Quality Flags Over Time"),
+                         card_body_fill(
+                           plotly::plotlyOutput(ns("quality_flags_timeline_plot"), height = "350px")
+                         )
+                       ),
+                       card(
+                         card_header("Data Entry Timeline"),
+                         card_body_fill(
+                           plotly::plotlyOutput(ns("entry_timeline_plot"), height = "350px")
+                         )
+                       )
         ),
         
-        value_box(
-          title = "Missing Barcode",
-          value = textOutput(ns("missing_barcode")),
-          showcase = safe_icon("exclamation-triangle-fill"),
-          theme = "warning"
-        ),
-        
-        value_box(
-          title = "Missing Lab ID",
-          value = textOutput(ns("missing_labid")),
-          showcase = safe_icon("exclamation-triangle-fill"),
-          theme = "warning"
-        ),
-        
-        value_box(
-          title = "Duplicates",
-          value = textOutput(ns("duplicates")),
-          showcase = safe_icon("copy"),
-          theme = "danger"
-        ),
-        
-        value_box(
-          title = "Completeness",
-          value = textOutput(ns("completeness")),
-          showcase = safe_icon("chart-bar"),
-          theme = "info"
-        )
-      ),
-      
-      # Detailed analyses
-      layout_columns(
-        col_widths = c(6, 6),
-        
-        # Duplicates analysis
+        # ==== COMPLETENESS (full width) =========================================
         card(
           card_header(
             class = "d-flex justify-content-between align-items-center",
-            span("Duplicate Records"),
-            download_button_ui(ns("download_duplicates"))
+            span("Column Completeness Analysis"),
+            span(textOutput(ns("completeness")), class = "text-muted small pe-2")
           ),
           card_body(
-            DTOutput(ns("duplicates_table"))
+            DT::DTOutput(ns("completeness_table"))
           )
         ),
         
-        # Conflicts analysis
+        # ==== INVALID REASONS OVERVIEW (full width) ==============================
         card(
           card_header(
             class = "d-flex justify-content-between align-items-center",
-            span("Barcode Conflicts"),
-            download_button_ui(ns("download_conflicts"))
+            span("Invalid Reasons Overview"),
+            span(class = "text-muted small", "Counts and % of excluded rows")
           ),
           card_body(
-            DTOutput(ns("conflicts_table"))
-          )
-        )
-      ),
-      
-      # Column completeness
-      card(
-        card_header(
-          class = "d-flex justify-content-between align-items-center",
-          span("Column Completeness Analysis"),
-          download_button_ui(ns("download_completeness"))
-        ),
-        card_body(
-          DTOutput(ns("completeness_table"))
-        )
-      ),
-      
-      # Quality flags distribution
-      layout_columns(
-        col_widths = c(6, 6),
-        
-        card(
-          card_header("Quality Flag Distribution"),
-          card_body(
-            plotlyOutput(ns("quality_flags_plot"), height = "350px")
+            DT::DTOutput(ns("invalid_reasons_table"))
           )
         ),
         
-        card(
-          card_header("Data Entry Timeline"),
-          card_body(
-            plotlyOutput(ns("entry_timeline_plot"), height = "350px")
-          )
+        # ==== TABLES: duplicates + conflicts ====================================
+        layout_columns(col_widths = c(6, 6), gap = "16px",
+                       card(
+                         card_header(
+                           class = "d-flex justify-content-between align-items-center",
+                           span("Duplicate Records")
+                         ),
+                         card_body(DT::DTOutput(ns("duplicates_table")))
+                       ),
+                       card(
+                         card_header(
+                           class = "d-flex justify-content-between align-items-center",
+                           span("Barcode Conflicts")
+                         ),
+                         card_body(DT::DTOutput(ns("conflicts_table")))
+                       )
         )
-      )
     )
   )
 }
@@ -145,131 +135,138 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
   
   moduleServer(id, function(input, output, session) {
     
+    # ---- small helpers -------------------------------------------------------
+    .find_col <- function(nms, patterns) {
+      for (p in patterns) {
+        hit <- grep(p, nms, ignore.case = TRUE, value = TRUE)
+        if (length(hit)) return(hit[1])
+      }
+      NULL
+    }
+    .nz <- function(x) {
+      x <- trimws(as.character(x))
+      x[x == ""] <- NA
+      x
+    }
+    
     # ========================================================================
     # REACTIVE CALCULATIONS
     # ========================================================================
-    
-    # Quality metrics
     quality_metrics <- reactive({
       req(quality_report())
       report <- quality_report()
       
+      # defensively ensure fields exist
+      if (is.null(report$summary)) report$summary <- list(rows_raw = NA_integer_, rows_clean = NA_integer_)
+      if (is.null(report$duplicates)) report$duplicates <- data.frame()
+      if (is.null(report$barcode_conflicts)) report$barcode_conflicts <- data.frame()
+      if (is.null(report$completeness)) report$completeness <- data.frame(percent_complete = numeric())
+      
+      # Compute adjusted "total_rows" excluding ghost rows (both ID fields NA)
+      rd  <- try(raw_data(), silent = TRUE)
+      nms <- if (!inherits(rd, "try-error")) names(rd) else character()
+      
+      barcode_col <- if ("barcode" %in% nms) "barcode" else
+        .find_col(nms, c("code.*barres.*kps", "\\bbarcode\\b"))
+      labid_col <- if ("lab_id" %in% nms) "lab_id" else
+        .find_col(nms, c("^num[eé]ro$", "^numero$", "lab.?id"))
+      
+      if (!is.null(barcode_col) && !is.null(labid_col) && !inherits(rd, "try-error")) {
+        b <- .nz(rd[[barcode_col]])
+        l <- .nz(rd[[labid_col]])
+        
+        keep <- !(is.na(b) & is.na(l))            # ghost rows filtered out
+        adj_total <- sum(keep)
+        
+        missing_barcode_adj <- sum(is.na(b[keep]))  # adjusted counts among kept rows
+        missing_labid_adj   <- sum(is.na(l[keep]))
+      } else {
+        adj_total <- suppressWarnings(as.integer(report$summary$rows_raw))
+        missing_barcode_adj <- if (!is.null(report$missing_barcode)) report$missing_barcode else NA_integer_
+        missing_labid_adj   <- if (!is.null(report$missing_labid))   report$missing_labid   else NA_integer_
+      }
+      
+      valid_rows   <- suppressWarnings(as.integer(report$summary$rows_clean))
+      dropped_rows <- if (is.finite(adj_total) && is.finite(valid_rows)) max(adj_total - valid_rows, 0L) else NA_integer_
+      drop_rate    <- if (isTRUE(adj_total > 0) && is.finite(dropped_rows)) dropped_rows / adj_total * 100 else NA_real_
+      
+      avg_comp <- if (nrow(report$completeness)) {
+        mean(report$completeness$percent_complete, na.rm = TRUE)
+      } else NA_real_
+      
       list(
-        total_rows = report$summary$rows_raw,
-        valid_rows = report$summary$rows_clean,
-        dropped_rows = report$summary$rows_dropped,
-        drop_rate = report$summary$drop_rate,
-        
-        missing_barcode = report$missing_barcode,
-        missing_labid = report$missing_labid,
-        
-        duplicate_count = nrow(report$duplicates),
-        conflict_count = nrow(report$barcode_conflicts),
-        
-        avg_completeness = mean(report$completeness$percent_complete, na.rm = TRUE)
+        total_rows        = adj_total,
+        valid_rows        = valid_rows,
+        dropped_rows      = dropped_rows,
+        drop_rate         = drop_rate,
+        missing_barcode   = missing_barcode_adj,
+        missing_labid     = missing_labid_adj,
+        duplicate_count   = nrow(report$duplicates),
+        conflict_count    = nrow(report$barcode_conflicts),
+        avg_completeness  = avg_comp
       )
     })
     
     # ========================================================================
     # OUTPUTS - KPI BOXES
     # ========================================================================
-    
     output$total_rows <- renderText({
-      metrics <- quality_metrics()
-      scales::comma(metrics$total_rows)
+      m <- quality_metrics()
+      if (is.na(m$total_rows)) "—" else scales::comma(m$total_rows)
     })
     
     output$valid_rows <- renderText({
-      metrics <- quality_metrics()
-      sprintf("%s (%.1f%%)", 
-              scales::comma(metrics$valid_rows),
-              100 - metrics$drop_rate)
+      m <- quality_metrics()
+      if (is.na(m$valid_rows) || is.na(m$drop_rate)) "—" else
+        sprintf("%s (%.1f%%)", scales::comma(m$valid_rows), 100 - m$drop_rate)
     })
     
     output$missing_barcode <- renderText({
-      metrics <- quality_metrics()
-      scales::comma(metrics$missing_barcode)
+      m <- quality_metrics()
+      if (is.na(m$missing_barcode)) "—" else scales::comma(m$missing_barcode)
     })
     
     output$missing_labid <- renderText({
-      metrics <- quality_metrics()
-      scales::comma(metrics$missing_labid)
+      m <- quality_metrics()
+      if (is.na(m$missing_labid)) "—" else scales::comma(m$missing_labid)
     })
     
     output$duplicates <- renderText({
-      metrics <- quality_metrics()
-      scales::comma(metrics$duplicate_count)
+      m <- quality_metrics()
+      if (is.na(m$duplicate_count)) "—" else scales::comma(m$duplicate_count)
+    })
+    
+    output$conflicts <- renderText({
+      m <- quality_metrics()
+      if (is.na(m$conflict_count)) "—" else scales::comma(m$conflict_count)
     })
     
     output$completeness <- renderText({
-      metrics <- quality_metrics()
-      sprintf("%.1f%%", metrics$avg_completeness)
+      m <- quality_metrics()
+      if (is.na(m$avg_completeness)) "—" else sprintf("%.1f%%", m$avg_completeness)
     })
     
     # ========================================================================
     # OUTPUTS - TABLES
     # ========================================================================
-    
-    output$duplicates_table <- renderDT({
+    output$completeness_table <- DT::renderDT({
       req(quality_report())
       report <- quality_report()
-      
-      if (nrow(report$duplicates) == 0) {
-        datatable(
-          data.frame(Message = "No duplicate records found"),
-          options = list(dom = 't', paging = FALSE)
-        )
-      } else {
-        report$duplicates %>%
-          select(barcode, lab_id, date_sample, province, health_zone) %>%
-          datatable(
-            options = list(
-              pageLength = 10,
-              scrollX = TRUE,
-              dom = 'frtip'
-            ),
-            class = "table-sm"
-          )
+      if (is.null(report$completeness)) {
+        report$completeness <- data.frame(column = character(), percent_complete = numeric())
       }
-    })
-    
-    output$conflicts_table <- renderDT({
-      req(quality_report())
-      report <- quality_report()
-      
-      if (nrow(report$barcode_conflicts) == 0) {
-        datatable(
-          data.frame(Message = "No barcode conflicts found"),
-          options = list(dom = 't', paging = FALSE)
-        )
-      } else {
-        report$barcode_conflicts %>%
-          datatable(
-            options = list(
-              pageLength = 10,
-              scrollX = TRUE,
-              dom = 'frtip'
-            ),
-            class = "table-sm"
-          )
-      }
-    })
-    
-    output$completeness_table <- renderDT({
-      req(quality_report())
-      report <- quality_report()
       
       report$completeness %>%
-        mutate(
+        dplyr::mutate(
           percent_complete = round(percent_complete, 1),
-          status = case_when(
+          status = dplyr::case_when(
             percent_complete >= 90 ~ "Good",
             percent_complete >= 70 ~ "Fair",
             percent_complete >= 50 ~ "Poor",
             TRUE ~ "Critical"
           )
         ) %>%
-        datatable(
+        DT::datatable(
           options = list(
             pageLength = 25,
             scrollX = TRUE,
@@ -277,16 +274,16 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
           ),
           class = "table-sm"
         ) %>%
-        formatStyle(
+        DT::formatStyle(
           "percent_complete",
-          background = styleColorBar(c(0, 100), "lightblue"),
+          background = DT::styleColorBar(c(0, 100), "lightblue"),
           backgroundSize = '100% 90%',
           backgroundRepeat = 'no-repeat',
           backgroundPosition = 'center'
         ) %>%
-        formatStyle(
+        DT::formatStyle(
           "status",
-          color = styleEqual(
+          color = DT::styleEqual(
             c("Good", "Fair", "Poor", "Critical"),
             c("#27AE60", "#F39C12", "#E67E22", "#E74C3C")
           ),
@@ -294,44 +291,201 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
         )
     })
     
-    # ========================================================================
-    # OUTPUTS - PLOTS
-    # ========================================================================
-    
-    output$quality_flags_plot <- renderPlotly({
+    # ---- NEW: Invalid Reasons Overview --------------------------------------
+    output$invalid_reasons_table <- DT::renderDT({
       req(quality_report())
       report <- quality_report()
+      m <- quality_metrics()
       
-      if (nrow(report$quality_flags) == 0) {
-        plotly::plotly_empty()
-      } else {
-        p <- report$quality_flags %>%
-          plot_ly(
-            x = ~quality_flag,
-            y = ~n,
-            type = 'bar',
-            marker = list(
-              color = ~case_when(
-                quality_flag == "OK" ~ "#27AE60",
-                grepl("Missing", quality_flag) ~ "#E74C3C",
-                TRUE ~ "#F39C12"
-              )
-            ),
-            text = ~paste("Count:", n),
-            hovertemplate = "%{x}<br>%{text}<extra></extra>"
-          ) %>%
-          layout(
-            xaxis = list(title = "Quality Flag"),
-            yaxis = list(title = "Count"),
-            showlegend = FALSE,
-            margin = list(b = 100)
-          )
+      # If a detailed breakdown already exists, use it directly.
+      if (!is.null(report$invalid_reasons) &&
+          is.data.frame(report$invalid_reasons) &&
+          all(c("reason", "count") %in% names(report$invalid_reasons))) {
         
-        p
+        df <- report$invalid_reasons
+        
+        # compute % of excluded if possible
+        excl <- if (is.na(m$dropped_rows) || m$dropped_rows <= 0) NA_real_ else m$dropped_rows
+        if (is.finite(excl) && excl > 0) {
+          df <- df %>%
+            dplyr::mutate(percent_of_excluded = round(100 * count / excl, 1))
+        } else {
+          df <- df %>% dplyr::mutate(percent_of_excluded = NA_real_)
+        }
+        
+      } else {
+        # Construct a breakdown from available KPIs (best-effort, may overlap)
+        known <- list()
+        
+        if (is.finite(m$missing_barcode)) known[["Missing barcode"]] <- m$missing_barcode
+        if (is.finite(m$missing_labid))   known[["Missing lab ID"]]   <- m$missing_labid
+        
+        # These are row counts, not unique-barcode adjusted; we accept minor overlap here
+        known[["Duplicate barcode(s)"]] <- if (!is.null(report$duplicates)) nrow(report$duplicates) else 0L
+        known[["Barcode conflict(s)"]]  <- if (!is.null(report$barcode_conflicts)) nrow(report$barcode_conflicts) else 0L
+        
+        known_df <- tibble::tibble(
+          reason = names(known),
+          count  = as.integer(unlist(known))
+        ) %>%
+          dplyr::filter(count > 0)
+        
+        excl <- if (is.na(m$dropped_rows)) 0L else m$dropped_rows
+        known_sum <- sum(known_df$count, na.rm = TRUE)
+        other <- max(excl - known_sum, 0L)
+        
+        df <- dplyr::bind_rows(
+          known_df,
+          tibble::tibble(reason = "Other / Unspecified", count = as.integer(other))
+        ) %>%
+          dplyr::arrange(dplyr::desc(count)) %>%
+          dplyr::mutate(
+            percent_of_excluded = if (excl > 0) round(100 * count / excl, 1) else NA_real_
+          )
+      }
+      
+      DT::datatable(
+        df,
+        rownames = FALSE,
+        options = list(
+          pageLength = 10,
+          scrollX = TRUE,
+          dom = 'frtip',
+          order = list(list(1, "desc"))
+        ),
+        class = "table-sm"
+      ) %>%
+        DT::formatPercentage("percent_of_excluded", 1)
+    })
+    
+    output$duplicates_table <- DT::renderDT({
+      req(quality_report())
+      report <- quality_report()
+      if (is.null(report$duplicates)) report$duplicates <- data.frame()
+      
+      if (!nrow(report$duplicates)) {
+        DT::datatable(
+          data.frame(Message = "No duplicate records found"),
+          options = list(dom = 't', paging = FALSE),
+          class = "table-sm"
+        )
+      } else {
+        avail_cols <- intersect(
+          c("barcode", "lab_id", "date_sample", "province", "health_zone"),
+          names(report$duplicates)
+        )
+        report$duplicates %>%
+          dplyr::select(dplyr::all_of(avail_cols)) %>%
+          DT::datatable(
+            options = list(pageLength = 10, scrollX = TRUE, dom = 'frtip'),
+            class = "table-sm"
+          )
       }
     })
     
-    output$entry_timeline_plot <- renderPlotly({
+    output$conflicts_table <- DT::renderDT({
+      req(quality_report())
+      report <- quality_report()
+      if (is.null(report$barcode_conflicts)) report$barcode_conflicts <- data.frame()
+      
+      if (!nrow(report$barcode_conflicts)) {
+        DT::datatable(
+          data.frame(Message = "No barcode conflicts found"),
+          options = list(dom = 't', paging = FALSE),
+          class = "table-sm"
+        )
+      } else {
+        report$barcode_conflicts %>%
+          DT::datatable(
+            options = list(pageLength = 10, scrollX = TRUE, dom = 'frtip'),
+            class = "table-sm"
+          )
+      }
+    })
+    
+    # ========================================================================
+    # OUTPUTS - PLOTS
+    # ========================================================================
+    output$quality_flags_timeline_plot <- plotly::renderPlotly({
+      req(quality_report())
+      report <- quality_report()
+      
+      # Preferred: a table with per-row flag + date/date_sample
+      has_flags_table <- is.data.frame(report$row_flags) &&
+        ("quality_flag" %in% names(report$row_flags)) &&
+        (any(c("date", "date_sample") %in% names(report$row_flags)))
+      
+      if (has_flags_table) {
+        df <- report$row_flags
+        date_col <- if ("date" %in% names(df)) "date" else "date_sample"
+        
+        df <- df %>%
+          dplyr::mutate(
+            date = suppressWarnings(lubridate::as_date(.data[[date_col]]))
+          ) %>%
+          dplyr::filter(!is.na(date)) %>%
+          dplyr::mutate(week = lubridate::floor_date(date, "week")) %>%
+          dplyr::count(week, quality_flag, name = "n") %>%
+          dplyr::arrange(week, quality_flag)
+        
+        plotly::plot_ly(
+          df,
+          x = ~week, y = ~n, color = ~quality_flag, type = "bar",
+          hovertemplate = "Week: %{x|%Y-%m-%d}<br>Flag: %{fullData.name}<br>Count: %{y}<extra></extra>"
+        ) %>%
+          plotly::layout(
+            barmode = "stack",
+            xaxis = list(title = "Week"),
+            yaxis = list(title = "Rows"),
+            legend = list(orientation = "h", y = -0.2)
+          )
+        
+      } else {
+        # Fallback: derive weekly OK counts from clean_data(); estimate invalids
+        cd <- try(clean_data(), silent = TRUE)
+        rd_total <- suppressWarnings(as.integer(report$summary$rows_raw))
+        
+        ok <- if (!inherits(cd, "try-error") && "date_sample" %in% names(cd)) {
+          cd %>%
+            dplyr::filter(!is.na(date_sample)) %>%
+            dplyr::mutate(week = lubridate::floor_date(date_sample, "week")) %>%
+            dplyr::count(week, name = "ok")
+        } else {
+          tibble::tibble(week = as.Date(character()), ok = integer())
+        }
+        
+        total_clean <- if ("ok" %in% names(ok)) sum(ok$ok) else 0L
+        invalid_total <- if (is.finite(rd_total)) max(rd_total - total_clean, 0L) else 0L
+        
+        if (nrow(ok) > 0) {
+          wks <- nrow(ok)
+          invalid_per_week <- if (wks > 0) floor(invalid_total / wks) else 0L
+          df <- ok %>%
+            dplyr::mutate(invalid = invalid_per_week) %>%
+            tidyr::pivot_longer(cols = c(ok, invalid), names_to = "quality_flag", values_to = "n")
+        } else {
+          df <- tibble::tibble(
+            week = lubridate::floor_date(Sys.Date(), "week"),
+            quality_flag = c("ok", "invalid"),
+            n = c(total_clean, invalid_total)
+          )
+        }
+        
+        plotly::plot_ly(
+          df,
+          x = ~week, y = ~n, color = ~quality_flag, type = "bar",
+          hovertemplate = "Week: %{x|%Y-%m-%d}<br>Flag: %{fullData.name}<br>Count: %{y}<extra></extra>"
+        ) %>%
+          plotly::layout(
+            barmode = "stack",
+            xaxis = list(title = "Week"),
+            yaxis = list(title = "Rows"),
+            legend = list(orientation = "h", y = -0.2)
+          )
+      }
+    })
+    
+    output$entry_timeline_plot <- plotly::renderPlotly({
       req(clean_data())
       data <- clean_data()
       
@@ -339,22 +493,22 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
         plotly::plotly_empty()
       } else {
         timeline_data <- data %>%
-          filter(!is.na(date_sample)) %>%
-          mutate(week = floor_date(date_sample, "week")) %>%
-          count(week) %>%
-          arrange(week)
+          dplyr::filter(!is.na(date_sample)) %>%
+          dplyr::mutate(week = lubridate::floor_date(date_sample, "week")) %>%
+          dplyr::count(week) %>%
+          dplyr::arrange(week)
         
-        plot_ly(
+        plotly::plot_ly(
           timeline_data,
           x = ~week,
           y = ~n,
           type = 'scatter',
           mode = 'lines+markers',
-          line = list(color = "#3498DB", width = 2),
-          marker = list(color = "#3498DB", size = 6),
+          line = list(width = 2),
+          marker = list(size = 6),
           hovertemplate = "Week: %{x|%Y-%m-%d}<br>Samples: %{y}<extra></extra>"
         ) %>%
-          layout(
+          plotly::layout(
             xaxis = list(title = "Week"),
             yaxis = list(title = "Samples Collected"),
             showlegend = FALSE
@@ -362,64 +516,5 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
       }
     })
     
-    # ========================================================================
-    # DOWNLOAD HANDLERS
-    # ========================================================================
-    
-    download_duplicates <- download_handler_server(
-      id = "download_duplicates",
-      filename = function() {
-        sprintf("duplicates_%s.csv", format(Sys.Date(), "%Y%m%d"))
-      },
-      content = function(file) {
-        report <- quality_report()
-        write_csv(report$duplicates, file)
-      }
-    )
-    
-    download_conflicts <- download_handler_server(
-      id = "download_conflicts",
-      filename = function() {
-        sprintf("conflicts_%s.csv", format(Sys.Date(), "%Y%m%d"))
-      },
-      content = function(file) {
-        report <- quality_report()
-        write_csv(report$barcode_conflicts, file)
-      }
-    )
-    
-    download_completeness <- download_handler_server(
-      id = "download_completeness",
-      filename = function() {
-        sprintf("completeness_%s.csv", format(Sys.Date(), "%Y%m%d"))
-      },
-      content = function(file) {
-        report <- quality_report()
-        write_csv(report$completeness, file)
-      }
-    )
-    
   })
-}
-
-# ============================================================================
-# HELPER FUNCTIONS (Module-specific)
-# ============================================================================
-
-#' Create download button UI
-download_button_ui <- function(id) {
-  downloadButton(
-    id,
-    label = NULL,
-    icon = icon("download"),
-    class = "btn-sm btn-outline-primary"
-  )
-}
-
-#' Download handler server logic
-download_handler_server <- function(id, filename, content) {
-  downloadHandler(
-    filename = filename,
-    content = content
-  )
 }

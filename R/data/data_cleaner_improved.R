@@ -313,6 +313,9 @@ clean_biobank_data_improved <- function(df_raw, skip_columns = 24:26) {
         TRUE ~ "OK"
       )
     )
+  df_clean %>%
+    mutate(sample_week = floor_date(date_sample, "week")) %>%
+    count(sample_week, quality_flag, name = "rows")
   
   return(df_clean)
 }
@@ -522,56 +525,4 @@ calculate_completeness_score <- function(df) {
            (important_complete / length(important_cols)) * 0.3
   
   round(score * 100)
-}
-
-# ============================================================================
-# DATA QUALITY ANALYSIS
-# ============================================================================
-
-#' Comprehensive data quality report
-generate_quality_report <- function(df_raw, df_clean) {
-  
-  # Column mapping success
-  config <- get_column_config()
-  expected_cols <- sapply(config, function(x) x$target)
-  found_cols <- expected_cols[expected_cols %in% names(df_clean)]
-  missing_cols <- setdiff(expected_cols, found_cols)
-  
-  # Row-level statistics
-  n_raw <- nrow(df_raw)
-  n_clean <- nrow(df_clean)
-  n_dropped <- n_raw - n_clean
-  
-  # Duplicate analysis
-  duplicates <- df_clean %>%
-    group_by(barcode, lab_id) %>%
-    filter(n() > 1) %>%
-    ungroup()
-  
-  # Completeness by column
-  completeness <- df_clean %>%
-    summarise(across(everything(), ~sum(!is.na(.)) / n() * 100)) %>%
-    pivot_longer(everything(), names_to = "column", values_to = "percent_complete") %>%
-    arrange(desc(percent_complete))
-  
-  # Quality flags summary
-  quality_summary <- df_clean %>%
-    count(quality_flag) %>%
-    arrange(desc(n))
-  
-  list(
-    summary = list(
-      rows_raw = n_raw,
-      rows_clean = n_clean,
-      rows_dropped = n_dropped,
-      drop_rate = round(n_dropped / n_raw * 100, 1),
-      columns_expected = length(expected_cols),
-      columns_found = length(found_cols),
-      columns_missing = missing_cols,
-      duplicate_pairs = nrow(duplicates) / 2
-    ),
-    completeness = completeness,
-    quality_flags = quality_summary,
-    duplicates = duplicates
-  )
 }

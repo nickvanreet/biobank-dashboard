@@ -168,6 +168,48 @@ mod_overview_demographics_ui <- function(id) {
 mod_overview_demographics_server <- function(id, filtered_data) {
   
   moduleServer(id, function(input, output, session) {
+    case_category_levels <- c("New case", "Previous/Treated", "Uncertain", "Unknown")
+    case_category_colors <- c(
+      "New case" = "#3498DB",
+      "Previous/Treated" = "#E67E22",
+      "Uncertain" = "#9B59B6",
+      "Unknown" = "#95A5A6"
+    )
+
+    case_enriched_data <- reactive({
+      req(filtered_data())
+      data <- filtered_data()
+
+      if (nrow(data) == 0) {
+        return(data)
+      }
+
+      if (!"previous_case" %in% names(data)) {
+        data$previous_case <- NA_character_
+      }
+
+      if (!"treated" %in% names(data)) {
+        data$treated <- NA_character_
+      }
+
+      existing_case_category <- if ("case_category" %in% names(data)) {
+        data$case_category
+      } else {
+        rep(NA_character_, nrow(data))
+      }
+
+      data$case_category <- dplyr::case_when(
+        !is.na(existing_case_category) & existing_case_category != "" ~ existing_case_category,
+        data$previous_case == "Oui" | data$treated == "Oui" ~ "Previous/Treated",
+        data$previous_case == "Non" & data$treated == "Non" ~ "New case",
+        data$previous_case == "Incertain" | data$treated == "Incertain" ~ "Uncertain",
+        TRUE ~ "Unknown"
+      )
+
+      data$case_category <- factor(data$case_category, levels = case_category_levels)
+
+      data
+    })
     
     # ========================================================================
     # REACTIVE CALCULATIONS - OVERVIEW
@@ -319,81 +361,155 @@ mod_overview_demographics_server <- function(id, filtered_data) {
     # ========================================================================
     
     output$province_plot <- plotly::renderPlotly({
-      req(filtered_data())
-      data <- filtered_data()
-      
+      req(case_enriched_data())
+      data <- case_enriched_data()
+
       if (nrow(data) == 0 || !"province" %in% names(data)) {
         return(plotly::plotly_empty())
       }
-      
+
+      province_totals <- data %>%
+        dplyr::filter(!is.na(province)) %>%
+        dplyr::count(province, name = "total") %>%
+        dplyr::arrange(dplyr::desc(total))
+
       province_data <- data %>%
         dplyr::filter(!is.na(province)) %>%
-        dplyr::count(province, name = "count") %>%
-        dplyr::arrange(dplyr::desc(count))
-      
+        dplyr::count(province, case_category, name = "count") %>%
+        dplyr::left_join(province_totals, by = "province") %>%
+        dplyr::mutate(province = factor(province, levels = province_totals$province))
+
+      if (nrow(province_data) == 0) {
+        return(plotly::plotly_empty())
+      }
+
+      province_colors <- case_category_colors[names(case_category_colors) %in%
+                                                unique(as.character(province_data$case_category))]
+      if (length(province_colors) == 0) {
+        province_colors <- case_category_colors
+      }
+
       plotly::plot_ly(
         province_data,
         x = ~province,
         y = ~count,
+        color = ~case_category,
+        colors = province_colors,
         type = "bar",
-        marker = list(color = "#3498DB"),
-        hovertemplate = "%{x}<br>Count: %{y}<extra></extra>"
+        hovertemplate = "Province: %{x}<br>Case category: %{fullData.name}<br>Count: %{y}<extra></extra>"
       ) %>%
         plotly::layout(
-          xaxis = list(title = ""),
+          barmode = "stack",
+          xaxis = list(
+            title = "",
+            categoryorder = "array",
+            categoryarray = as.character(province_totals$province)
+          ),
           yaxis = list(title = "Number of Samples"),
-          showlegend = FALSE
+          legend = list(orientation = "h", y = -0.2)
         )
     })
-    
+
     output$zone_plot <- plotly::renderPlotly({
-      req(filtered_data())
-      data <- filtered_data()
-      
+      req(case_enriched_data())
+      data <- case_enriched_data()
+
       if (nrow(data) == 0 || !"health_zone" %in% names(data)) {
         return(plotly::plotly_empty())
       }
-      
-      zone_data <- data %>%
+
+      zone_totals <- data %>%
         dplyr::filter(!is.na(health_zone)) %>%
-        dplyr::count(health_zone, name = "count") %>%
-        dplyr::arrange(dplyr::desc(count)) %>%
-        dplyr::slice_head(n = 15)  # Top 15 zones
-      
+        dplyr::count(health_zone, name = "total") %>%
+        dplyr::arrange(dplyr::desc(total)) %>%
+        dplyr::slice_head(n = 15)
+
+      zone_data <- data %>%
+        dplyr::filter(!is.na(health_zone), health_zone %in% zone_totals$health_zone) %>%
+        dplyr::count(health_zone, case_category, name = "count") %>%
+        dplyr::left_join(zone_totals, by = "health_zone") %>%
+        dplyr::mutate(health_zone = factor(health_zone, levels = zone_totals$health_zone))
+
+      if (nrow(zone_data) == 0) {
+        return(plotly::plotly_empty())
+      }
+
+      zone_colors <- case_category_colors[names(case_category_colors) %in%
+                                            unique(as.character(zone_data$case_category))]
+      if (length(zone_colors) == 0) {
+        zone_colors <- case_category_colors
+      }
+
       plotly::plot_ly(
         zone_data,
         x = ~count,
-        y = ~reorder(health_zone, count),
+        y = ~health_zone,
+        color = ~case_category,
+        colors = zone_colors,
         type = "bar",
         orientation = "h",
-        marker = list(color = "#27AE60"),
-        hovertemplate = "%{y}<br>Count: %{x}<extra></extra>"
+        hovertemplate = "Health Zone: %{y}<br>Case category: %{fullData.name}<br>Count: %{x}<extra></extra>"
       ) %>%
         plotly::layout(
+          barmode = "stack",
           xaxis = list(title = "Number of Samples"),
-          yaxis = list(title = ""),
-          showlegend = FALSE
+          yaxis = list(
+            title = "",
+            categoryorder = "array",
+            categoryarray = rev(as.character(zone_totals$health_zone))
+          ),
+          legend = list(orientation = "h", y = -0.2)
         )
     })
-    
+
     output$timeline_plot <- plotly::renderPlotly({
-      req(filtered_data())
-      data <- filtered_data()
-      
+      req(case_enriched_data())
+      data <- case_enriched_data()
+
       if (nrow(data) == 0 || !"date_sample" %in% names(data)) {
         return(plotly::plotly_empty())
       }
-      
+
       # Aggregate by week and study type
       timeline_data <- data %>%
         dplyr::filter(!is.na(date_sample)) %>%
         dplyr::mutate(week = lubridate::floor_date(date_sample, "week"))
       
-      if ("study" %in% names(data)) {
+      if ("case_category" %in% names(data)) {
+        timeline_data <- timeline_data %>%
+          dplyr::count(week, case_category) %>%
+          dplyr::arrange(week)
+
+        if (nrow(timeline_data) == 0) {
+          return(plotly::plotly_empty())
+        }
+
+        timeline_colors <- case_category_colors[names(case_category_colors) %in%
+                                                  unique(as.character(timeline_data$case_category))]
+        if (length(timeline_colors) == 0) {
+          timeline_colors <- case_category_colors
+        }
+
+        plotly::plot_ly(
+          timeline_data,
+          x = ~week,
+          y = ~n,
+          color = ~case_category,
+          colors = timeline_colors,
+          type = "scatter",
+          mode = "lines+markers",
+          hovertemplate = "Week: %{x|%Y-%m-%d}<br>Case category: %{fullData.name}<br>Samples: %{y}<extra></extra>"
+        ) %>%
+          plotly::layout(
+            xaxis = list(title = "Week"),
+            yaxis = list(title = "Number of Samples"),
+            legend = list(orientation = "h", y = -0.15)
+          )
+      } else if ("study" %in% names(data)) {
         timeline_data <- timeline_data %>%
           dplyr::count(week, study) %>%
           dplyr::arrange(week)
-        
+
         plotly::plot_ly(
           timeline_data,
           x = ~week,
@@ -413,7 +529,7 @@ mod_overview_demographics_server <- function(id, filtered_data) {
         timeline_data <- timeline_data %>%
           dplyr::count(week) %>%
           dplyr::arrange(week)
-        
+
         plotly::plot_ly(
           timeline_data,
           x = ~week,

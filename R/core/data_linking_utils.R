@@ -103,7 +103,20 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
     dplyr::left_join(
       biobank_key_cols,
       by = c("barcode_normalized" = "biobank_barcode_norm")
-    ) %>%
+    )
+
+  # Ensure required columns exist (they might not if any_of didn't find matches)
+  if (!"biobank_barcode" %in% names(linked_df)) {
+    linked_df$biobank_barcode <- NA_character_
+  }
+  if (!"biobank_lab_id" %in% names(linked_df)) {
+    linked_df$biobank_lab_id <- NA_character_
+  }
+  if (!"biobank_health_facility" %in% names(linked_df)) {
+    linked_df$biobank_health_facility <- NA_character_
+  }
+
+  linked_df <- linked_df %>%
     dplyr::mutate(
       # Flag if matched
       biobank_matched = !is.na(biobank_barcode) | !is.na(biobank_lab_id),

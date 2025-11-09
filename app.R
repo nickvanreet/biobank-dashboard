@@ -1,4 +1,4 @@
-# app.R - Mbuji-Mayi Biobank Dashboard v3.0
+# app.R - Mbuji-Mayi Biobank Dashboard v3.1
 # ============================================================================
 
 # Load global configuration and libraries
@@ -16,12 +16,13 @@ ui <- page_navbar(
   sidebar = mod_data_manager_ui("data_manager"),
   
   # Navigation panels
-  mod_data_quality_ui("data_quality")
+  mod_data_quality_ui("data_quality"),
+  mod_overview_demographics_ui("overview_demographics")
   
   # Add other modules here as they're developed:
-  # mod_overview_ui("overview"),
   # mod_transport_ui("transport"),
-  # mod_demographics_ui("demographics"),
+  # mod_lab_results_ui("lab_results"),
+  # mod_data_export_ui("data_export"),
   # etc.
 )
 
@@ -42,9 +43,15 @@ server <- function(input, output, session) {
     quality_report = data$quality_report
   )
   
+  # Pass data to overview & demographics module
+  mod_overview_demographics_server(
+    "overview_demographics",
+    filtered_data = data$filtered_data
+  )
+  
   # Add other module servers here:
-  # mod_overview_server("overview", filtered_data = data$filtered_data)
   # mod_transport_server("transport", filtered_data = data$filtered_data)
+  # mod_lab_results_server("lab_results", biobank_data = data$clean_data)
   # etc.
   
   # Session management

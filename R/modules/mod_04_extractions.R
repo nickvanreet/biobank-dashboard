@@ -56,33 +56,33 @@ mod_extractions_ui <- function(id) {
       layout_column_wrap(
         width = 1/5, fixed_width = TRUE, heights_equal = "row", gap = "12px",
         value_box(
-          title = "Valid Sample IDs",
-          value = textOutput(ns("kpi_valid_ids")),
-          showcase = icon("check-circle"),
+          title = "Matched to Biobank",
+          value = textOutput(ns("kpi_matched")),
+          showcase = icon("link"),
           theme = "success"
         ),
         value_box(
-          title = "Duplicates Found",
-          value = textOutput(ns("kpi_duplicates")),
-          showcase = icon("clone"),
+          title = "Unmatched Samples",
+          value = textOutput(ns("kpi_unmatched")),
+          showcase = icon("unlink"),
           theme = "warning"
         ),
         value_box(
-          title = "Suspicious Barcodes",
-          value = textOutput(ns("kpi_suspicious")),
+          title = "Structure Matches",
+          value = textOutput(ns("kpi_structure_match")),
+          showcase = icon("hospital"),
+          theme = "info"
+        ),
+        value_box(
+          title = "Structure Mismatches",
+          value = textOutput(ns("kpi_structure_mismatch")),
           showcase = icon("exclamation-triangle"),
           theme = "danger"
         ),
         value_box(
-          title = "Validation Rate",
-          value = textOutput(ns("kpi_validation_rate")),
-          showcase = icon("clipboard-check"),
-          theme = "info"
-        ),
-        value_box(
-          title = "Health Structures",
-          value = textOutput(ns("kpi_structures")),
-          showcase = icon("hospital"),
+          title = "Linkage Rate",
+          value = textOutput(ns("kpi_linkage_rate")),
+          showcase = icon("percent"),
           theme = "primary"
         )
       ),
@@ -196,6 +196,51 @@ mod_extractions_ui <- function(id) {
       layout_columns(
         col_widths = c(12), gap = "16px",
         card(
+          card_header("Health Structure DRS Volume Collection Over Time"),
+          card_body_fill(
+            plotly::plotlyOutput(ns("volume_evolution_plot"), height = "450px")
+          )
+        )
+      ),
+
+      layout_columns(
+        col_widths = c(6, 6), gap = "16px",
+        card(
+          card_header("Volume Target Achievement by Health Structure"),
+          card_body_fill(
+            plotly::plotlyOutput(ns("target_achievement_plot"), height = "350px")
+          )
+        ),
+        card(
+          card_header("Biobank Linkage Status Distribution"),
+          card_body_fill(
+            plotly::plotlyOutput(ns("linkage_status_plot"), height = "350px")
+          )
+        )
+      ),
+
+      layout_columns(
+        col_widths = c(12), gap = "16px",
+        card(
+          card_header("Unmatched Samples & Health Structure Mismatches"),
+          card_body(
+            navset_card_tab(
+              nav_panel(
+                "Unmatched to Biobank",
+                DT::DTOutput(ns("unmatched_table"))
+              ),
+              nav_panel(
+                "Health Structure Mismatches",
+                DT::DTOutput(ns("mismatch_table"))
+              )
+            )
+          )
+        )
+      ),
+
+      layout_columns(
+        col_widths = c(12), gap = "16px",
+        card(
           card_header("Extraction Detail Table"),
           card_body(
             DT::DTOutput(ns("extraction_table"))
@@ -217,6 +262,36 @@ mod_extractions_server <- function(id) {
   moduleServer(id, function(input, output, session) {
 
     extraction_data <- reactiveVal(load_extraction_dataset())
+    biobank_data <- reactiveVal(NULL)
+
+    # Load biobank data on initialization
+    observe({
+      tryCatch({
+        biobank_files <- list_biobank_files(config$paths$biobank_dir)
+        if (length(biobank_files) > 0) {
+          # Load the first (most recent) biobank file
+          raw_data <- load_biobank_file(biobank_files[1])
+          quality_report <- analyze_data_quality(raw_data)
+          biobank_data(quality_report$clean_data)
+          message(sprintf("Loaded %d biobank records", nrow(quality_report$clean_data)))
+        }
+      }, error = function(e) {
+        message("Could not load biobank data: ", e$message)
+        biobank_data(NULL)
+      })
+    })
+
+    # Linked extraction data
+    linked_data <- reactive({
+      ext_df <- extraction_data()
+      bio_df <- biobank_data()
+
+      if (is.null(ext_df) || !nrow(ext_df)) {
+        return(ext_df)
+      }
+
+      link_extraction_to_biobank(ext_df, bio_df)
+    })
 
     observeEvent(input$refresh_data, {
       extraction_data(load_extraction_dataset())
@@ -286,7 +361,7 @@ mod_extractions_server <- function(id) {
     })
 
     filtered_data <- reactive({
-      df <- extraction_data()
+      df <- linked_data()
       if (is.null(df) || !nrow(df)) {
         return(df)
       }
@@ -333,6 +408,10 @@ mod_extractions_server <- function(id) {
 
     metrics <- reactive({
       summarise_extraction_metrics(filtered_data())
+    })
+
+    linkage_metrics <- reactive({
+      summarise_linkage_metrics(filtered_data())
     })
 
     output$kpi_total <- renderText({
@@ -392,6 +471,32 @@ mod_extractions_server <- function(id) {
       }
       n_structures <- length(unique(df$health_structure[df$health_structure != "Unspecified"]))
       scales::comma(n_structures)
+    })
+
+    # NEW LINKAGE KPIs
+    output$kpi_matched <- renderText({
+      lm <- linkage_metrics()
+      if (is.na(lm$matched_to_biobank)) "--" else scales::comma(lm$matched_to_biobank)
+    })
+
+    output$kpi_unmatched <- renderText({
+      lm <- linkage_metrics()
+      if (is.na(lm$unmatched_to_biobank)) "--" else scales::comma(lm$unmatched_to_biobank)
+    })
+
+    output$kpi_structure_match <- renderText({
+      lm <- linkage_metrics()
+      if (is.na(lm$health_structure_matches)) "--" else scales::comma(lm$health_structure_matches)
+    })
+
+    output$kpi_structure_mismatch <- renderText({
+      lm <- linkage_metrics()
+      if (is.na(lm$health_structure_mismatches)) "--" else scales::comma(lm$health_structure_mismatches)
+    })
+
+    output$kpi_linkage_rate <- renderText({
+      lm <- linkage_metrics()
+      if (is.na(lm$pct_matched)) "--" else scales::percent(lm$pct_matched, accuracy = 0.1)
     })
 
     output$drs_state_plot <- plotly::renderPlotly({
@@ -620,19 +725,193 @@ mod_extractions_server <- function(id) {
         )
     })
 
+    # NEW VISUALIZATIONS FOR VOLUME MONITORING
+    output$volume_evolution_plot <- plotly::renderPlotly({
+      df <- filtered_data()
+      if (is.null(df) || !nrow(df)) {
+        return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No data available"))
+      }
+
+      time_series <- summarise_health_structure_volumes_over_time(df)
+
+      if (!nrow(time_series)) {
+        return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No time series data available"))
+      }
+
+      # Create multi-line chart with one line per health structure
+      plotly::plot_ly(time_series, x = ~month, y = ~total_volume, color = ~health_structure,
+                     type = "scatter", mode = "lines+markers",
+                     text = ~paste0("<b>", health_structure, "</b><br>",
+                                   "Month: ", format(month, "%b %Y"), "<br>",
+                                   "Total Volume: ", round(total_volume, 1), " mL<br>",
+                                   "Extractions: ", n_extractions, "<br>",
+                                   "Median Volume: ", round(median_volume, 1), " mL<br>",
+                                   "Ready Rate: ", scales::percent(pct_ready, accuracy = 0.1)),
+                     hoverinfo = "text") %>%
+        plotly::layout(
+          title = "DRS Volume Collection Trend by Health Structure",
+          xaxis = list(title = "Month"),
+          yaxis = list(title = "Total Volume Collected (mL)"),
+          hovermode = "closest",
+          legend = list(title = list(text = "Health Structure"))
+        )
+    })
+
+    output$target_achievement_plot <- plotly::renderPlotly({
+      df <- filtered_data()
+      if (is.null(df) || !nrow(df)) {
+        return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No data available"))
+      }
+
+      targets <- calculate_volume_targets(df, expected_monthly_volume = 50)
+
+      if (!nrow(targets)) {
+        return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No target data available"))
+      }
+
+      # Aggregate by health structure (latest month)
+      latest_targets <- targets %>%
+        dplyr::group_by(health_structure) %>%
+        dplyr::filter(month == max(month)) %>%
+        dplyr::ungroup() %>%
+        dplyr::mutate(
+          status = dplyr::if_else(meets_target, "Meets Target", "Below Target")
+        )
+
+      plotly::plot_ly(latest_targets, x = ~health_structure, y = ~pct_of_target,
+                     type = "bar",
+                     color = ~status,
+                     colors = c("Meets Target" = "#27AE60", "Below Target" = "#E74C3C"),
+                     text = ~paste0(health_structure, "<br>",
+                                   round(pct_of_target * 100, 1), "% of target<br>",
+                                   "Actual: ", round(actual_volume, 1), " mL<br>",
+                                   "Expected: ", expected_volume, " mL"),
+                     hoverinfo = "text") %>%
+        plotly::layout(
+          title = "Volume Target Achievement (Latest Month)",
+          xaxis = list(title = "Health Structure", tickangle = -45),
+          yaxis = list(title = "% of Target", tickformat = ".0%"),
+          showlegend = TRUE,
+          margin = list(b = 120)
+        ) %>%
+        plotly::add_shape(
+          type = "line",
+          x0 = -0.5, x1 = length(unique(latest_targets$health_structure)) - 0.5,
+          y0 = 1, y1 = 1,
+          line = list(color = "red", dash = "dash", width = 2)
+        )
+    })
+
+    output$linkage_status_plot <- plotly::renderPlotly({
+      df <- filtered_data()
+      if (is.null(df) || !nrow(df) || !"biobank_matched" %in% names(df)) {
+        return(plotly::plotly_empty(type = "pie") %>% plotly::layout(title = "Linkage data not available"))
+      }
+
+      plot_df <- df %>%
+        dplyr::mutate(
+          linkage_status = dplyr::case_when(
+            !biobank_matched ~ "Unmatched to Biobank",
+            health_structure_match == TRUE ~ "Matched - Structure OK",
+            health_structure_match == FALSE ~ "Matched - Structure Mismatch",
+            TRUE ~ "Matched - No Structure Info"
+          )
+        ) %>%
+        dplyr::count(linkage_status, name = "n")
+
+      colors <- c(
+        "Matched - Structure OK" = "#27AE60",
+        "Matched - No Structure Info" = "#3498DB",
+        "Matched - Structure Mismatch" = "#F39C12",
+        "Unmatched to Biobank" = "#E74C3C"
+      )
+
+      plotly::plot_ly(plot_df, labels = ~linkage_status, values = ~n, type = "pie",
+                     marker = list(colors = colors[plot_df$linkage_status]),
+                     textinfo = "label+percent",
+                     hoverinfo = "text",
+                     text = ~paste0(linkage_status, ": ", n, " samples")) %>%
+        plotly::layout(title = "Biobank Linkage Quality")
+    })
+
+    output$unmatched_table <- DT::renderDT({
+      df <- filtered_data()
+      if (is.null(df) || !nrow(df)) {
+        return(DT::datatable(
+          tibble::tibble(Message = "No data available"),
+          options = list(dom = "t"), rownames = FALSE
+        ))
+      }
+
+      unmatched <- get_unmatched_extractions(df)
+
+      if (!nrow(unmatched)) {
+        return(DT::datatable(
+          tibble::tibble(Message = "All samples are matched to biobank!"),
+          options = list(dom = "t"), rownames = FALSE
+        ))
+      }
+
+      DT::datatable(
+        unmatched,
+        options = c(APP_CONSTANTS$DT_OPTIONS, list(pageLength = 10)),
+        rownames = FALSE,
+        filter = "top",
+        caption = sprintf("Showing %d unmatched extraction records", nrow(unmatched))
+      )
+    })
+
+    output$mismatch_table <- DT::renderDT({
+      df <- filtered_data()
+      if (is.null(df) || !nrow(df)) {
+        return(DT::datatable(
+          tibble::tibble(Message = "No data available"),
+          options = list(dom = "t"), rownames = FALSE
+        ))
+      }
+
+      mismatches <- get_health_structure_mismatches(df)
+
+      if (!nrow(mismatches)) {
+        return(DT::datatable(
+          tibble::tibble(Message = "No health structure mismatches found!"),
+          options = list(dom = "t"), rownames = FALSE
+        ))
+      }
+
+      DT::datatable(
+        mismatches,
+        options = c(APP_CONSTANTS$DT_OPTIONS, list(pageLength = 10)),
+        rownames = FALSE,
+        filter = "top",
+        caption = sprintf("Showing %d health structure mismatches", nrow(mismatches))
+      )
+    })
+
     output$extraction_table <- DT::renderDT({
       df <- filtered_data()
       if (is.null(df) || !nrow(df)) {
         return(DT::datatable(tibble::tibble(Message = "No extraction data available for the selected filters."), options = list(dom = "t"), rownames = FALSE))
       }
 
+      # Select key columns for display
+      display_cols <- c("sample_id", "extraction_date", "health_structure", "drs_state",
+                       "drs_volume_ml", "extract_quality", "ready_for_freezer",
+                       "biobank_matched", "health_structure_match")
+
       table_df <- df %>%
+        dplyr::select(dplyr::any_of(display_cols)) %>%
         dplyr::arrange(dplyr::desc(extraction_date)) %>%
         dplyr::mutate(
           extraction_date = format(extraction_date, "%Y-%m-%d"),
           drs_volume_ml = ifelse(is.na(drs_volume_ml), "", scales::number(drs_volume_ml, accuracy = 0.1)),
           ready_for_freezer = dplyr::if_else(ready_for_freezer, "Yes", "No"),
-          flag_issue = dplyr::if_else(flag_issue, "Yes", "No")
+          biobank_matched = dplyr::if_else(biobank_matched %||% FALSE, "Yes", "No"),
+          health_structure_match = dplyr::case_when(
+            is.na(health_structure_match) ~ "N/A",
+            health_structure_match ~ "Match",
+            TRUE ~ "Mismatch"
+          )
         )
 
       DT::datatable(

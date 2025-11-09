@@ -135,6 +135,10 @@ load_extraction_file <- function(filepath) {
     ),
     record_number = c("numero", "record", "sample_number"),
     extraction_date = c("extraction_date", "date_extraction", "date", "extractiondate"),
+    health_structure = c(
+      "health_structure", "structure_sanitaire", "structure", "facility",
+      "health_facility", "centre_de_sante", "cs"
+    ),
     drs_state = c(
       "drs_state", "etat_drs", "state", "etat_tube", "drs_condition",
       "etat_echantillon", "etat_echantillon_sang_drs", "etat_echantillon_sang_drs_liquide_visqueux_coagule"
@@ -177,6 +181,7 @@ load_extraction_file <- function(filepath) {
       sample_id = as.character(sample_id),
       record_number = as.character(record_number),
       extraction_date = .parse_extraction_date(extraction_date),
+      health_structure = stringr::str_to_title(trimws(as.character(health_structure))),
       drs_state = .normalize_categories(
         drs_state,
         c(
@@ -226,6 +231,7 @@ load_extraction_file <- function(filepath) {
     dplyr::mutate(
       sample_id = dplyr::coalesce(sample_id, record_number),
       extraction_date = dplyr::coalesce(extraction_date, file_date),
+      health_structure = dplyr::if_else(is.na(health_structure) | health_structure == "", "Unspecified", health_structure),
       filter_type = dplyr::if_else(is.na(filter_type) | filter_type == "", "Unspecified", filter_type),
       project = dplyr::if_else(is.na(project) | project == "", "UNSPECIFIED", project),
       drs_state = dplyr::if_else(is.na(drs_state) | drs_state == "", "Unknown", drs_state),
@@ -243,11 +249,99 @@ load_extraction_file <- function(filepath) {
   df
 }
 
+#' Validate sample IDs and barcodes
+#' @param df Extraction dataset
+#' @return Dataset with validation flags added
+#' @export
+validate_sample_ids <- function(df) {
+  if (is.null(df) || !nrow(df)) {
+    return(df)
+  }
+
+  df %>%
+    dplyr::mutate(
+      # Check for valid sample ID format (not empty, not too short)
+      valid_sample_id = !is.na(sample_id) & nchar(sample_id) >= 3,
+
+      # Check for duplicate sample IDs within same extraction date
+      duplicate_sample_id = duplicated(paste(sample_id, extraction_date)) |
+                           duplicated(paste(sample_id, extraction_date), fromLast = TRUE),
+
+      # Check for suspicious barcode patterns
+      barcode_suspicious = dplyr::case_when(
+        is.na(sample_id) ~ TRUE,
+        grepl("^[0]+$", sample_id) ~ TRUE,  # All zeros
+        grepl("test|demo|example", sample_id, ignore.case = TRUE) ~ TRUE,
+        TRUE ~ FALSE
+      ),
+
+      # Overall validation status
+      validation_status = dplyr::case_when(
+        !valid_sample_id ~ "Invalid ID",
+        barcode_suspicious ~ "Suspicious Barcode",
+        duplicate_sample_id ~ "Duplicate",
+        TRUE ~ "Valid"
+      )
+    )
+}
+
+#' Remove duplicate extraction records
+#' @param df Extraction dataset
+#' @param keep_first If TRUE, keep first occurrence; if FALSE, keep last
+#' @return Dataset with duplicates removed
+#' @export
+remove_duplicates <- function(df, keep_first = FALSE) {
+  if (is.null(df) || !nrow(df)) {
+    return(df)
+  }
+
+  original_count <- nrow(df)
+
+  # Remove exact duplicates (all columns identical)
+  df_dedup <- df %>%
+    dplyr::distinct()
+
+  exact_dups_removed <- original_count - nrow(df_dedup)
+
+  # Remove duplicates based on sample_id and extraction_date
+  # Keep the record with more complete data (fewer NAs)
+  df_dedup <- df_dedup %>%
+    dplyr::group_by(sample_id, extraction_date) %>%
+    dplyr::mutate(
+      na_count = rowSums(is.na(dplyr::pick(dplyr::everything()))),
+      row_num = dplyr::row_number()
+    ) %>%
+    dplyr::filter(
+      if (keep_first) {
+        row_num == 1
+      } else {
+        na_count == min(na_count) & row_num == 1
+      }
+    ) %>%
+    dplyr::select(-na_count, -row_num) %>%
+    dplyr::ungroup()
+
+  logical_dups_removed <- nrow(df) - exact_dups_removed - nrow(df_dedup)
+
+  if (exact_dups_removed > 0 || logical_dups_removed > 0) {
+    message(sprintf(
+      "Removed %d exact duplicates and %d logical duplicates (%d records remain)",
+      exact_dups_removed, logical_dups_removed, nrow(df_dedup)
+    ))
+  }
+
+  df_dedup
+}
+
 #' Load and combine all extraction data sets
 #' @param directory Path to extraction data directory
+#' @param remove_dups Should duplicates be removed? (default: TRUE)
+#' @param validate Should data be validated? (default: TRUE)
 #' @return Tibble with combined extraction records
 #' @export
-load_extraction_dataset <- function(directory = config$paths$extractions_dir) {
+load_extraction_dataset <- function(directory = config$paths$extractions_dir,
+                                   remove_dups = TRUE,
+                                   validate = TRUE) {
   files <- list_extraction_files(directory)
   if (!length(files)) {
     message("No extraction files found; returning empty dataset")
@@ -256,6 +350,7 @@ load_extraction_dataset <- function(directory = config$paths$extractions_dir) {
       sample_id = character(),
       record_number = character(),
       extraction_date = as.Date(character()),
+      health_structure = character(),
       drs_state = character(),
       drs_volume_ml = numeric(),
       filter_type = character(),
@@ -270,11 +365,38 @@ load_extraction_dataset <- function(directory = config$paths$extractions_dir) {
       rack_column = character(),
       remarks = character(),
       flag_issue = logical(),
-      ready_for_freezer = logical()
+      ready_for_freezer = logical(),
+      valid_sample_id = logical(),
+      duplicate_sample_id = logical(),
+      barcode_suspicious = logical(),
+      validation_status = character()
     ))
   }
 
-  purrr::map_dfr(files, load_extraction_file)
+  message(sprintf("Loading %d extraction files...", length(files)))
+  df <- purrr::map_dfr(files, load_extraction_file)
+
+  # Remove duplicates if requested
+  if (remove_dups && nrow(df) > 0) {
+    df <- remove_duplicates(df)
+  }
+
+  # Add validation flags if requested
+  if (validate && nrow(df) > 0) {
+    df <- validate_sample_ids(df)
+  } else if (nrow(df) > 0) {
+    # Add empty validation columns
+    df <- df %>%
+      dplyr::mutate(
+        valid_sample_id = TRUE,
+        duplicate_sample_id = FALSE,
+        barcode_suspicious = FALSE,
+        validation_status = "Not Validated"
+      )
+  }
+
+  message(sprintf("Loaded %d extraction records", nrow(df)))
+  df
 }
 
 #' Summarise extraction metrics for KPI displays
@@ -289,7 +411,11 @@ summarise_extraction_metrics <- function(df) {
       median_volume = NA_real_,
       pct_liquid = NA_real_,
       pct_clear = NA_real_,
-      flagged = 0
+      flagged = 0,
+      valid_ids = 0,
+      duplicates = 0,
+      suspicious_barcodes = 0,
+      validation_rate = NA_real_
     ))
   }
 
@@ -299,12 +425,50 @@ summarise_extraction_metrics <- function(df) {
     mean(x)
   }
 
+  # Check if validation columns exist
+  has_validation <- all(c("valid_sample_id", "duplicate_sample_id", "barcode_suspicious") %in% names(df))
+
   list(
     total = nrow(df),
     ready = sum(df$ready_for_freezer, na.rm = TRUE),
     median_volume = stats::median(df$drs_volume_ml, na.rm = TRUE),
     pct_liquid = safe_pct(df$drs_state == "Liquid"),
     pct_clear = safe_pct(df$extract_quality == "Clear"),
-    flagged = sum(df$flag_issue, na.rm = TRUE)
+    flagged = sum(df$flag_issue, na.rm = TRUE),
+    valid_ids = if (has_validation) sum(df$valid_sample_id, na.rm = TRUE) else NA_integer_,
+    duplicates = if (has_validation) sum(df$duplicate_sample_id, na.rm = TRUE) else NA_integer_,
+    suspicious_barcodes = if (has_validation) sum(df$barcode_suspicious, na.rm = TRUE) else NA_integer_,
+    validation_rate = if (has_validation) safe_pct(df$validation_status == "Valid") else NA_real_
   )
+}
+
+#' Summarise extraction volumes by health structure
+#' @param df Extraction dataset (already filtered)
+#' @return Tibble with health structure summary
+#' @export
+summarise_by_health_structure <- function(df) {
+  if (is.null(df) || !nrow(df) || !"health_structure" %in% names(df)) {
+    return(tibble::tibble(
+      health_structure = character(),
+      n_extractions = integer(),
+      median_volume = numeric(),
+      pct_ready = numeric(),
+      pct_flagged = numeric()
+    ))
+  }
+
+  df %>%
+    dplyr::filter(!is.na(health_structure) & health_structure != "Unspecified") %>%
+    dplyr::group_by(health_structure) %>%
+    dplyr::summarise(
+      n_extractions = dplyr::n(),
+      median_volume = stats::median(drs_volume_ml, na.rm = TRUE),
+      mean_volume = mean(drs_volume_ml, na.rm = TRUE),
+      total_volume = sum(drs_volume_ml, na.rm = TRUE),
+      pct_ready = mean(ready_for_freezer, na.rm = TRUE),
+      pct_flagged = mean(flag_issue, na.rm = TRUE),
+      pct_liquid = mean(drs_state == "Liquid", na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    dplyr::arrange(dplyr::desc(n_extractions))
 }

@@ -18,10 +18,10 @@ mod_data_quality_ui <- function(id) {
     
     div(class = "container-fluid",
         
-        # ==== KPIs (first 6, no 'Completeness') =================================
+        # ==== KPIs (8 cards) ===================================================
         layout_column_wrap(
           width = 1/4, fixed_width = TRUE, heights_equal = "row", gap = "12px",
-          
+
           value_box(
             title  = "Total Rows",
             value  = textOutput(ns("total_rows")),
@@ -33,6 +33,18 @@ mod_data_quality_ui <- function(id) {
             value  = textOutput(ns("valid_rows")),
             showcase = icon("check-circle"),
             theme  = "success"
+          ),
+          value_box(
+            title  = "Invalid Rows",
+            value  = textOutput(ns("invalid_rows")),
+            showcase = icon("ban"),
+            theme  = "danger"
+          ),
+          value_box(
+            title  = "Avg. Completeness",
+            value  = textOutput(ns("avg_completeness")),
+            showcase = icon("percent"),
+            theme  = "info"
           ),
           value_box(
             title  = "Missing Barcode",
@@ -63,7 +75,15 @@ mod_data_quality_ui <- function(id) {
         # ==== CHARTS: quality over time + entries over time ======================
         layout_columns(col_widths = c(6, 6), gap = "16px",
                        card(
-                         card_header("Quality Flags Over Time"),
+                         card_header(
+                           class = "d-flex justify-content-between align-items-center flex-wrap gap-2",
+                           span("Quality Flags Over Time"),
+                           checkboxInput(
+                             ns("include_flagged"),
+                             label = "Include flagged rows",
+                             value = TRUE
+                           )
+                         ),
                          card_body_fill(
                            plotly::plotlyOutput(ns("quality_flags_timeline_plot"), height = "350px")
                          )
@@ -78,11 +98,7 @@ mod_data_quality_ui <- function(id) {
         
         # ==== COMPLETENESS (full width) =========================================
         card(
-          card_header(
-            class = "d-flex justify-content-between align-items-center",
-            span("Column Completeness Analysis"),
-            span(textOutput(ns("completeness")), class = "text-muted small pe-2")
-          ),
+          card_header("Column Completeness Analysis"),
           card_body(
             DT::DTOutput(ns("completeness_table"))
           )
@@ -143,6 +159,11 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
       }
       NULL
     }
+    .match_cols <- function(nms, patterns) {
+      unique(unlist(lapply(patterns, function(p) {
+        grep(p, nms, ignore.case = TRUE, value = TRUE)
+      })))
+    }
     .nz <- function(x) {
       x <- trimws(as.character(x))
       x[x == ""] <- NA
@@ -189,16 +210,18 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
       valid_rows   <- suppressWarnings(as.integer(report$summary$rows_clean))
       dropped_rows <- if (is.finite(adj_total) && is.finite(valid_rows)) max(adj_total - valid_rows, 0L) else NA_integer_
       drop_rate    <- if (isTRUE(adj_total > 0) && is.finite(dropped_rows)) dropped_rows / adj_total * 100 else NA_real_
-      
+      drop_prop    <- if (isTRUE(adj_total > 0) && is.finite(dropped_rows)) dropped_rows / adj_total else NA_real_
+
       avg_comp <- if (nrow(report$completeness)) {
         mean(report$completeness$percent_complete, na.rm = TRUE)
       } else NA_real_
-      
+
       list(
         total_rows        = adj_total,
         valid_rows        = valid_rows,
         dropped_rows      = dropped_rows,
         drop_rate         = drop_rate,
+        drop_prop         = drop_prop,
         missing_barcode   = missing_barcode_adj,
         missing_labid     = missing_labid_adj,
         duplicate_count   = nrow(report$duplicates),
@@ -220,12 +243,18 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
       if (is.na(m$valid_rows) || is.na(m$drop_rate)) "—" else
         sprintf("%s (%.1f%%)", scales::comma(m$valid_rows), 100 - m$drop_rate)
     })
-    
+
+    output$invalid_rows <- renderText({
+      m <- quality_metrics()
+      if (is.na(m$dropped_rows) || is.na(m$drop_rate)) "—" else
+        sprintf("%s (%.1f%%)", scales::comma(m$dropped_rows), m$drop_rate)
+    })
+
     output$missing_barcode <- renderText({
       m <- quality_metrics()
       if (is.na(m$missing_barcode)) "—" else scales::comma(m$missing_barcode)
     })
-    
+
     output$missing_labid <- renderText({
       m <- quality_metrics()
       if (is.na(m$missing_labid)) "—" else scales::comma(m$missing_labid)
@@ -240,8 +269,8 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
       m <- quality_metrics()
       if (is.na(m$conflict_count)) "—" else scales::comma(m$conflict_count)
     })
-    
-    output$completeness <- renderText({
+
+    output$avg_completeness <- renderText({
       m <- quality_metrics()
       if (is.na(m$avg_completeness)) "—" else sprintf("%.1f%%", m$avg_completeness)
     })
@@ -308,7 +337,7 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
         excl <- if (is.na(m$dropped_rows) || m$dropped_rows <= 0) NA_real_ else m$dropped_rows
         if (is.finite(excl) && excl > 0) {
           df <- df %>%
-            dplyr::mutate(percent_of_excluded = round(100 * count / excl, 1))
+            dplyr::mutate(percent_of_excluded = count / excl)
         } else {
           df <- df %>% dplyr::mutate(percent_of_excluded = NA_real_)
         }
@@ -340,10 +369,10 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
         ) %>%
           dplyr::arrange(dplyr::desc(count)) %>%
           dplyr::mutate(
-            percent_of_excluded = if (excl > 0) round(100 * count / excl, 1) else NA_real_
+            percent_of_excluded = if (excl > 0) count / excl else NA_real_
           )
       }
-      
+
       DT::datatable(
         df,
         rownames = FALSE,
@@ -370,12 +399,20 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
           class = "table-sm"
         )
       } else {
-        avail_cols <- intersect(
-          c("barcode", "lab_id", "date_sample", "province", "health_zone"),
-          names(report$duplicates)
+        dup_cols <- names(report$duplicates)
+        dup_cols <- dup_cols[!grepl("^\\.__", dup_cols)]
+
+        prioritized <- c(
+          .match_cols(dup_cols, "barcode"),
+          .match_cols(dup_cols, "lab"),
+          .match_cols(dup_cols, "date"),
+          .match_cols(dup_cols, "province"),
+          .match_cols(dup_cols, "zone")
         )
+        cols_to_show <- unique(c(prioritized, dup_cols))
+
         report$duplicates %>%
-          dplyr::select(dplyr::all_of(avail_cols)) %>%
+          dplyr::select(dplyr::all_of(cols_to_show)) %>%
           DT::datatable(
             options = list(pageLength = 10, scrollX = TRUE, dom = 'frtip'),
             class = "table-sm"
@@ -395,7 +432,11 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
           class = "table-sm"
         )
       } else {
+        cols <- names(report$barcode_conflicts)
+        cols <- cols[!grepl("^\\.__", cols)]
+
         report$barcode_conflicts %>%
+          dplyr::select(dplyr::all_of(cols)) %>%
           DT::datatable(
             options = list(pageLength = 10, scrollX = TRUE, dom = 'frtip'),
             class = "table-sm"
@@ -410,103 +451,66 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
       req(quality_report())
       report <- quality_report()
 
-      weekly_flags <- report$quality_flags_by_week
-      has_weekly_flags <- is.data.frame(weekly_flags) &&
-        all(c("week", "quality_flag", "n") %in% names(weekly_flags))
-
-      if (has_weekly_flags && nrow(weekly_flags)) {
-        df <- weekly_flags %>%
-          dplyr::mutate(week = as.Date(week)) %>%
-          dplyr::arrange(week, quality_flag)
-
-        return(
-          plotly::plot_ly(
-            df,
-            x = ~week, y = ~n, color = ~quality_flag, type = "bar",
-            hovertemplate = "Week: %{x|%Y-%m-%d}<br>Flag: %{fullData.name}<br>Count: %{y}<extra></extra>"
-          ) %>%
-            plotly::layout(
-              barmode = "stack",
-              xaxis = list(title = "Week"),
-              yaxis = list(title = "Rows"),
-              legend = list(orientation = "h", y = -0.2)
-            )
-        )
+      weekly_flags <- NULL
+      if (is.data.frame(report$quality_flags_by_week) &&
+          all(c("week", "quality_flag", "n") %in% names(report$quality_flags_by_week))) {
+        weekly_flags <- report$quality_flags_by_week %>%
+          dplyr::mutate(week = suppressWarnings(as.Date(week))) %>%
+          dplyr::filter(!is.na(week))
       }
 
-      # Preferred: a table with per-row flag + date/date_sample
-      has_flags_table <- is.data.frame(report$row_flags) &&
-        ("quality_flag" %in% names(report$row_flags)) &&
-        (any(c("date", "date_sample") %in% names(report$row_flags)))
+      if (is.null(weekly_flags) || !nrow(weekly_flags)) {
+        detailed <- report$row_flags_detailed
+        if (is.data.frame(detailed) && all(c("date_sample", "reason") %in% names(detailed))) {
+          weekly_flags <- detailed %>%
+            dplyr::mutate(
+              date_sample = suppressWarnings(lubridate::as_date(date_sample)),
+              week = lubridate::floor_date(date_sample, "week"),
+              quality_flag = dplyr::case_when(
+                is.na(reason) | reason == "" | reason == "OK" ~ "Valid",
+                reason == "Duplicate key" ~ "Duplicate",
+                reason == "Barcode conflict" ~ "Barcode conflict",
+                reason == "Missing barcode" ~ "Missing barcode",
+                reason == "Missing lab ID" ~ "Missing lab ID",
+                TRUE ~ reason
+              )
+            ) %>%
+            dplyr::filter(!is.na(week)) %>%
+            dplyr::count(week, quality_flag, name = "n")
+        }
+      }
 
-      if (has_flags_table) {
-        df <- report$row_flags
-        date_col <- if ("date" %in% names(df)) "date" else "date_sample"
-        
+      validate(need(!is.null(weekly_flags) && nrow(weekly_flags), "No timeline data available"))
+
+      df <- weekly_flags %>%
+        dplyr::arrange(week, quality_flag)
+
+      if (!isTRUE(input$include_flagged)) {
         df <- df %>%
-          dplyr::mutate(
-            date = suppressWarnings(lubridate::as_date(.data[[date_col]]))
-          ) %>%
-          dplyr::filter(!is.na(date)) %>%
-          dplyr::mutate(week = lubridate::floor_date(date, "week")) %>%
-          dplyr::count(week, quality_flag, name = "n") %>%
-          dplyr::arrange(week, quality_flag)
-        
-        plotly::plot_ly(
-          df,
-          x = ~week, y = ~n, color = ~quality_flag, type = "bar",
-          hovertemplate = "Week: %{x|%Y-%m-%d}<br>Flag: %{fullData.name}<br>Count: %{y}<extra></extra>"
-        ) %>%
-          plotly::layout(
-            barmode = "stack",
-            xaxis = list(title = "Week"),
-            yaxis = list(title = "Rows"),
-            legend = list(orientation = "h", y = -0.2)
-          )
-        
-      } else {
-        # Fallback: derive weekly OK counts from clean_data(); estimate invalids
-        cd <- try(clean_data(), silent = TRUE)
-        rd_total <- suppressWarnings(as.integer(report$summary$rows_raw))
-        
-        ok <- if (!inherits(cd, "try-error") && "date_sample" %in% names(cd)) {
-          cd %>%
-            dplyr::filter(!is.na(date_sample)) %>%
-            dplyr::mutate(week = lubridate::floor_date(date_sample, "week")) %>%
-            dplyr::count(week, name = "ok")
-        } else {
-          tibble::tibble(week = as.Date(character()), ok = integer())
-        }
-        
-        total_clean <- if ("ok" %in% names(ok)) sum(ok$ok) else 0L
-        invalid_total <- if (is.finite(rd_total)) max(rd_total - total_clean, 0L) else 0L
-        
-        if (nrow(ok) > 0) {
-          wks <- nrow(ok)
-          invalid_per_week <- if (wks > 0) floor(invalid_total / wks) else 0L
-          df <- ok %>%
-            dplyr::mutate(invalid = invalid_per_week) %>%
-            tidyr::pivot_longer(cols = c(ok, invalid), names_to = "quality_flag", values_to = "n")
-        } else {
-          df <- tibble::tibble(
-            week = lubridate::floor_date(Sys.Date(), "week"),
-            quality_flag = c("ok", "invalid"),
-            n = c(total_clean, invalid_total)
-          )
-        }
-        
-        plotly::plot_ly(
-          df,
-          x = ~week, y = ~n, color = ~quality_flag, type = "bar",
-          hovertemplate = "Week: %{x|%Y-%m-%d}<br>Flag: %{fullData.name}<br>Count: %{y}<extra></extra>"
-        ) %>%
-          plotly::layout(
-            barmode = "stack",
-            xaxis = list(title = "Week"),
-            yaxis = list(title = "Rows"),
-            legend = list(orientation = "h", y = -0.2)
-          )
+          dplyr::filter(tolower(quality_flag) %in% c("valid", "ok"))
       }
+
+      if (!nrow(df)) {
+        return(plotly::plotly_empty(type = "bar"))
+      }
+
+      preferred_levels <- c("Valid", "Missing barcode", "Missing lab ID", "Duplicate", "Barcode conflict")
+      df$quality_flag <- factor(
+        as.character(df$quality_flag),
+        levels = unique(c(preferred_levels, setdiff(as.character(df$quality_flag), preferred_levels)))
+      )
+
+      plotly::plot_ly(
+        df,
+        x = ~week, y = ~n, color = ~quality_flag, type = "bar",
+        hovertemplate = "Week: %{x|%Y-%m-%d}<br>Flag: %{fullData.name}<br>Count: %{y}<extra></extra>"
+      ) %>%
+        plotly::layout(
+          barmode = "stack",
+          xaxis = list(title = "Week"),
+          yaxis = list(title = "Rows"),
+          legend = list(orientation = "h", y = -0.2)
+        )
     })
     
     output$entry_timeline_plot <- plotly::renderPlotly({

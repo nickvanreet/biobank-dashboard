@@ -17,7 +17,8 @@ ui <- page_navbar(
   
   # Navigation panels
   mod_data_quality_ui("data_quality"),
-  mod_overview_demographics_ui("overview_demographics")
+  mod_overview_demographics_ui("overview_demographics"),
+  mod_transport_ui("transport")
   
   # Add other modules here as they're developed:
   # mod_transport_ui("transport"),
@@ -46,6 +47,12 @@ server <- function(input, output, session) {
   # Pass data to overview & demographics module
   mod_overview_demographics_server(
     "overview_demographics",
+    filtered_data = data$filtered_data
+  )
+
+  # Pass filtered data to transport module so visuals respect dashboard filters
+  mod_transport_server(
+    "transport",
     filtered_data = data$filtered_data
   )
   

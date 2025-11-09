@@ -145,10 +145,6 @@ load_extraction_file <- function(filepath) {
     ),
     drs_volume_ul = c("drs_volume_ul", "volume_ul"),
     filter_type = c("filter", "filtre", "filter_type", "filtration"),
-    health_structure = c(
-      "health_structure", "structure", "facility", "site", "structure_sanitaire",
-      "health_facility", "centre_de_sante"
-    ),
     extract_quality = c(
       "extract_appearance", "extract_quality", "aspect_extrait", "visual_quality", "appearance",
       "evaluation", "evaluation_de_l_echantillon_extrait_clair_fonce_echec"
@@ -201,7 +197,6 @@ load_extraction_file <- function(filepath) {
       ),
       drs_volume_ml = dplyr::coalesce(.parse_numeric(drs_volume_ml), .parse_numeric(drs_volume_ul) / 1000),
       filter_type = stringr::str_to_title(trimws(as.character(filter_type))),
-      health_structure = stringr::str_to_title(trimws(as.character(health_structure))),
       extract_quality = .normalize_categories(
         extract_quality,
         c(
@@ -232,11 +227,6 @@ load_extraction_file <- function(filepath) {
       sample_id = dplyr::coalesce(sample_id, record_number),
       extraction_date = dplyr::coalesce(extraction_date, file_date),
       filter_type = dplyr::if_else(is.na(filter_type) | filter_type == "", "Unspecified", filter_type),
-      health_structure = dplyr::if_else(
-        is.na(health_structure) | health_structure == "",
-        "Unspecified",
-        health_structure
-      ),
       project = dplyr::if_else(is.na(project) | project == "", "UNSPECIFIED", project),
       drs_state = dplyr::if_else(is.na(drs_state) | drs_state == "", "Unknown", drs_state),
       extract_quality = dplyr::if_else(is.na(extract_quality) | extract_quality == "", "Unknown", extract_quality),
@@ -270,7 +260,6 @@ load_extraction_dataset <- function(directory = config$paths$extractions_dir) {
       drs_volume_ml = numeric(),
       filter_type = character(),
       extract_quality = character(),
-      health_structure = character(),
       technician = character(),
       project = character(),
       batch = character(),
@@ -285,17 +274,14 @@ load_extraction_dataset <- function(directory = config$paths$extractions_dir) {
     ))
   }
 
-  purrr::map_dfr(files, load_extraction_file) %>%
-    dplyr::arrange(dplyr::desc(extraction_date), dplyr::desc(source_file)) %>%
-    dplyr::distinct(sample_id, .keep_all = TRUE)
+  purrr::map_dfr(files, load_extraction_file)
 }
 
 #' Summarise extraction metrics for KPI displays
 #' @param df Extraction dataset (already filtered)
-#' @param volume_range Numeric length-2 vector specifying acceptable DRS volume range
 #' @return Named list with KPI values
 #' @export
-summarise_extraction_metrics <- function(df, volume_range = c(1.5, 2.5)) {
+summarise_extraction_metrics <- function(df) {
   if (is.null(df) || !nrow(df)) {
     return(list(
       total = 0,
@@ -303,8 +289,7 @@ summarise_extraction_metrics <- function(df, volume_range = c(1.5, 2.5)) {
       median_volume = NA_real_,
       pct_liquid = NA_real_,
       pct_clear = NA_real_,
-      flagged = 0,
-      pct_within_target = NA_real_
+      flagged = 0
     ))
   }
 
@@ -314,24 +299,12 @@ summarise_extraction_metrics <- function(df, volume_range = c(1.5, 2.5)) {
     mean(x)
   }
 
-  range_ok <- rep(NA, nrow(df))
-  if (length(volume_range) == 2 && all(is.finite(volume_range))) {
-    volume_min <- min(volume_range)
-    volume_max <- max(volume_range)
-    range_ok <- dplyr::case_when(
-      is.na(df$drs_volume_ml) ~ NA,
-      df$drs_volume_ml >= volume_min & df$drs_volume_ml <= volume_max ~ TRUE,
-      TRUE ~ FALSE
-    )
-  }
-
   list(
     total = nrow(df),
     ready = sum(df$ready_for_freezer, na.rm = TRUE),
     median_volume = stats::median(df$drs_volume_ml, na.rm = TRUE),
     pct_liquid = safe_pct(df$drs_state == "Liquid"),
     pct_clear = safe_pct(df$extract_quality == "Clear"),
-    flagged = sum(df$flag_issue, na.rm = TRUE),
-    pct_within_target = safe_pct(range_ok)
+    flagged = sum(df$flag_issue, na.rm = TRUE)
   )
 }

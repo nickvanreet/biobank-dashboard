@@ -474,8 +474,37 @@ mod_overview_demographics_server <- function(id, filtered_data) {
       timeline_data <- data %>%
         dplyr::filter(!is.na(date_sample)) %>%
         dplyr::mutate(week = lubridate::floor_date(date_sample, "week"))
-      
-      if ("case_category" %in% names(data)) {
+
+      if ("study" %in% names(data) && any(!is.na(data$study))) {
+        timeline_data <- timeline_data %>%
+          dplyr::filter(!is.na(study)) %>%
+          dplyr::count(week, study) %>%
+          dplyr::arrange(week)
+
+        if (nrow(timeline_data) == 0) {
+          return(plotly::plotly_empty())
+        }
+
+        study_levels <- unique(as.character(timeline_data$study))
+        study_colors <- grDevices::hcl.colors(length(study_levels), palette = "Dynamic")
+        names(study_colors) <- study_levels
+
+        plotly::plot_ly(
+          timeline_data,
+          x = ~week,
+          y = ~n,
+          color = ~study,
+          colors = study_colors,
+          type = "scatter",
+          mode = "lines+markers",
+          hovertemplate = "Week: %{x|%Y-%m-%d}<br>Study: %{fullData.name}<br>Samples: %{y}<extra></extra>"
+        ) %>%
+          plotly::layout(
+            xaxis = list(title = "Week"),
+            yaxis = list(title = "Number of Samples"),
+            legend = list(orientation = "h", y = -0.15)
+          )
+      } else if ("case_category" %in% names(data)) {
         timeline_data <- timeline_data %>%
           dplyr::count(week, case_category) %>%
           dplyr::arrange(week)
@@ -499,26 +528,6 @@ mod_overview_demographics_server <- function(id, filtered_data) {
           type = "scatter",
           mode = "lines+markers",
           hovertemplate = "Week: %{x|%Y-%m-%d}<br>Case category: %{fullData.name}<br>Samples: %{y}<extra></extra>"
-        ) %>%
-          plotly::layout(
-            xaxis = list(title = "Week"),
-            yaxis = list(title = "Number of Samples"),
-            legend = list(orientation = "h", y = -0.15)
-          )
-      } else if ("study" %in% names(data)) {
-        timeline_data <- timeline_data %>%
-          dplyr::count(week, study) %>%
-          dplyr::arrange(week)
-
-        plotly::plot_ly(
-          timeline_data,
-          x = ~week,
-          y = ~n,
-          color = ~study,
-          colors = c(DA = "#3498DB", DP = "#27AE60"),
-          type = "scatter",
-          mode = "lines+markers",
-          hovertemplate = "Week: %{x|%Y-%m-%d}<br>Study: %{fullData.name}<br>Samples: %{y}<extra></extra>"
         ) %>%
           plotly::layout(
             xaxis = list(title = "Week"),

@@ -196,6 +196,25 @@ analyze_data_quality <- function(df_raw) {
       as.data.frame(agg)
     }
   }
+
+  # Conflicts: same labid_norm mapping to multiple barcode_norm values
+  labid_conflicts <- {
+    tmp <- df_kept[!is.na(df_kept$.__labid_norm) & !is.na(df_kept$.__barcode_norm), , drop = FALSE]
+    if (!nrow(tmp)) {
+      tmp[0, , drop = FALSE]
+    } else {
+      agg <- tmp |>
+        dplyr::group_by(.__labid_norm) |>
+        dplyr::summarise(
+          n_barcodes = dplyr::n_distinct(.__barcode_norm),
+          barcodes   = paste(sort(unique(.__barcode_norm)), collapse = ", "),
+          .groups    = "drop"
+        ) |>
+        dplyr::filter(n_barcodes > 1) |>
+        dplyr::rename(labid_norm = .__labid_norm)
+      as.data.frame(agg)
+    }
+  }
   
   # --- Completeness (simple %) on kept rows ----------------------------------
   completeness <- df_kept |>
@@ -213,6 +232,9 @@ analyze_data_quality <- function(df_raw) {
       if (df_kept$.__barcode_norm[i] %in% barcode_conflicts$barcode_norm) return("Barcode conflict")
     }
     # duplicate key?
+    if (nrow(labid_conflicts)) {
+      if (df_kept$.__labid_norm[i] %in% labid_conflicts$labid_norm) return("Lab ID conflict")
+    }
     if (!is.na(df_kept$.__key[i]) && sum(df_kept$.__key == df_kept$.__key[i], na.rm = TRUE) > 1) {
       return("Duplicate key")
     }
@@ -274,6 +296,7 @@ analyze_data_quality <- function(df_raw) {
     missing_labid     = missing_labid,
     duplicates        = duplicates,
     barcode_conflicts = barcode_conflicts,
+    labid_conflicts   = labid_conflicts,
     completeness      = completeness,
     quality_flags     = quality_flags,
     row_flags         = row_flags,          # for timeline (OK vs Invalid per date)

@@ -69,6 +69,12 @@ mod_data_quality_ui <- function(id) {
             value  = textOutput(ns("conflicts")),
             showcase = icon("barcode"),
             theme  = "danger"
+          ),
+          value_box(
+            title  = "Lab ID Conflicts",
+            value  = textOutput(ns("labid_conflicts")),
+            showcase = icon("id-card"),
+            theme  = "danger"
           )
         ),
         
@@ -117,7 +123,7 @@ mod_data_quality_ui <- function(id) {
         ),
         
         # ==== TABLES: duplicates + conflicts ====================================
-        layout_columns(col_widths = c(6, 6), gap = "16px",
+        layout_columns(col_widths = c(4, 4, 4), gap = "16px",
                        card(
                          card_header(
                            class = "d-flex justify-content-between align-items-center",
@@ -131,6 +137,13 @@ mod_data_quality_ui <- function(id) {
                            span("Barcode Conflicts")
                          ),
                          card_body(DT::DTOutput(ns("conflicts_table")))
+                       ),
+                       card(
+                         card_header(
+                           class = "d-flex justify-content-between align-items-center",
+                           span("Lab ID Conflicts")
+                         ),
+                         card_body(DT::DTOutput(ns("labid_conflicts_table")))
                        )
         )
     )
@@ -182,6 +195,7 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
       if (is.null(report$duplicates)) report$duplicates <- data.frame()
       if (is.null(report$barcode_conflicts)) report$barcode_conflicts <- data.frame()
       if (is.null(report$completeness)) report$completeness <- data.frame(percent_complete = numeric())
+      if (is.null(report$labid_conflicts)) report$labid_conflicts <- data.frame()
       
       # Compute adjusted "total_rows" excluding ghost rows (both ID fields NA)
       rd  <- try(raw_data(), silent = TRUE)
@@ -226,6 +240,7 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
         missing_labid     = missing_labid_adj,
         duplicate_count   = nrow(report$duplicates),
         conflict_count    = nrow(report$barcode_conflicts),
+        labid_conflict_count = nrow(report$labid_conflicts),
         avg_completeness  = avg_comp
       )
     })
@@ -268,6 +283,11 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
     output$conflicts <- renderText({
       m <- quality_metrics()
       if (is.na(m$conflict_count)) "—" else scales::comma(m$conflict_count)
+    })
+
+    output$labid_conflicts <- renderText({
+      m <- quality_metrics()
+      if (is.na(m$labid_conflict_count)) "—" else scales::comma(m$labid_conflict_count)
     })
 
     output$avg_completeness <- renderText({
@@ -352,6 +372,7 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
         # These are row counts, not unique-barcode adjusted; we accept minor overlap here
         known[["Duplicate barcode(s)"]] <- if (!is.null(report$duplicates)) nrow(report$duplicates) else 0L
         known[["Barcode conflict(s)"]]  <- if (!is.null(report$barcode_conflicts)) nrow(report$barcode_conflicts) else 0L
+        known[["Lab ID conflict(s)"]]   <- if (!is.null(report$labid_conflicts))   nrow(report$labid_conflicts)   else 0L
         
         known_df <- tibble::tibble(
           reason = names(known),
@@ -443,6 +464,30 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
           )
       }
     })
+
+    output$labid_conflicts_table <- DT::renderDT({
+      req(quality_report())
+      report <- quality_report()
+      if (is.null(report$labid_conflicts)) report$labid_conflicts <- data.frame()
+
+      if (!nrow(report$labid_conflicts)) {
+        DT::datatable(
+          data.frame(Message = "No lab ID conflicts found"),
+          options = list(dom = 't', paging = FALSE),
+          class = "table-sm"
+        )
+      } else {
+        cols <- names(report$labid_conflicts)
+        cols <- cols[!grepl("^\\.__", cols)]
+
+        report$labid_conflicts %>%
+          dplyr::select(dplyr::all_of(cols)) %>%
+          DT::datatable(
+            options = list(pageLength = 10, scrollX = TRUE, dom = 'frtip'),
+            class = "table-sm"
+          )
+      }
+    })
     
     # ========================================================================
     # OUTPUTS - PLOTS
@@ -472,6 +517,7 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
                 reason == "Barcode conflict" ~ "Barcode conflict",
                 reason == "Missing barcode" ~ "Missing barcode",
                 reason == "Missing lab ID" ~ "Missing lab ID",
+                reason == "Lab ID conflict" ~ "Lab ID conflict",
                 TRUE ~ reason
               )
             ) %>%

@@ -3,7 +3,7 @@
 
 app:
   title: "Mbuji-Mayi Biobank Dashboard"
-  version: "3.0.0"
+  version: "3.1.0"
   institution: "Institute of Tropical Medicine, Antwerp"
   debug_mode: true
 

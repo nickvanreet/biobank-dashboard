@@ -18,7 +18,8 @@ ui <- page_navbar(
   # Navigation panels
   mod_data_quality_ui("data_quality"),
   mod_overview_demographics_ui("overview_demographics"),
-  mod_transport_ui("transport")
+  mod_transport_ui("transport"),
+  mod_extractions_ui("extractions")
   
   # Add other modules here as they're developed:
   # mod_transport_ui("transport"),
@@ -55,6 +56,9 @@ server <- function(input, output, session) {
     "transport",
     filtered_data = data$filtered_data
   )
+
+  # Extraction quality module (loads its own data set)
+  mod_extractions_server("extractions")
   
   # Add other module servers here:
   # mod_transport_server("transport", filtered_data = data$filtered_data)

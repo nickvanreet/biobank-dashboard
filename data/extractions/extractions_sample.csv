@@ -1,41 +1,41 @@
-Extraction ID,Extraction Date,DRS State,DRS Volume (mL),Filter,Extract Appearance,Technician,Project,Batch,Remarks
-EXT-2025001,2025-03-23,Liquid,1.96,Filter A,Clear,Charlotte,HAT-DA,Batch-1,
-EXT-2025002,2025-01-05,Liquid,1.51,Filter A,Clear,Charlotte,HAT-DP,Batch-1,
-EXT-2025003,2025-03-17,Liquid,1.5,Filter A,Clear,Bruno,HAT-DA,Batch-1,Check pellet
-EXT-2025004,2025-01-13,Liquid,1.69,Filter B,Clear,Charlotte,HAT-DA,Batch-1,
-EXT-2025005,2025-02-18,Liquid,1.51,Filter B,Foncé,Charlotte,HAT-DA,Batch-1,
-EXT-2025006,2025-01-06,Viscous,1.29,Filter A,Foncé,Bruno,HAT-DP,Batch-1,
-EXT-2025007,2025-02-04,Viscous,1.5,Filter C,Clear,Charlotte,HAT-DA,Batch-1,Check pellet
-EXT-2025008,2025-02-18,Liquid,1.59,Filter A,Foncé,Alice,HAT-DA,Batch-1,
-EXT-2025009,2025-02-21,Liquid,2.08,Filter B,Clear,Charlotte,HAT-DP,Batch-1,Check pellet
-EXT-2025010,2025-01-18,Liquid,1.84,Filter C,Clear,Bruno,HAT-DP,Batch-1,
-EXT-2025011,2025-01-18,Liquid,1.26,Filter B,Foncé,Charlotte,HAT-DA,Batch-2,
-EXT-2025012,2025-03-18,Coagulated,1.92,Filter A,Foncé,Charlotte,HAT-DA,Batch-2,
-EXT-2025013,2025-03-10,Viscous,1.61,Filter A,Clear,Bruno,HAT-DA,Batch-2,
-EXT-2025014,2025-02-03,Coagulated,1.67,Filter C,Clear,Bruno,HAT-DA,Batch-2,Check pellet
-EXT-2025015,2025-01-21,Liquid,2.11,Filter B,Clear,Bruno,HAT-DA,Batch-2,Check pellet
-EXT-2025016,2025-02-16,Coagulated,1.65,Filter C,Clear,Alice,HAT-DA,Batch-2,
-EXT-2025017,2025-01-09,Coagulated,1.42,Filter C,Clear,Alice,HAT-DP,Batch-2,
-EXT-2025018,2025-03-19,Liquid,1.48,Filter A,Foncé,Charlotte,HAT-DP,Batch-2,
-EXT-2025019,2025-03-27,Viscous,1.33,Filter A,Clear,Alice,HAT-DP,Batch-2,Check pellet
-EXT-2025020,2025-03-12,Liquid,1.65,Filter A,Clear,Alice,HAT-DA,Batch-2,
-EXT-2025021,2025-01-10,Liquid,1.58,Filter C,Clear,Charlotte,HAT-DP,Batch-3,
-EXT-2025022,2025-03-02,Viscous,1.22,Filter B,Clear,Bruno,HAT-DP,Batch-3,
-EXT-2025023,2025-01-07,Viscous,1.32,Filter A,Foncé,Alice,HAT-DA,Batch-3,
-EXT-2025024,2025-01-18,Liquid,1.65,Filter B,Foncé,Charlotte,HAT-DA,Batch-3,Check pellet
-EXT-2025025,2025-03-11,Viscous,1.62,Filter A,Clear,Bruno,HAT-DA,Batch-3,Check pellet
-EXT-2025026,2025-01-01,Coagulated,0.84,Filter B,Clear,Charlotte,HAT-DP,Batch-3,Check pellet
-EXT-2025027,2025-02-07,Liquid,1.47,Filter B,Clear,Charlotte,HAT-DA,Batch-3,Check pellet
-EXT-2025028,2025-03-07,Liquid,1.4,Filter A,Clear,Bruno,HAT-DA,Batch-3,
-EXT-2025029,2025-03-14,Liquid,1.93,Filter C,Clear,Charlotte,HAT-DP,Batch-3,
-EXT-2025030,2025-01-27,Viscous,1.27,Filter C,Clear,Bruno,HAT-DP,Batch-3,
-EXT-2025031,2025-01-10,Liquid,1.94,Filter C,Clear,Alice,HAT-DP,Batch-4,Check pellet
-EXT-2025032,2025-02-14,Coagulated,1.71,Filter C,Clear,Charlotte,HAT-DP,Batch-4,
-EXT-2025033,2025-03-25,Liquid,1.99,Filter A,Foncé,Alice,HAT-DP,Batch-4,Check pellet
-EXT-2025034,2025-01-14,Viscous,1.15,Filter B,Clear,Alice,HAT-DP,Batch-4,
-EXT-2025035,2025-02-02,Coagulated,1.35,Filter A,Clear,Charlotte,HAT-DP,Batch-4,Check pellet
-EXT-2025036,2025-02-26,Liquid,1.76,Filter C,Clear,Alice,HAT-DA,Batch-4,
-EXT-2025037,2025-03-16,Liquid,1.76,Filter A,Clear,Bruno,HAT-DA,Batch-4,
-EXT-2025038,2025-03-27,Liquid,1.67,Filter A,Clear,Alice,HAT-DA,Batch-4,
-EXT-2025039,2025-01-04,Liquid,1.66,Filter A,Foncé,Bruno,HAT-DA,Batch-4,
-EXT-2025040,2025-01-14,Liquid,1.35,Filter B,Clear,Bruno,HAT-DP,Batch-4,
+Extraction ID,Extraction Date,DRS State,DRS Volume (mL),Filter,Health Structure,Extract Appearance,Technician,Project,Batch,Remarks
+EXT-2025001,2025-03-23,Liquid,1.96,Filter A,Clinique Bonzola,Clear,Charlotte,HAT-DA,Batch-1,
+EXT-2025002,2025-01-05,Liquid,1.51,Filter A,HGR Bipemba,Clear,Charlotte,HAT-DP,Batch-1,
+EXT-2025003,2025-03-17,Liquid,1.5,Filter A,Clinique Bonzola,Clear,Bruno,HAT-DA,Batch-1,Check pellet
+EXT-2025004,2025-01-13,Liquid,1.69,Filter B,Clinique Bonzola,Clear,Charlotte,HAT-DA,Batch-1,
+EXT-2025005,2025-02-18,Liquid,1.51,Filter B,CS Mulombodi,Foncé,Charlotte,HAT-DA,Batch-1,
+EXT-2025006,2025-01-06,Viscous,1.29,Filter A,HGR Bipemba,Foncé,Bruno,HAT-DP,Batch-1,
+EXT-2025007,2025-02-04,Viscous,1.5,Filter C,CS Mulombodi,Clear,Charlotte,HAT-DA,Batch-1,Check pellet
+EXT-2025008,2025-02-18,Liquid,1.59,Filter A,Clinique Bonzola,Foncé,Alice,HAT-DA,Batch-1,
+EXT-2025009,2025-02-21,Liquid,2.08,Filter B,HGR Bipemba,Clear,Charlotte,HAT-DP,Batch-1,Check pellet
+EXT-2025010,2025-01-18,Liquid,1.84,Filter C,CS Mulombodi,Clear,Bruno,HAT-DP,Batch-1,
+EXT-2025011,2025-01-18,Liquid,1.26,Filter B,Clinique Bonzola,Foncé,Charlotte,HAT-DA,Batch-2,
+EXT-2025012,2025-03-18,Coagulated,1.92,Filter A,CS Mulombodi,Foncé,Charlotte,HAT-DA,Batch-2,
+EXT-2025013,2025-03-10,Viscous,1.61,Filter A,Clinique Bonzola,Clear,Bruno,HAT-DA,Batch-2,
+EXT-2025014,2025-02-03,Coagulated,1.67,Filter C,HGR Bipemba,Clear,Bruno,HAT-DA,Batch-2,Check pellet
+EXT-2025015,2025-01-21,Liquid,2.11,Filter B,CS Mulombodi,Clear,Bruno,HAT-DA,Batch-2,Check pellet
+EXT-2025016,2025-02-16,Coagulated,1.65,Filter C,Clinique Bonzola,Clear,Alice,HAT-DA,Batch-2,
+EXT-2025017,2025-01-09,Coagulated,1.42,Filter C,HGR Bipemba,Clear,Alice,HAT-DP,Batch-2,
+EXT-2025018,2025-03-19,Liquid,1.48,Filter A,CS Mulombodi,Foncé,Charlotte,HAT-DP,Batch-2,
+EXT-2025019,2025-03-27,Viscous,1.33,Filter A,Clinique Bonzola,Clear,Alice,HAT-DP,Batch-2,Check pellet
+EXT-2025020,2025-03-12,Liquid,1.65,Filter A,HGR Bipemba,Clear,Alice,HAT-DA,Batch-2,
+EXT-2025021,2025-01-10,Liquid,1.58,Filter C,Clinique Bonzola,Clear,Charlotte,HAT-DP,Batch-3,
+EXT-2025022,2025-03-02,Viscous,1.22,Filter B,HGR Bipemba,Clear,Bruno,HAT-DP,Batch-3,
+EXT-2025023,2025-01-07,Viscous,1.32,Filter A,CS Mulombodi,Foncé,Alice,HAT-DA,Batch-3,
+EXT-2025024,2025-01-18,Liquid,1.65,Filter B,Clinique Bonzola,Foncé,Charlotte,HAT-DA,Batch-3,Check pellet
+EXT-2025025,2025-03-11,Viscous,1.62,Filter A,CS Mulombodi,Clear,Bruno,HAT-DA,Batch-3,Check pellet
+EXT-2025026,2025-01-01,Coagulated,0.84,Filter B,HGR Bipemba,Clear,Charlotte,HAT-DP,Batch-3,Check pellet
+EXT-2025027,2025-02-07,Liquid,1.47,Filter B,Clinique Bonzola,Clear,Charlotte,HAT-DA,Batch-3,Check pellet
+EXT-2025028,2025-03-07,Liquid,1.4,Filter A,HGR Bipemba,Clear,Bruno,HAT-DA,Batch-3,
+EXT-2025029,2025-03-14,Liquid,1.93,Filter C,CS Mulombodi,Clear,Charlotte,HAT-DP,Batch-3,
+EXT-2025030,2025-01-27,Viscous,1.27,Filter C,Clinique Bonzola,Clear,Bruno,HAT-DP,Batch-3,
+EXT-2025031,2025-01-10,Liquid,1.94,Filter C,HGR Bipemba,Clear,Alice,HAT-DP,Batch-4,Check pellet
+EXT-2025032,2025-02-14,Coagulated,1.71,Filter C,CS Mulombodi,Clear,Charlotte,HAT-DP,Batch-4,
+EXT-2025033,2025-03-25,Liquid,1.99,Filter A,Clinique Bonzola,Foncé,Alice,HAT-DP,Batch-4,Check pellet
+EXT-2025034,2025-01-14,Viscous,1.15,Filter B,HGR Bipemba,Clear,Alice,HAT-DP,Batch-4,
+EXT-2025035,2025-02-02,Coagulated,1.35,Filter A,CS Mulombodi,Clear,Charlotte,HAT-DP,Batch-4,Check pellet
+EXT-2025036,2025-02-26,Liquid,1.76,Filter C,Clinique Bonzola,Clear,Alice,HAT-DA,Batch-4,
+EXT-2025037,2025-03-16,Liquid,1.76,Filter A,HGR Bipemba,Clear,Bruno,HAT-DA,Batch-4,
+EXT-2025038,2025-03-27,Liquid,1.67,Filter A,CS Mulombodi,Clear,Alice,HAT-DA,Batch-4,
+EXT-2025039,2025-01-04,Liquid,1.66,Filter A,Clinique Bonzola,Foncé,Bruno,HAT-DA,Batch-4,
+EXT-2025040,2025-01-14,Liquid,1.35,Filter B,HGR Bipemba,Clear,Bruno,HAT-DP,Batch-4,

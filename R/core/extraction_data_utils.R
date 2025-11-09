@@ -201,7 +201,6 @@ load_extraction_file <- function(filepath) {
         other_value = "Unknown"
       ),
       drs_volume_ml = dplyr::coalesce(.parse_numeric(drs_volume_ml), .parse_numeric(drs_volume_ul) / 1000),
-      filter_type = stringr::str_to_title(trimws(as.character(filter_type))),
       extract_quality = .normalize_categories(
         extract_quality,
         c(
@@ -219,10 +218,10 @@ load_extraction_file <- function(filepath) {
         other_value = "Unknown"
       ),
       technician = stringr::str_to_title(trimws(as.character(technician))),
-      project = stringr::str_to_upper(trimws(as.character(project))),
-      batch = as.character(batch),
+      # RSC fields for linking to biobank
       rsc_run = as.character(rsc_run),
       rsc_position = as.character(rsc_position),
+      # Freezer storage location fields
       rack = as.character(rack),
       rack_row = as.character(rack_row),
       rack_column = as.character(rack_column),
@@ -232,8 +231,6 @@ load_extraction_file <- function(filepath) {
       sample_id = dplyr::coalesce(sample_id, record_number),
       extraction_date = dplyr::coalesce(extraction_date, file_date),
       health_structure = dplyr::if_else(is.na(health_structure) | health_structure == "", "Unspecified", health_structure),
-      filter_type = dplyr::if_else(is.na(filter_type) | filter_type == "", "Unspecified", filter_type),
-      project = dplyr::if_else(is.na(project) | project == "", "UNSPECIFIED", project),
       drs_state = dplyr::if_else(is.na(drs_state) | drs_state == "", "Unknown", drs_state),
       extract_quality = dplyr::if_else(is.na(extract_quality) | extract_quality == "", "Unknown", extract_quality),
       flag_issue = dplyr::case_when(
@@ -241,6 +238,7 @@ load_extraction_file <- function(filepath) {
         drs_volume_ml < 1 ~ TRUE,
         drs_state %in% c("Viscous", "Coagulated") ~ TRUE,
         extract_quality == "Foncé" ~ TRUE,
+        extract_quality == "Échec" ~ TRUE,
         TRUE ~ FALSE
       ),
       ready_for_freezer = !flag_issue
@@ -353,11 +351,8 @@ load_extraction_dataset <- function(directory = config$paths$extractions_dir,
       health_structure = character(),
       drs_state = character(),
       drs_volume_ml = numeric(),
-      filter_type = character(),
       extract_quality = character(),
       technician = character(),
-      project = character(),
-      batch = character(),
       rsc_run = character(),
       rsc_position = character(),
       rack = character(),

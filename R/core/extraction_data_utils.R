@@ -467,17 +467,70 @@ summarise_extraction_metrics <- function(df) {
 #' @return Tibble with health structure summary
 #' @export
 summarise_by_health_structure <- function(df) {
+  summarise_health_structure_volume_overview(df) %>%
+    dplyr::select(
+      health_structure,
+      n_extractions,
+      median_volume,
+      mean_volume,
+      total_volume,
+      pct_ready,
+      pct_flagged,
+      pct_liquid
+    )
+}
+
+# -----------------------------------------------------------------------------
+# Internal helpers -----------------------------------------------------------
+# -----------------------------------------------------------------------------
+
+ensure_health_structure_column <- function(df) {
+  if (is.null(df) || !nrow(df)) {
+    return(df)
+  }
+
+  if ("health_structure" %in% names(df)) {
+    return(df)
+  }
+
+  fallback_cols <- c(
+    "structure_sanitaire",
+    "health_facility",
+    "structure",
+    "facility"
+  )
+
+  available <- fallback_cols[fallback_cols %in% names(df)]
+
+  if (length(available) == 0) {
+    return(df)
+  }
+
+  df$health_structure <- df[[available[[1]]]]
+  df
+}
+
+#' Summarise extraction volumes by health structure (overview)
+#' @param df Extraction dataset (already filtered)
+#' @return Tibble with health structure summary including volume metrics
+#' @export
+summarise_health_structure_volume_overview <- function(df) {
+  df <- ensure_health_structure_column(df)
+
   if (is.null(df) || !nrow(df) || !"health_structure" %in% names(df)) {
     return(tibble::tibble(
       health_structure = character(),
       n_extractions = integer(),
+      total_volume = numeric(),
       median_volume = numeric(),
+      mean_volume = numeric(),
       pct_ready = numeric(),
-      pct_flagged = numeric()
+      pct_flagged = numeric(),
+      pct_liquid = numeric()
     ))
   }
 
-  df %>%
+  df <- df %>%
     {
       if (!"drs_volume_ml" %in% names(.)) {
         .$drs_volume_ml <- rep(NA_real_, nrow(.))
@@ -488,23 +541,95 @@ summarise_by_health_structure <- function(df) {
       if (!"flag_issue" %in% names(.)) {
         .$flag_issue <- rep(NA, nrow(.))
       }
+      if (!"drs_state" %in% names(.)) {
+        .$drs_state <- rep(NA_character_, nrow(.))
+      }
       .
-    } %>%
-    dplyr::filter(!is.na(health_structure) & health_structure != "Unspecified") %>%
+    }
+
+  df %>%
+    dplyr::filter(
+      !is.na(health_structure),
+      health_structure != "",
+      health_structure != "Unspecified"
+    ) %>%
     dplyr::group_by(health_structure) %>%
     dplyr::summarise(
       n_extractions = dplyr::n(),
+      total_volume = if (all(is.na(drs_volume_ml))) NA_real_ else sum(drs_volume_ml, na.rm = TRUE),
       median_volume = stats::median(drs_volume_ml, na.rm = TRUE),
       mean_volume = if (all(is.na(drs_volume_ml))) NA_real_ else mean(drs_volume_ml, na.rm = TRUE),
-      total_volume = if (all(is.na(drs_volume_ml))) NA_real_ else sum(drs_volume_ml, na.rm = TRUE),
       pct_ready = if (all(is.na(ready_for_freezer))) NA_real_ else mean(ready_for_freezer, na.rm = TRUE),
       pct_flagged = if (all(is.na(flag_issue))) NA_real_ else mean(flag_issue, na.rm = TRUE),
-      pct_liquid = if ("drs_state" %in% names(dplyr::cur_data_all())) {
-        if (all(is.na(drs_state))) NA_real_ else mean(drs_state == "Liquid", na.rm = TRUE)
-      } else {
-        NA_real_
-      },
+      pct_liquid = if (all(is.na(drs_state))) NA_real_ else mean(drs_state == "Liquid", na.rm = TRUE),
       .groups = "drop"
     ) %>%
     dplyr::arrange(dplyr::desc(n_extractions))
+}
+
+#' Summarise extraction volumes by health structure over time
+#' @param df Extraction dataset (already filtered)
+#' @param time_unit Time aggregation for the series ("month" or "week")
+#' @return Tibble with volume trend metrics per health structure
+#' @export
+summarise_health_structure_volume_trends <- function(df, time_unit = c("month", "week")) {
+  df <- ensure_health_structure_column(df)
+
+  time_unit <- match.arg(time_unit)
+
+  if (is.null(df) || !nrow(df) ||
+      !"health_structure" %in% names(df) ||
+      !"extraction_date" %in% names(df)) {
+    return(tibble::tibble(
+      health_structure = character(),
+      period = as.Date(character()),
+      n_extractions = integer(),
+      total_volume = numeric(),
+      median_volume = numeric(),
+      mean_volume = numeric(),
+      pct_ready = numeric(),
+      pct_matched_biobank = numeric()
+    ))
+  }
+
+  df <- df %>%
+    {
+      if (!"drs_volume_ml" %in% names(.)) {
+        .$drs_volume_ml <- rep(NA_real_, nrow(.))
+      }
+      if (!"ready_for_freezer" %in% names(.)) {
+        .$ready_for_freezer <- rep(NA, nrow(.))
+      }
+      if (!"biobank_matched" %in% names(.)) {
+        .$biobank_matched <- rep(NA, nrow(.))
+      }
+      .
+    }
+
+  period_fn <- switch(
+    time_unit,
+    month = function(x) lubridate::floor_date(x, "month"),
+    week = function(x) lubridate::floor_date(x, "week")
+  )
+
+  df %>%
+    dplyr::filter(
+      !is.na(health_structure),
+      health_structure != "",
+      health_structure != "Unspecified"
+    ) %>%
+    dplyr::filter(!is.na(extraction_date)) %>%
+    dplyr::mutate(period = period_fn(extraction_date)) %>%
+    dplyr::filter(!is.na(period)) %>%
+    dplyr::group_by(health_structure, period) %>%
+    dplyr::summarise(
+      n_extractions = dplyr::n(),
+      total_volume = if (all(is.na(drs_volume_ml))) NA_real_ else sum(drs_volume_ml, na.rm = TRUE),
+      median_volume = stats::median(drs_volume_ml, na.rm = TRUE),
+      mean_volume = if (all(is.na(drs_volume_ml))) NA_real_ else mean(drs_volume_ml, na.rm = TRUE),
+      pct_ready = if (all(is.na(ready_for_freezer))) NA_real_ else mean(ready_for_freezer, na.rm = TRUE),
+      pct_matched_biobank = if (all(is.na(biobank_matched))) NA_real_ else mean(biobank_matched, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    dplyr::arrange(health_structure, period)
 }

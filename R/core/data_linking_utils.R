@@ -95,6 +95,7 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
       biobank_barcode = dplyr::any_of(c("barcode", "code_barres_kps")),
       biobank_lab_id = dplyr::any_of(c("lab_id", "numero")),
       biobank_health_facility = dplyr::any_of(c("health_structure", "health_facility", "structure_sanitaire")),
+      biobank_structure_sanitaire = dplyr::any_of(c("structure_sanitaire", "health_structure", "health_facility")),
       biobank_study = dplyr::any_of(c("study", "etude")),
       biobank_province = dplyr::any_of(c("province")),
       biobank_health_zone = dplyr::any_of(c("health_zone", "zone_de_sante")),
@@ -110,6 +111,7 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
       biobank_barcode = dplyr::any_of(c("barcode", "code_barres_kps")),
       biobank_lab_id = dplyr::any_of(c("lab_id", "numero")),
       biobank_health_facility = dplyr::any_of(c("health_structure", "health_facility", "structure_sanitaire")),
+      biobank_structure_sanitaire = dplyr::any_of(c("structure_sanitaire", "health_structure", "health_facility")),
       biobank_study = dplyr::any_of(c("study", "etude")),
       biobank_province = dplyr::any_of(c("province")),
       biobank_health_zone = dplyr::any_of(c("health_zone", "zone_de_sante")),
@@ -141,12 +143,23 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
   if (!"biobank_health_facility" %in% names(linked_df)) {
     linked_df$biobank_health_facility <- NA_character_
   }
+  if (!"biobank_structure_sanitaire" %in% names(linked_df)) {
+    linked_df$biobank_structure_sanitaire <- NA_character_
+  }
   if (!"match_type" %in% names(linked_df)) {
     linked_df$match_type <- NA_character_
   }
 
   linked_df <- linked_df %>%
     dplyr::mutate(
+      biobank_structure_sanitaire = dplyr::coalesce(
+        biobank_structure_sanitaire,
+        biobank_health_facility
+      ),
+      biobank_health_facility = dplyr::coalesce(
+        biobank_health_facility,
+        biobank_structure_sanitaire
+      ),
       # Flag if matched
       biobank_matched = !is.na(biobank_barcode) | !is.na(biobank_lab_id),
       biobank_match_type = dplyr::if_else(biobank_matched, match_type, NA_character_),
@@ -265,26 +278,8 @@ summarise_health_structure_volumes_over_time <- function(linked_df) {
     ))
   }
 
-  # Ensure biobank_matched exists
-  if (!"biobank_matched" %in% names(linked_df)) {
-    linked_df$biobank_matched <- FALSE
-  }
-
-  linked_df %>%
-    dplyr::filter(!is.na(health_structure) & health_structure != "Unspecified") %>%
-    dplyr::filter(!is.na(extraction_date)) %>%
-    dplyr::mutate(month = lubridate::floor_date(extraction_date, "month")) %>%
-    dplyr::group_by(health_structure, month) %>%
-    dplyr::summarise(
-      n_extractions = dplyr::n(),
-      total_volume = sum(drs_volume_ml, na.rm = TRUE),
-      median_volume = stats::median(drs_volume_ml, na.rm = TRUE),
-      mean_volume = mean(drs_volume_ml, na.rm = TRUE),
-      pct_ready = mean(ready_for_freezer, na.rm = TRUE),
-      pct_matched_biobank = mean(biobank_matched, na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    dplyr::arrange(health_structure, month)
+  summarise_health_structure_volume_trends(linked_df, time_unit = "month") %>%
+    dplyr::rename(month = period)
 }
 
 #' Get unmatched extraction barcodes

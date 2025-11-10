@@ -346,8 +346,17 @@ apply_filters <- function(df, date_range = NULL, study = "all",
   }
 
   # Structure filter
-  if (structure != "all" && "health_structure" %in% names(df)) {
-    df <- df %>% dplyr::filter(.data$health_structure == !!structure)
+  if (structure != "all") {
+    structure_col <- NULL
+    if ("health_structure" %in% names(df)) {
+      structure_col <- "health_structure"
+    } else if ("health_facility" %in% names(df)) {
+      structure_col <- "health_facility"
+    }
+
+    if (!is.null(structure_col)) {
+      df <- df %>% dplyr::filter(.data[[structure_col]] == !!structure)
+    }
   }
 
   df
@@ -391,8 +400,17 @@ update_filter_choices <- function(session, df) {
   }
 
   # Update structure choices
+  structure_values <- NULL
   if ("health_structure" %in% names(df)) {
-    structures <- df$health_structure[!is.na(df$health_structure) & df$health_structure != ""]
+    structure_values <- df$health_structure
+  } else if ("health_facility" %in% names(df)) {
+    structure_values <- df$health_facility
+  } else if ("structure_sanitaire" %in% names(df)) {
+    structure_values <- df$structure_sanitaire
+  }
+
+  if (!is.null(structure_values)) {
+    structures <- structure_values[!is.na(structure_values) & structure_values != ""]
     structures <- sort(unique(structures))
     updateSelectInput(
       session, "filter_structure",

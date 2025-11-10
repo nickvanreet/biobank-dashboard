@@ -210,7 +210,14 @@ clean_biobank_data_improved <- function(df_raw, skip_columns = 24:26) {
   
   # Step 2: Smart column mapping
   df <- map_columns_smart(df, config)
-  
+
+  # Harmonize health structure naming for downstream filters/plots
+  if ("health_facility" %in% names(df) && !"health_structure" %in% names(df)) {
+    df$health_structure <- df$health_facility
+  } else if (!"health_facility" %in% names(df) && "health_structure" %in% names(df)) {
+    df$health_facility <- df$health_structure
+  }
+
   # Step 3: Parse each column by type
   for (col_config in config) {
     col_name <- col_config$target

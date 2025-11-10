@@ -90,38 +90,6 @@ mod_extractions_ui <- function(id) {
       layout_columns(
         col_widths = c(12), gap = "16px",
         card(
-          card_header(
-            class = "d-flex justify-content-between align-items-center",
-            span("Extraction Filters"),
-            actionButton(ns("refresh_data"), label = "Refresh", icon = icon("arrows-rotate"), class = "btn btn-sm btn-outline-primary")
-          ),
-          card_body(
-            layout_columns(
-              col_widths = c(3, 2, 2, 2, 3), gap = "12px",
-              dateRangeInput(ns("filter_date"), "Extraction Date", start = Sys.Date() - 90, end = Sys.Date()),
-              selectizeInput(ns("filter_state"), "DRS State", choices = character(0), multiple = TRUE),
-              selectizeInput(ns("filter_filter"), "Filter Type", choices = character(0), multiple = TRUE),
-              selectizeInput(ns("filter_quality"), "Visual Quality", choices = character(0), multiple = TRUE),
-              selectizeInput(ns("filter_structure"), "Health Structure", choices = character(0), multiple = TRUE)
-            ),
-            layout_columns(
-              col_widths = c(3, 3, 3, 3), gap = "12px",
-              selectizeInput(ns("filter_technician"), "Technician", choices = character(0), multiple = TRUE),
-              selectizeInput(ns("filter_validation"), "Validation Status", choices = character(0), multiple = TRUE),
-              selectizeInput(ns("filter_project"), "Project", choices = character(0), multiple = TRUE),
-              div()
-            ),
-            div(
-              class = "mt-2",
-              actionButton(ns("reset_filters"), "Reset Filters", icon = icon("undo"), class = "btn btn-sm btn-secondary")
-            )
-          )
-        )
-      ),
-
-      layout_columns(
-        col_widths = c(12), gap = "16px",
-        card(
           card_header("Health Structure Volume Processing Analysis"),
           card_body_fill(
             plotly::plotlyOutput(ns("health_structure_volume_plot"), height = "400px")
@@ -257,161 +225,53 @@ mod_extractions_ui <- function(id) {
 
 #' Extraction Quality Module Server
 #' @param id Module namespace ID
+#' @param filtered_data Reactive expression returning extraction data filtered by the shared data manager
+#' @param biobank_data Reactive expression returning cleaned biobank data for linkage
 #' @export
-mod_extractions_server <- function(id) {
-  moduleServer(id, function(input, output, session) {
+mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
+  if (missing(filtered_data)) {
+    stop("filtered_data reactive is required for mod_extractions_server()", call. = FALSE)
+  }
 
-    extraction_data <- reactiveVal(load_extraction_dataset())
-    biobank_data <- reactiveVal(NULL)
+  moduleServer(
+    id,
+    function(input, output, session, filtered_data, biobank_data) {
 
-    # Load biobank data on initialization
-    observe({
-      tryCatch({
-        biobank_files <- list_biobank_files(config$paths$biobank_dir)
-        if (length(biobank_files) > 0) {
-          # Load the first (most recent) biobank file
-          raw_data <- load_biobank_file(biobank_files[1])
-          quality_report <- analyze_data_quality(raw_data)
-          biobank_data(quality_report$clean_data)
-          message(sprintf("Loaded %d biobank records", nrow(quality_report$clean_data)))
+      extraction_data <- reactive({
+        df <- filtered_data()
+
+        if (is.null(df)) {
+          return(tibble::tibble())
         }
-      }, error = function(e) {
-        message("Could not load biobank data: ", e$message)
-        biobank_data(NULL)
+
+        if (!is.data.frame(df)) {
+          df <- tibble::as_tibble(df)
+        }
+
+        if (!nrow(df)) {
+          return(df)
+        }
+
+        bio_df <- NULL
+        if (!is.null(biobank_data)) {
+          bio_df <- biobank_data()
+        }
+
+        tryCatch(
+          link_extraction_to_biobank(df, bio_df),
+          error = function(e) {
+            message("Failed to link extraction data: ", e$message)
+            df
+          }
+        )
       })
-    })
-
-    # Linked extraction data
-    linked_data <- reactive({
-      ext_df <- extraction_data()
-      bio_df <- biobank_data()
-
-      if (is.null(ext_df) || !nrow(ext_df)) {
-        return(ext_df)
-      }
-
-      link_extraction_to_biobank(ext_df, bio_df)
-    })
-
-    observeEvent(input$refresh_data, {
-      extraction_data(load_extraction_dataset())
-      showNotification("Extraction data refreshed", type = "message", duration = 3)
-    })
-
-    observeEvent(extraction_data(), {
-      df <- extraction_data()
-      if (!nrow(df)) {
-        return()
-      }
-
-      min_date <- min(df$extraction_date, na.rm = TRUE)
-      max_date <- max(df$extraction_date, na.rm = TRUE)
-      updateDateRangeInput(session, "filter_date", start = min_date, end = max_date, min = min_date, max = max_date)
-
-      updateSelectizeInput(session, "filter_state", choices = sort(unique(df$drs_state)), selected = sort(unique(df$drs_state)))
-      updateSelectizeInput(session, "filter_filter", choices = sort(unique(df$filter_type)), selected = sort(unique(df$filter_type)))
-      updateSelectizeInput(session, "filter_quality", choices = sort(unique(df$extract_quality)), selected = sort(unique(df$extract_quality)))
-      updateSelectizeInput(session, "filter_technician", choices = sort(unique(df$technician)), selected = sort(unique(df$technician)))
-
-      # Add new filter options
-      if ("health_structure" %in% names(df)) {
-        structures <- sort(unique(df$health_structure[df$health_structure != "Unspecified"]))
-        updateSelectizeInput(session, "filter_structure", choices = structures, selected = structures)
-      }
-
-      if ("validation_status" %in% names(df)) {
-        statuses <- sort(unique(df$validation_status))
-        updateSelectizeInput(session, "filter_validation", choices = statuses, selected = statuses)
-      }
-
-      if ("project" %in% names(df)) {
-        projects <- sort(unique(df$project[df$project != "UNSPECIFIED"]))
-        updateSelectizeInput(session, "filter_project", choices = projects, selected = projects)
-      }
-    }, ignoreNULL = FALSE)
-
-    observeEvent(input$reset_filters, {
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df)) {
-        return()
-      }
-      min_date <- min(df$extraction_date, na.rm = TRUE)
-      max_date <- max(df$extraction_date, na.rm = TRUE)
-      updateDateRangeInput(session, "filter_date", start = min_date, end = max_date)
-      updateSelectizeInput(session, "filter_state", selected = sort(unique(df$drs_state)))
-      updateSelectizeInput(session, "filter_filter", selected = sort(unique(df$filter_type)))
-      updateSelectizeInput(session, "filter_quality", selected = sort(unique(df$extract_quality)))
-      updateSelectizeInput(session, "filter_technician", selected = sort(unique(df$technician)))
-
-      # Reset new filters
-      if ("health_structure" %in% names(df)) {
-        structures <- sort(unique(df$health_structure[df$health_structure != "Unspecified"]))
-        updateSelectizeInput(session, "filter_structure", selected = structures)
-      }
-
-      if ("validation_status" %in% names(df)) {
-        statuses <- sort(unique(df$validation_status))
-        updateSelectizeInput(session, "filter_validation", selected = statuses)
-      }
-
-      if ("project" %in% names(df)) {
-        projects <- sort(unique(df$project[df$project != "UNSPECIFIED"]))
-        updateSelectizeInput(session, "filter_project", selected = projects)
-      }
-    })
-
-    filtered_data <- reactive({
-      df <- linked_data()
-      if (is.null(df) || !nrow(df)) {
-        return(df)
-      }
-
-      if (!is.null(input$filter_date) && length(input$filter_date) == 2) {
-        start <- suppressWarnings(as.Date(input$filter_date[1]))
-        end <- suppressWarnings(as.Date(input$filter_date[2]))
-        if (!is.na(start) && !is.na(end)) {
-          df <- df %>% dplyr::filter(!is.na(extraction_date) & extraction_date >= start & extraction_date <= end)
-        }
-      }
-
-      if (!is.null(input$filter_state) && length(input$filter_state)) {
-        df <- df %>% dplyr::filter(drs_state %in% input$filter_state)
-      }
-
-      if (!is.null(input$filter_filter) && length(input$filter_filter)) {
-        df <- df %>% dplyr::filter(filter_type %in% input$filter_filter)
-      }
-
-      if (!is.null(input$filter_quality) && length(input$filter_quality)) {
-        df <- df %>% dplyr::filter(extract_quality %in% input$filter_quality)
-      }
-
-      if (!is.null(input$filter_technician) && length(input$filter_technician)) {
-        df <- df %>% dplyr::filter(technician %in% input$filter_technician)
-      }
-
-      # New filters
-      if (!is.null(input$filter_structure) && length(input$filter_structure) && "health_structure" %in% names(df)) {
-        df <- df %>% dplyr::filter(health_structure %in% input$filter_structure)
-      }
-
-      if (!is.null(input$filter_validation) && length(input$filter_validation) && "validation_status" %in% names(df)) {
-        df <- df %>% dplyr::filter(validation_status %in% input$filter_validation)
-      }
-
-      if (!is.null(input$filter_project) && length(input$filter_project) && "project" %in% names(df)) {
-        df <- df %>% dplyr::filter(project %in% input$filter_project)
-      }
-
-      df
-    })
 
     metrics <- reactive({
-      summarise_extraction_metrics(filtered_data())
+      summarise_extraction_metrics(extraction_data())
     })
 
     linkage_metrics <- reactive({
-      summarise_linkage_metrics(filtered_data())
+      summarise_linkage_metrics(extraction_data())
     })
 
     output$kpi_total <- renderText({
@@ -465,7 +325,7 @@ mod_extractions_server <- function(id) {
     })
 
     output$kpi_structures <- renderText({
-      df <- filtered_data()
+      df <- extraction_data()
       if (is.null(df) || !nrow(df) || !"health_structure" %in% names(df)) {
         return("--")
       }
@@ -500,7 +360,7 @@ mod_extractions_server <- function(id) {
     })
 
     output$drs_state_plot <- plotly::renderPlotly({
-      df <- filtered_data()
+      df <- extraction_data()
       if (is.null(df) || !nrow(df)) {
         return(plotly::plotly_empty(type = "bar", mode = "stack") %>% plotly::layout(title = "No extraction data available"))
       }
@@ -520,7 +380,7 @@ mod_extractions_server <- function(id) {
     })
 
     output$volume_filter_plot <- plotly::renderPlotly({
-      df <- filtered_data()
+      df <- extraction_data()
       if (is.null(df) || !nrow(df) || all(is.na(df$drs_volume_ml))) {
         return(plotly::plotly_empty(type = "box") %>% plotly::layout(title = "No volume data available"))
       }
@@ -532,7 +392,7 @@ mod_extractions_server <- function(id) {
     })
 
     output$quality_trend_plot <- plotly::renderPlotly({
-      df <- filtered_data()
+      df <- extraction_data()
       if (is.null(df) || !nrow(df)) {
         return(plotly::plotly_empty(type = "scatter", mode = "lines") %>% plotly::layout(title = "No extraction data available"))
       }
@@ -567,7 +427,7 @@ mod_extractions_server <- function(id) {
     })
 
     output$technician_plot <- plotly::renderPlotly({
-      df <- filtered_data()
+      df <- extraction_data()
       if (is.null(df) || !nrow(df)) {
         return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No extraction data available"))
       }
@@ -583,7 +443,7 @@ mod_extractions_server <- function(id) {
     # NEW VISUALIZATIONS
 
     output$health_structure_volume_plot <- plotly::renderPlotly({
-      df <- filtered_data()
+      df <- extraction_data()
       if (is.null(df) || !nrow(df) || !"health_structure" %in% names(df)) {
         return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "Health structure data not available"))
       }
@@ -613,7 +473,7 @@ mod_extractions_server <- function(id) {
     })
 
     output$health_structure_metrics_plot <- plotly::renderPlotly({
-      df <- filtered_data()
+      df <- extraction_data()
       if (is.null(df) || !nrow(df) || !"health_structure" %in% names(df)) {
         return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "Health structure data not available"))
       }
@@ -642,7 +502,7 @@ mod_extractions_server <- function(id) {
     })
 
     output$validation_status_plot <- plotly::renderPlotly({
-      df <- filtered_data()
+      df <- extraction_data()
       if (is.null(df) || !nrow(df) || !"validation_status" %in% names(df)) {
         return(plotly::plotly_empty(type = "pie") %>% plotly::layout(title = "Validation data not available"))
       }
@@ -663,7 +523,7 @@ mod_extractions_server <- function(id) {
     })
 
     output$volume_timeseries_plot <- plotly::renderPlotly({
-      df <- filtered_data()
+      df <- extraction_data()
       if (is.null(df) || !nrow(df)) {
         return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No extraction data available"))
       }
@@ -702,7 +562,7 @@ mod_extractions_server <- function(id) {
     })
 
     output$project_distribution_plot <- plotly::renderPlotly({
-      df <- filtered_data()
+      df <- extraction_data()
       if (is.null(df) || !nrow(df) || !"project" %in% names(df)) {
         return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "Project data not available"))
       }
@@ -727,7 +587,7 @@ mod_extractions_server <- function(id) {
 
     # NEW VISUALIZATIONS FOR VOLUME MONITORING
     output$volume_evolution_plot <- plotly::renderPlotly({
-      df <- filtered_data()
+      df <- extraction_data()
       if (is.null(df) || !nrow(df)) {
         return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No data available"))
       }
@@ -758,7 +618,7 @@ mod_extractions_server <- function(id) {
     })
 
     output$target_achievement_plot <- plotly::renderPlotly({
-      df <- filtered_data()
+      df <- extraction_data()
       if (is.null(df) || !nrow(df)) {
         return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No data available"))
       }
@@ -803,7 +663,7 @@ mod_extractions_server <- function(id) {
     })
 
     output$linkage_status_plot <- plotly::renderPlotly({
-      df <- filtered_data()
+      df <- extraction_data()
       if (is.null(df) || !nrow(df) || !"biobank_matched" %in% names(df)) {
         return(plotly::plotly_empty(type = "pie") %>% plotly::layout(title = "Linkage data not available"))
       }
@@ -835,7 +695,7 @@ mod_extractions_server <- function(id) {
     })
 
     output$unmatched_table <- DT::renderDT({
-      df <- filtered_data()
+      df <- extraction_data()
       if (is.null(df) || !nrow(df)) {
         return(DT::datatable(
           tibble::tibble(Message = "No data available"),
@@ -862,7 +722,7 @@ mod_extractions_server <- function(id) {
     })
 
     output$mismatch_table <- DT::renderDT({
-      df <- filtered_data()
+      df <- extraction_data()
       if (is.null(df) || !nrow(df)) {
         return(DT::datatable(
           tibble::tibble(Message = "No data available"),
@@ -889,7 +749,7 @@ mod_extractions_server <- function(id) {
     })
 
     output$extraction_table <- DT::renderDT({
-      df <- filtered_data()
+      df <- extraction_data()
       if (is.null(df) || !nrow(df)) {
         return(DT::datatable(tibble::tibble(Message = "No extraction data available for the selected filters."), options = list(dom = "t"), rownames = FALSE))
       }
@@ -921,5 +781,5 @@ mod_extractions_server <- function(id) {
         filter = "top"
       )
     })
-  })
+  }, filtered_data = filtered_data, biobank_data = biobank_data)
 }

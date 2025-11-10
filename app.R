@@ -60,7 +60,7 @@ server <- function(input, output, session) {
   # Extraction quality module (uses shared data manager reactives)
   mod_extractions_server(
     "extractions",
-    filtered_data = data$filtered_data,
+    filtered_data = data$filtered_extractions,
     biobank_data = data$clean_data
   )
   

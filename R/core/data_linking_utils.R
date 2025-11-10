@@ -174,6 +174,31 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
     ) %>%
     dplyr::select(-match_type)  # Remove temporary column
 
+  if (!"health_structure" %in% names(linked_df)) {
+    linked_df$health_structure <- NA_character_
+  }
+
+  if ("biobank_health_facility" %in% names(linked_df)) {
+    linked_df$health_structure <- dplyr::coalesce(
+      dplyr::na_if(linked_df$health_structure, "Unspecified"),
+      dplyr::na_if(linked_df$health_structure, ""),
+      linked_df$biobank_health_facility,
+      linked_df$health_structure
+    )
+  }
+
+  if (!"study" %in% names(linked_df) && "biobank_study" %in% names(linked_df)) {
+    linked_df$study <- linked_df$biobank_study
+  }
+
+  if (!"province" %in% names(linked_df) && "biobank_province" %in% names(linked_df)) {
+    linked_df$province <- linked_df$biobank_province
+  }
+
+  if (!"health_zone" %in% names(linked_df) && "biobank_health_zone" %in% names(linked_df)) {
+    linked_df$health_zone <- linked_df$biobank_health_zone
+  }
+
   message(sprintf(
     "Linked %d/%d extractions (%.1f%%) to biobank records",
     sum(linked_df$biobank_matched, na.rm = TRUE),

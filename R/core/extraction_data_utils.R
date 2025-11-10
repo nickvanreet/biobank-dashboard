@@ -415,6 +415,7 @@ summarise_extraction_metrics <- function(df) {
   }
 
   safe_pct <- function(x) {
+    if (is.null(x)) return(NA_real_)
     x <- x[!is.na(x)]
     if (!length(x)) return(NA_real_)
     mean(x)
@@ -423,13 +424,37 @@ summarise_extraction_metrics <- function(df) {
   # Check if validation columns exist
   has_validation <- all(c("valid_sample_id", "duplicate_sample_id", "barcode_suspicious") %in% names(df))
 
+  has_column <- function(column) {
+    column %in% names(df)
+  }
+
   list(
     total = nrow(df),
-    ready = sum(df$ready_for_freezer, na.rm = TRUE),
-    median_volume = stats::median(df$drs_volume_ml, na.rm = TRUE),
-    pct_liquid = safe_pct(df$drs_state == "Liquid"),
-    pct_clear = safe_pct(df$extract_quality == "Clear"),
-    flagged = sum(df$flag_issue, na.rm = TRUE),
+    ready = if (has_column("ready_for_freezer")) {
+      sum(df$ready_for_freezer, na.rm = TRUE)
+    } else {
+      NA_integer_
+    },
+    median_volume = if (has_column("drs_volume_ml")) {
+      stats::median(df$drs_volume_ml, na.rm = TRUE)
+    } else {
+      NA_real_
+    },
+    pct_liquid = if (has_column("drs_state")) {
+      safe_pct(df$drs_state == "Liquid")
+    } else {
+      NA_real_
+    },
+    pct_clear = if (has_column("extract_quality")) {
+      safe_pct(df$extract_quality == "Clear")
+    } else {
+      NA_real_
+    },
+    flagged = if (has_column("flag_issue")) {
+      sum(df$flag_issue, na.rm = TRUE)
+    } else {
+      NA_integer_
+    },
     valid_ids = if (has_validation) sum(df$valid_sample_id, na.rm = TRUE) else NA_integer_,
     duplicates = if (has_validation) sum(df$duplicate_sample_id, na.rm = TRUE) else NA_integer_,
     suspicious_barcodes = if (has_validation) sum(df$barcode_suspicious, na.rm = TRUE) else NA_integer_,
@@ -453,16 +478,32 @@ summarise_by_health_structure <- function(df) {
   }
 
   df %>%
+    {
+      if (!"drs_volume_ml" %in% names(.)) {
+        .$drs_volume_ml <- rep(NA_real_, nrow(.))
+      }
+      if (!"ready_for_freezer" %in% names(.)) {
+        .$ready_for_freezer <- rep(NA, nrow(.))
+      }
+      if (!"flag_issue" %in% names(.)) {
+        .$flag_issue <- rep(NA, nrow(.))
+      }
+      .
+    } %>%
     dplyr::filter(!is.na(health_structure) & health_structure != "Unspecified") %>%
     dplyr::group_by(health_structure) %>%
     dplyr::summarise(
       n_extractions = dplyr::n(),
       median_volume = stats::median(drs_volume_ml, na.rm = TRUE),
-      mean_volume = mean(drs_volume_ml, na.rm = TRUE),
-      total_volume = sum(drs_volume_ml, na.rm = TRUE),
-      pct_ready = mean(ready_for_freezer, na.rm = TRUE),
-      pct_flagged = mean(flag_issue, na.rm = TRUE),
-      pct_liquid = mean(drs_state == "Liquid", na.rm = TRUE),
+      mean_volume = if (all(is.na(drs_volume_ml))) NA_real_ else mean(drs_volume_ml, na.rm = TRUE),
+      total_volume = if (all(is.na(drs_volume_ml))) NA_real_ else sum(drs_volume_ml, na.rm = TRUE),
+      pct_ready = if (all(is.na(ready_for_freezer))) NA_real_ else mean(ready_for_freezer, na.rm = TRUE),
+      pct_flagged = if (all(is.na(flag_issue))) NA_real_ else mean(flag_issue, na.rm = TRUE),
+      pct_liquid = if ("drs_state" %in% names(dplyr::cur_data_all())) {
+        if (all(is.na(drs_state))) NA_real_ else mean(drs_state == "Liquid", na.rm = TRUE)
+      } else {
+        NA_real_
+      },
       .groups = "drop"
     ) %>%
     dplyr::arrange(dplyr::desc(n_extractions))

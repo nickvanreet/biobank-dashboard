@@ -235,7 +235,7 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
 
   moduleServer(
     id,
-    function(input, output, session, filtered_data, biobank_data) {
+    function(input, output, session) {
 
       extraction_data <- reactive({
         df <- filtered_data()
@@ -781,5 +781,5 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         filter = "top"
       )
     })
-  }, filtered_data = filtered_data, biobank_data = biobank_data)
+  })
 }

@@ -59,6 +59,7 @@ mod_data_manager_server <- function(id) {
     rv <- reactiveValues(
       raw_data = NULL,
       clean_data = NULL,
+      extraction_data = NULL,
       quality_report = NULL,
       files_available = character(0)
     )
@@ -124,6 +125,21 @@ mod_data_manager_server <- function(id) {
         # Step 3: Clean data using the improved cleaner
         df_clean <- clean_biobank_data_improved(df_raw)
         rv$clean_data <- df_clean
+
+        # Step 3b: Load extraction quality data and link to biobank
+        extraction_df <- tryCatch({
+          load_extraction_dataset(config$paths$extractions_dir)
+        }, error = function(e) {
+          message("Failed to load extraction dataset: ", e$message)
+          tibble::tibble()
+        })
+
+        rv$extraction_data <- tryCatch({
+          link_extraction_to_biobank(extraction_df, df_clean)
+        }, error = function(e) {
+          message("Failed to link extraction dataset: ", e$message)
+          extraction_df
+        })
         
         # Step 4: Re-analyze quality AFTER cleaning
         quality_clean <- analyze_data_quality(df_clean)
@@ -211,7 +227,7 @@ mod_data_manager_server <- function(id) {
     
     filtered_data <- reactive({
       req(rv$clean_data)
-      
+
       apply_filters(
         rv$clean_data,
         date_range = input$date_range,
@@ -220,6 +236,83 @@ mod_data_manager_server <- function(id) {
         zone = input$filter_zone,
         structure = input$filter_structure
       )
+    })
+
+    filtered_extractions <- reactive({
+      df <- rv$extraction_data
+
+      if (is.null(df)) {
+        return(tibble::tibble())
+      }
+
+      if (!is.data.frame(df)) {
+        df <- tibble::as_tibble(df)
+      }
+
+      if (!nrow(df)) {
+        return(df)
+      }
+
+      # Date filter uses extraction date when available
+      if (!is.null(input$date_range) && length(input$date_range) == 2 &&
+          "extraction_date" %in% names(df)) {
+        start_date <- suppressWarnings(as.Date(input$date_range[1]))
+        end_date <- suppressWarnings(as.Date(input$date_range[2]))
+
+        if (!is.na(start_date) && !is.na(end_date)) {
+          df <- df %>%
+            dplyr::filter(
+              is.na(.data$extraction_date) |
+                (.data$extraction_date >= start_date & .data$extraction_date <= end_date)
+            )
+        }
+      }
+
+      # Study filter (prefer linked biobank study)
+      if (!is.null(input$filter_study) && input$filter_study != "all") {
+        if ("biobank_study" %in% names(df)) {
+          df <- df %>% dplyr::filter(.data$biobank_study == !!input$filter_study)
+        } else if ("study" %in% names(df)) {
+          df <- df %>% dplyr::filter(.data$study == !!input$filter_study)
+        }
+      }
+
+      # Province filter
+      if (!is.null(input$filter_province) && input$filter_province != "all") {
+        if ("biobank_province" %in% names(df)) {
+          df <- df %>% dplyr::filter(.data$biobank_province == !!input$filter_province)
+        } else if ("province" %in% names(df)) {
+          df <- df %>% dplyr::filter(.data$province == !!input$filter_province)
+        }
+      }
+
+      # Health zone filter
+      if (!is.null(input$filter_zone) && input$filter_zone != "all") {
+        if ("biobank_health_zone" %in% names(df)) {
+          df <- df %>% dplyr::filter(.data$biobank_health_zone == !!input$filter_zone)
+        } else if ("health_zone" %in% names(df)) {
+          df <- df %>% dplyr::filter(.data$health_zone == !!input$filter_zone)
+        }
+      }
+
+      # Structure filter (fall back across known columns)
+      if (!is.null(input$filter_structure) && input$filter_structure != "all") {
+        structure_col <- NULL
+        if ("health_structure" %in% names(df)) {
+          structure_col <- "health_structure"
+        } else if ("biobank_health_facility" %in% names(df)) {
+          structure_col <- "biobank_health_facility"
+        } else if ("structure_sanitaire" %in% names(df)) {
+          structure_col <- "structure_sanitaire"
+        }
+
+        if (!is.null(structure_col)) {
+          df <- df %>%
+            dplyr::filter(.data[[structure_col]] == !!input$filter_structure)
+        }
+      }
+
+      df
     })
     
     # ========================================================================
@@ -266,6 +359,8 @@ mod_data_manager_server <- function(id) {
       raw_data = reactive(rv$raw_data),
       clean_data = reactive(rv$clean_data),
       filtered_data = filtered_data,
+      extraction_data = reactive(rv$extraction_data),
+      filtered_extractions = filtered_extractions,
       quality_report = reactive(rv$quality_report)
     ))
   })

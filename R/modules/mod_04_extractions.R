@@ -257,13 +257,42 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           bio_df <- biobank_data()
         }
 
-        tryCatch(
-          link_extraction_to_biobank(df, bio_df),
-          error = function(e) {
-            message("Failed to link extraction data: ", e$message)
-            df
+        needs_link <- TRUE
+        if ("biobank_matched" %in% names(df)) {
+          if (any(!is.na(df$biobank_matched))) {
+            needs_link <- FALSE
           }
-        )
+        }
+
+        linked_df <- if (!is.null(bio_df) && needs_link) {
+          tryCatch(
+            link_extraction_to_biobank(df, bio_df),
+            error = function(e) {
+              message("Failed to link extraction data: ", e$message)
+              df
+            }
+          )
+        } else {
+          df
+        }
+
+        if (!"health_structure" %in% names(linked_df)) {
+          linked_df$health_structure <- NA_character_
+        }
+
+        if ("biobank_health_facility" %in% names(linked_df)) {
+          linked_df <- linked_df %>%
+            dplyr::mutate(
+              health_structure = dplyr::coalesce(
+                dplyr::na_if(.data$health_structure, "Unspecified"),
+                dplyr::na_if(.data$health_structure, ""),
+                .data$biobank_health_facility,
+                .data$health_structure
+              )
+            )
+        }
+
+        linked_df
       })
 
     metrics <- reactive({

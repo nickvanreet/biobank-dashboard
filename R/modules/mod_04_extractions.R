@@ -186,6 +186,27 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         out
       }
 
+      normalize_key <- function(x) {
+        if (is.null(x)) {
+          return(rep(NA_character_, length.out = 0))
+        }
+
+        values <- stringr::str_trim(as.character(x))
+        values[values %in% c("", "NA", "N/A", "NULL")] <- NA_character_
+        values <- stringi::stri_trans_general(values, "Latin-ASCII")
+        stringr::str_to_upper(values)
+      }
+
+      format_structure_label <- function(x) {
+        if (is.null(x)) {
+          return(x)
+        }
+
+        out <- normalize_text(x)
+        out <- stringr::str_to_lower(out)
+        stringr::str_to_title(out)
+      }
+
       drs_state_map <- c(
         "liquid" = "Liquid",
         "liquide" = "Liquid",
@@ -382,15 +403,21 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
 
         df %>%
           dplyr::mutate(
-            structure = normalize_text(.data$health_structure),
-            structure = dplyr::coalesce(
-              dplyr::na_if(structure, "Unspecified"),
+            structure_raw = normalize_text(.data$health_structure),
+            structure_raw = dplyr::coalesce(
+              dplyr::na_if(structure_raw, "Unspecified"),
               normalize_text(.data$biobank_health_facility),
               normalize_text(.data$biobank_structure_sanitaire),
               "Unspecified"
+            ),
+            structure_key = normalize_key(structure_raw),
+            structure_label = dplyr::if_else(
+              is.na(structure_key),
+              "Unspecified",
+              format_structure_label(structure_raw)
             )
           ) %>%
-          dplyr::group_by(.data$structure) %>%
+          dplyr::group_by(.data$structure_key, .data$structure_label) %>%
           dplyr::summarise(
             samples = dplyr::n(),
             linked = sum(dplyr::coalesce(.data$biobank_matched, FALSE)),
@@ -403,7 +430,17 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           dplyr::mutate(
             linked_rate = dplyr::if_else(.data$samples > 0, .data$linked / .data$samples, NA_real_)
           ) %>%
-          dplyr::arrange(dplyr::desc(.data$total_volume))
+          dplyr::arrange(dplyr::desc(.data$total_volume)) %>%
+          dplyr::select(
+            structure = .data$structure_label,
+            samples,
+            linked,
+            total_volume,
+            mean_volume,
+            median_volume,
+            latest_extraction,
+            linked_rate
+          )
       })
 
       technician_summary <- reactive({
@@ -462,17 +499,19 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
 
         df %>%
           dplyr::mutate(
-            structure = normalize_text(.data$health_structure),
-            structure = dplyr::coalesce(
-              dplyr::na_if(structure, "Unspecified"),
+            structure_raw = normalize_text(.data$health_structure),
+            structure_raw = dplyr::coalesce(
+              dplyr::na_if(structure_raw, "Unspecified"),
               normalize_text(.data$biobank_health_facility),
               normalize_text(.data$biobank_structure_sanitaire),
-              structure
+              structure_raw,
+              "Unspecified"
             ),
+            structure_key = normalize_key(structure_raw),
             structure = dplyr::if_else(
-              is.na(structure) | structure == "",
+              is.na(structure_key),
               "Unspecified",
-              structure
+              format_structure_label(structure_raw)
             ),
             sample_date = dplyr::coalesce(.data$extraction_date, .data$biobank_date_sample),
             sample_date = suppressWarnings(as.Date(sample_date)),

@@ -238,6 +238,17 @@ mod_data_manager_server <- function(id) {
       )
     })
 
+    normalize_filter_value <- function(x) {
+      if (is.null(x)) {
+        return(rep(NA_character_, length.out = 0))
+      }
+
+      values <- stringr::str_trim(as.character(x))
+      values[values %in% c("", "NA", "N/A", "NULL")] <- NA_character_
+      values <- stringi::stri_trans_general(values, "Latin-ASCII")
+      stringr::str_to_upper(values)
+    }
+
     filtered_extractions <- reactive({
       df <- rv$extraction_data
 
@@ -270,45 +281,59 @@ mod_data_manager_server <- function(id) {
 
       # Study filter (prefer linked biobank study)
       if (!is.null(input$filter_study) && input$filter_study != "all") {
+        target <- normalize_filter_value(input$filter_study)
+
         if ("biobank_study" %in% names(df)) {
-          df <- df %>% dplyr::filter(.data$biobank_study == !!input$filter_study)
+          df <- df %>%
+            dplyr::filter(normalize_filter_value(.data$biobank_study) == target)
         } else if ("study" %in% names(df)) {
-          df <- df %>% dplyr::filter(.data$study == !!input$filter_study)
+          df <- df %>%
+            dplyr::filter(normalize_filter_value(.data$study) == target)
         }
       }
 
       # Province filter
       if (!is.null(input$filter_province) && input$filter_province != "all") {
+        target <- normalize_filter_value(input$filter_province)
+
         if ("biobank_province" %in% names(df)) {
-          df <- df %>% dplyr::filter(.data$biobank_province == !!input$filter_province)
+          df <- df %>%
+            dplyr::filter(normalize_filter_value(.data$biobank_province) == target)
         } else if ("province" %in% names(df)) {
-          df <- df %>% dplyr::filter(.data$province == !!input$filter_province)
+          df <- df %>%
+            dplyr::filter(normalize_filter_value(.data$province) == target)
         }
       }
 
       # Health zone filter
       if (!is.null(input$filter_zone) && input$filter_zone != "all") {
+        target <- normalize_filter_value(input$filter_zone)
+
         if ("biobank_health_zone" %in% names(df)) {
-          df <- df %>% dplyr::filter(.data$biobank_health_zone == !!input$filter_zone)
+          df <- df %>%
+            dplyr::filter(normalize_filter_value(.data$biobank_health_zone) == target)
         } else if ("health_zone" %in% names(df)) {
-          df <- df %>% dplyr::filter(.data$health_zone == !!input$filter_zone)
+          df <- df %>%
+            dplyr::filter(normalize_filter_value(.data$health_zone) == target)
         }
       }
 
       # Structure filter (fall back across known columns)
       if (!is.null(input$filter_structure) && input$filter_structure != "all") {
-        structure_col <- NULL
-        if ("health_structure" %in% names(df)) {
-          structure_col <- "health_structure"
-        } else if ("biobank_health_facility" %in% names(df)) {
-          structure_col <- "biobank_health_facility"
-        } else if ("structure_sanitaire" %in% names(df)) {
-          structure_col <- "structure_sanitaire"
-        }
+        target <- normalize_filter_value(input$filter_structure)
+        candidate_cols <- intersect(
+          c("health_structure", "biobank_health_facility", "structure_sanitaire", "biobank_structure_sanitaire"),
+          names(df)
+        )
 
-        if (!is.null(structure_col)) {
+        if (length(candidate_cols)) {
           df <- df %>%
-            dplyr::filter(.data[[structure_col]] == !!input$filter_structure)
+            dplyr::filter(
+              dplyr::if_any(
+                dplyr::all_of(candidate_cols),
+                ~ normalize_filter_value(.x) == target
+              )
+            )
         }
       }
 

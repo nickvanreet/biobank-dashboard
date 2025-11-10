@@ -84,7 +84,9 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
   # Normalize extraction sample_id
   extraction_df <- extraction_df %>%
     dplyr::mutate(
-      barcode_normalized = normalize_barcode(sample_id)
+      barcode_normalized = normalize_barcode(sample_id),
+      record_number_normalized = normalize_barcode(record_number),
+      linkage_key = dplyr::coalesce(barcode_normalized, record_number_normalized)
     )
 
   # Select key biobank columns for linking (include both match keys)
@@ -130,7 +132,7 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
   linked_df <- extraction_df %>%
     dplyr::left_join(
       biobank_key_cols,
-      by = c("barcode_normalized" = ".__match_key")
+      by = c("linkage_key" = ".__match_key")
     )
 
   # Ensure required columns exist (they might not if any_of didn't find matches)
@@ -163,6 +165,12 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
       # Flag if matched
       biobank_matched = !is.na(biobank_barcode) | !is.na(biobank_lab_id),
       biobank_match_type = dplyr::if_else(biobank_matched, match_type, NA_character_),
+      biobank_lab_id_normalized = normalize_barcode(biobank_lab_id),
+      numero_match = dplyr::case_when(
+        !biobank_matched ~ NA,
+        is.na(record_number_normalized) | is.na(biobank_lab_id_normalized) ~ NA,
+        TRUE ~ record_number_normalized == biobank_lab_id_normalized
+      ),
 
       # Check if health structures match (normalize for comparison)
       health_structure_match = dplyr::case_when(
@@ -172,7 +180,7 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
         TRUE ~ FALSE
       )
     ) %>%
-    dplyr::select(-match_type)  # Remove temporary column
+    dplyr::select(-match_type, -linkage_key)  # Remove temporary column
 
   if (!"health_structure" %in% names(linked_df)) {
     linked_df$health_structure <- NA_character_

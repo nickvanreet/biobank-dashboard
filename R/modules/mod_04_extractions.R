@@ -6,9 +6,6 @@
 # MODULE UI
 # ============================================================================
 
-#' Extraction Quality Module UI
-#' @param id Module namespace ID
-#' @export
 mod_extractions_ui <- function(id) {
   ns <- NS(id)
 
@@ -22,141 +19,49 @@ mod_extractions_ui <- function(id) {
       layout_column_wrap(
         width = 1/5, fixed_width = TRUE, heights_equal = "row", gap = "12px",
         value_box(
-          title = "Total Extractions",
-          value = textOutput(ns("kpi_total")),
-          showcase = icon("droplet"),
-          theme = "primary"
-        ),
-        value_box(
-          title = "Ready for Freezer",
-          value = textOutput(ns("kpi_ready")),
-          showcase = icon("snowflake"),
-          theme = "success"
-        ),
-        value_box(
-          title = "Median DRS Volume (mL)",
-          value = textOutput(ns("kpi_volume")),
-          showcase = icon("flask"),
-          theme = "info"
-        ),
-        value_box(
-          title = "% Extracts Clear",
-          value = textOutput(ns("kpi_clear")),
-          showcase = icon("eye"),
-          theme = "secondary"
-        ),
-        value_box(
-          title = "Flagged Extractions",
-          value = textOutput(ns("kpi_flagged")),
-          showcase = icon("triangle-exclamation"),
-          theme = "danger"
-        )
-      ),
-
-      layout_column_wrap(
-        width = 1/5, fixed_width = TRUE, heights_equal = "row", gap = "12px",
-        value_box(
-          title = "Matched to Biobank",
-          value = textOutput(ns("kpi_matched")),
+          title = "Linked to Biobank",
+          value = textOutput(ns("kpi_linked")),
           showcase = icon("link"),
           theme = "success"
         ),
         value_box(
-          title = "Unmatched Samples",
-          value = textOutput(ns("kpi_unmatched")),
-          showcase = icon("unlink"),
-          theme = "warning"
+          title = "Total Samples",
+          value = textOutput(ns("kpi_total")),
+          showcase = icon("vial"),
+          theme = "primary"
         ),
         value_box(
-          title = "Structure Matches",
-          value = textOutput(ns("kpi_structure_match")),
-          showcase = icon("hospital"),
+          title = "Mean Volume (mL)",
+          value = textOutput(ns("kpi_mean_volume")),
+          showcase = icon("flask"),
           theme = "info"
         ),
         value_box(
-          title = "Structure Mismatches",
-          value = textOutput(ns("kpi_structure_mismatch")),
-          showcase = icon("exclamation-triangle"),
-          theme = "danger"
+          title = "Top RSC Run",
+          value = textOutput(ns("kpi_top_run")),
+          showcase = icon("gauge"),
+          theme = "secondary"
         ),
         value_box(
-          title = "Linkage Rate",
-          value = textOutput(ns("kpi_linkage_rate")),
-          showcase = icon("percent"),
-          theme = "primary"
-        )
-      ),
-
-      layout_columns(
-        col_widths = c(12), gap = "16px",
-        card(
-          card_header("Health Structure Volume Processing Analysis"),
-          card_body_fill(
-            plotly::plotlyOutput(ns("health_structure_volume_plot"), height = "400px")
-          )
+          title = "Top RSC Position",
+          value = textOutput(ns("kpi_top_position")),
+          showcase = icon("border-all"),
+          theme = "warning"
         )
       ),
 
       layout_columns(
         col_widths = c(6, 6), gap = "16px",
         card(
-          card_header("Health Structure Performance Metrics"),
-          card_body_fill(
-            plotly::plotlyOutput(ns("health_structure_metrics_plot"), height = "320px")
-          )
-        ),
-        card(
-          card_header("Validation Status Distribution"),
-          card_body_fill(
-            plotly::plotlyOutput(ns("validation_status_plot"), height = "320px")
-          )
-        )
-      ),
-
-      layout_columns(
-        col_widths = c(6, 6), gap = "16px",
-        card(
-          card_header("DRS State Distribution by Week"),
+          card_header("État DRS Distribution"),
           card_body_fill(
             plotly::plotlyOutput(ns("drs_state_plot"), height = "320px")
           )
         ),
         card(
-          card_header("DRS Volume by Filter Type"),
+          card_header("Évaluation de l'extrait"),
           card_body_fill(
-            plotly::plotlyOutput(ns("volume_filter_plot"), height = "320px")
-          )
-        )
-      ),
-
-      layout_columns(
-        col_widths = c(6, 6), gap = "16px",
-        card(
-          card_header("Visual Quality Trend"),
-          card_body_fill(
-            plotly::plotlyOutput(ns("quality_trend_plot"), height = "320px")
-          )
-        ),
-        card(
-          card_header("Technician Productivity"),
-          card_body_fill(
-            plotly::plotlyOutput(ns("technician_plot"), height = "320px")
-          )
-        )
-      ),
-
-      layout_columns(
-        col_widths = c(6, 6), gap = "16px",
-        card(
-          card_header("Extraction Volume Time Series"),
-          card_body_fill(
-            plotly::plotlyOutput(ns("volume_timeseries_plot"), height = "320px")
-          )
-        ),
-        card(
-          card_header("Project Distribution"),
-          card_body_fill(
-            plotly::plotlyOutput(ns("project_distribution_plot"), height = "320px")
+            plotly::plotlyOutput(ns("extract_quality_plot"), height = "320px")
           )
         )
       ),
@@ -164,25 +69,9 @@ mod_extractions_ui <- function(id) {
       layout_columns(
         col_widths = c(12), gap = "16px",
         card(
-          card_header("Health Structure DRS Volume Collection Over Time"),
+          card_header("Extraction Volume Over Time"),
           card_body_fill(
-            plotly::plotlyOutput(ns("volume_evolution_plot"), height = "450px")
-          )
-        )
-      ),
-
-      layout_columns(
-        col_widths = c(6, 6), gap = "16px",
-        card(
-          card_header("Volume Target Achievement by Health Structure"),
-          card_body_fill(
-            plotly::plotlyOutput(ns("target_achievement_plot"), height = "350px")
-          )
-        ),
-        card(
-          card_header("Biobank Linkage Status Distribution"),
-          card_body_fill(
-            plotly::plotlyOutput(ns("linkage_status_plot"), height = "350px")
+            plotly::plotlyOutput(ns("volume_timeseries_plot"), height = "360px")
           )
         )
       ),
@@ -190,26 +79,52 @@ mod_extractions_ui <- function(id) {
       layout_columns(
         col_widths = c(12), gap = "16px",
         card(
-          card_header("Unmatched Samples & Health Structure Mismatches"),
-          card_body(
+          card_header("Volume par Structure Sanitaire"),
+          card_body_fill(
+            plotly::plotlyOutput(ns("structure_volume_plot"), height = "360px")
+          )
+        )
+      ),
+
+      layout_columns(
+        col_widths = c(6, 6), gap = "16px",
+        card(
+          card_header("RSC Usage"),
+          card_body_fill(
             navset_card_tab(
               nav_panel(
-                "Unmatched to Biobank",
-                DT::DTOutput(ns("unmatched_table"))
+                "Positions",
+                plotly::plotlyOutput(ns("rsc_position_plot"), height = "320px")
               ),
               nav_panel(
-                "Health Structure Mismatches",
-                DT::DTOutput(ns("mismatch_table"))
+                "Runs",
+                plotly::plotlyOutput(ns("rsc_run_plot"), height = "320px")
               )
             )
           )
+        ),
+        card(
+          card_header("Technician Activity"),
+          card_body(
+            DT::DTOutput(ns("technician_table"))
+          )
         )
       ),
 
       layout_columns(
         col_widths = c(12), gap = "16px",
         card(
-          card_header("Extraction Detail Table"),
+          card_header("Structure Sanitaire Volume Summary"),
+          card_body(
+            DT::DTOutput(ns("structure_volume_table"))
+          )
+        )
+      ),
+
+      layout_columns(
+        col_widths = c(12), gap = "16px",
+        card(
+          card_header("Extraction Detail"),
           card_body(
             DT::DTOutput(ns("extraction_table"))
           )
@@ -223,11 +138,6 @@ mod_extractions_ui <- function(id) {
 # MODULE SERVER
 # ============================================================================
 
-#' Extraction Quality Module Server
-#' @param id Module namespace ID
-#' @param filtered_data Reactive expression returning extraction data filtered by the shared data manager
-#' @param biobank_data Reactive expression returning cleaned biobank data for linkage
-#' @export
 mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
   if (missing(filtered_data)) {
     stop("filtered_data reactive is required for mod_extractions_server()", call. = FALSE)
@@ -236,6 +146,23 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
   moduleServer(
     id,
     function(input, output, session) {
+      safe_mean <- function(x) {
+        x <- x[!is.na(x)]
+        if (!length(x)) return(NA_real_)
+        mean(x)
+      }
+
+      safe_median <- function(x) {
+        x <- x[!is.na(x)]
+        if (!length(x)) return(NA_real_)
+        stats::median(x)
+      }
+
+      safe_max_date <- function(x) {
+        x <- x[!is.na(x)]
+        if (!length(x)) return(as.Date(NA))
+        max(x)
+      }
 
       extraction_data <- reactive({
         df <- filtered_data()
@@ -295,558 +222,505 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         linked_df
       })
 
-    metrics <- reactive({
-      summarise_extraction_metrics(extraction_data())
-    })
+      metrics <- reactive({
+        summarise_extraction_metrics(extraction_data())
+      })
 
-    linkage_metrics <- reactive({
-      summarise_linkage_metrics(extraction_data())
-    })
+      rsc_usage <- reactive({
+        df <- extraction_data()
+        empty_positions <- tibble::tibble(rsc_position = character(), n = integer())
+        empty_runs <- tibble::tibble(rsc_run = character(), n = integer())
 
-    output$kpi_total <- renderText({
-      m <- metrics()
-      if (is.null(m$total) || is.na(m$total)) "--" else scales::comma(m$total)
-    })
+        if (is.null(df) || !nrow(df)) {
+          return(list(
+            total = 0,
+            top_run = NA_character_,
+            top_position = NA_character_,
+            positions = empty_positions,
+            runs = empty_runs
+          ))
+        }
 
-    output$kpi_ready <- renderText({
-      m <- metrics()
-      if (is.null(m$ready) || is.na(m$ready)) "--" else scales::comma(m$ready)
-    })
+        positions <- df %>%
+          dplyr::filter(!is.na(.data$rsc_position) & .data$rsc_position != "") %>%
+          dplyr::count(.data$rsc_position, name = "n") %>%
+          dplyr::arrange(dplyr::desc(.data$n))
 
-    output$kpi_volume <- renderText({
-      m <- metrics()
-      if (is.na(m$median_volume)) "--" else scales::number(m$median_volume, accuracy = 0.1)
-    })
+        runs <- df %>%
+          dplyr::filter(!is.na(.data$rsc_run) & .data$rsc_run != "") %>%
+          dplyr::count(.data$rsc_run, name = "n") %>%
+          dplyr::arrange(dplyr::desc(.data$n))
 
-    output$kpi_liquid <- renderText({
-      m <- metrics()
-      if (is.na(m$pct_liquid)) "--" else scales::percent(m$pct_liquid, accuracy = 0.1)
-    })
-
-    output$kpi_clear <- renderText({
-      m <- metrics()
-      if (is.na(m$pct_clear)) "--" else scales::percent(m$pct_clear, accuracy = 0.1)
-    })
-
-    output$kpi_flagged <- renderText({
-      m <- metrics()
-      if (is.null(m$flagged) || is.na(m$flagged)) "--" else scales::comma(m$flagged)
-    })
-
-    output$kpi_valid_ids <- renderText({
-      m <- metrics()
-      if (is.na(m$valid_ids)) "--" else scales::comma(m$valid_ids)
-    })
-
-    output$kpi_duplicates <- renderText({
-      m <- metrics()
-      if (is.na(m$duplicates)) "--" else scales::comma(m$duplicates)
-    })
-
-    output$kpi_suspicious <- renderText({
-      m <- metrics()
-      if (is.na(m$suspicious_barcodes)) "--" else scales::comma(m$suspicious_barcodes)
-    })
-
-    output$kpi_validation_rate <- renderText({
-      m <- metrics()
-      if (is.na(m$validation_rate)) "--" else scales::percent(m$validation_rate, accuracy = 0.1)
-    })
-
-    output$kpi_structures <- renderText({
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df) || !"health_structure" %in% names(df)) {
-        return("--")
-      }
-      n_structures <- length(unique(df$health_structure[df$health_structure != "Unspecified"]))
-      scales::comma(n_structures)
-    })
-
-    # NEW LINKAGE KPIs
-    output$kpi_matched <- renderText({
-      lm <- linkage_metrics()
-      if (is.na(lm$matched_to_biobank)) "--" else scales::comma(lm$matched_to_biobank)
-    })
-
-    output$kpi_unmatched <- renderText({
-      lm <- linkage_metrics()
-      if (is.na(lm$unmatched_to_biobank)) "--" else scales::comma(lm$unmatched_to_biobank)
-    })
-
-    output$kpi_structure_match <- renderText({
-      lm <- linkage_metrics()
-      if (is.na(lm$health_structure_matches)) "--" else scales::comma(lm$health_structure_matches)
-    })
-
-    output$kpi_structure_mismatch <- renderText({
-      lm <- linkage_metrics()
-      if (is.na(lm$health_structure_mismatches)) "--" else scales::comma(lm$health_structure_mismatches)
-    })
-
-    output$kpi_linkage_rate <- renderText({
-      lm <- linkage_metrics()
-      if (is.na(lm$pct_matched)) "--" else scales::percent(lm$pct_matched, accuracy = 0.1)
-    })
-
-    output$drs_state_plot <- plotly::renderPlotly({
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df)) {
-        return(plotly::plotly_empty(type = "bar", mode = "stack") %>% plotly::layout(title = "No extraction data available"))
-      }
-
-      plot_df <- df %>%
-        dplyr::mutate(week = lubridate::floor_date(extraction_date, "week")) %>%
-        dplyr::filter(!is.na(week)) %>%
-        dplyr::count(week, drs_state, name = "n") %>%
-        dplyr::arrange(week)
-
-      if (!nrow(plot_df)) {
-        return(plotly::plotly_empty(type = "bar", mode = "stack") %>% plotly::layout(title = "No dated extraction records"))
-      }
-
-      plotly::plot_ly(plot_df, x = ~week, y = ~n, color = ~drs_state, type = "bar") %>%
-        plotly::layout(barmode = "stack", xaxis = list(title = "Week"), yaxis = list(title = "Extractions"))
-    })
-
-    output$volume_filter_plot <- plotly::renderPlotly({
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df) || all(is.na(df$drs_volume_ml))) {
-        return(plotly::plotly_empty(type = "box") %>% plotly::layout(title = "No volume data available"))
-      }
-
-      plot_df <- df %>% dplyr::mutate(filter_type = forcats::fct_lump(filter_type, n = 8))
-
-      plotly::plot_ly(plot_df, x = ~filter_type, y = ~drs_volume_ml, color = ~drs_state, type = "box") %>%
-        plotly::layout(xaxis = list(title = "Filter"), yaxis = list(title = "DRS Volume (mL)"))
-    })
-
-    output$quality_trend_plot <- plotly::renderPlotly({
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df)) {
-        return(plotly::plotly_empty(type = "scatter", mode = "lines") %>% plotly::layout(title = "No extraction data available"))
-      }
-
-      plot_df <- df %>%
-        dplyr::mutate(month = lubridate::floor_date(extraction_date, "month")) %>%
-        dplyr::filter(!is.na(month)) %>%
-        dplyr::group_by(month) %>%
-        dplyr::summarise(
-          pct_clear = mean(extract_quality == "Clear", na.rm = TRUE),
-          median_volume = stats::median(drs_volume_ml, na.rm = TRUE),
-          n = dplyr::n(),
-          .groups = "drop"
+        list(
+          total = nrow(df),
+          top_run = if (nrow(runs)) sprintf("%s (%s)", runs$rsc_run[1], scales::comma(runs$n[1])) else NA_character_,
+          top_position = if (nrow(positions)) sprintf("%s (%s)", positions$rsc_position[1], scales::comma(positions$n[1])) else NA_character_,
+          positions = positions,
+          runs = runs
         )
+      })
 
-      if (!nrow(plot_df)) {
-        return(plotly::plotly_empty(type = "scatter", mode = "lines") %>% plotly::layout(title = "No monthly data available"))
-      }
+      structure_summary <- reactive({
+        df <- extraction_data()
+        if (is.null(df) || !nrow(df)) {
+          return(tibble::tibble())
+        }
 
-      scale_factor <- max(plot_df$median_volume, na.rm = TRUE)
-      if (!is.finite(scale_factor) || scale_factor == 0) {
-        scale_factor <- 1
-      }
+        df %>%
+          dplyr::mutate(
+            structure = dplyr::coalesce(
+              dplyr::na_if(.data$health_structure, ""),
+              dplyr::na_if(.data$health_structure, "Unspecified"),
+              .data$biobank_health_facility,
+              "Unspecified"
+            )
+          ) %>%
+          dplyr::group_by(.data$structure) %>%
+          dplyr::summarise(
+            samples = dplyr::n(),
+            linked = sum(dplyr::coalesce(.data$biobank_matched, FALSE)),
+            total_volume = sum(.data$drs_volume_ml, na.rm = TRUE),
+            mean_volume = safe_mean(.data$drs_volume_ml),
+            median_volume = safe_median(.data$drs_volume_ml),
+            latest_extraction = safe_max_date(.data$extraction_date),
+            .groups = "drop"
+          ) %>%
+          dplyr::mutate(
+            linked_rate = dplyr::if_else(.data$samples > 0, .data$linked / .data$samples, NA_real_)
+          ) %>%
+          dplyr::arrange(dplyr::desc(.data$total_volume))
+      })
 
-      plotly::plot_ly(plot_df, x = ~month, y = ~pct_clear, type = "scatter", mode = "lines+markers", name = "% Clear") %>%
-        plotly::add_trace(y = ~median_volume / scale_factor, name = "Median Volume (scaled)", yaxis = "y2", mode = "lines+markers") %>%
-        plotly::layout(
-          yaxis = list(title = "% Clear", tickformat = ".0%"),
-          yaxis2 = list(overlaying = "y", side = "right", title = "Median Volume (scaled)"),
-          xaxis = list(title = "Month")
-        )
-    })
+      technician_summary <- reactive({
+        df <- extraction_data()
+        if (is.null(df) || !nrow(df)) {
+          return(tibble::tibble())
+        }
 
-    output$technician_plot <- plotly::renderPlotly({
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df)) {
-        return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No extraction data available"))
-      }
+        df %>%
+          dplyr::mutate(
+            technician = dplyr::coalesce(
+              dplyr::na_if(.data$technician, ""),
+              "Unspecified"
+            )
+          ) %>%
+          dplyr::group_by(.data$technician) %>%
+          dplyr::summarise(
+            samples = dplyr::n(),
+            linked = sum(dplyr::coalesce(.data$biobank_matched, FALSE)),
+            total_volume = sum(.data$drs_volume_ml, na.rm = TRUE),
+            mean_volume = safe_mean(.data$drs_volume_ml),
+            latest_extraction = safe_max_date(.data$extraction_date),
+            .groups = "drop"
+          ) %>%
+          dplyr::mutate(
+            linked_rate = dplyr::if_else(.data$samples > 0, .data$linked / .data$samples, NA_real_)
+          ) %>%
+          dplyr::arrange(dplyr::desc(.data$samples))
+      })
 
-      plot_df <- df %>%
-        dplyr::count(technician, ready_for_freezer, name = "n")
+      volume_timeseries <- reactive({
+        df <- extraction_data()
+        if (is.null(df) || !nrow(df)) {
+          return(tibble::tibble())
+        }
 
-      plotly::plot_ly(plot_df, x = ~technician, y = ~n, color = ~ready_for_freezer,
-                      type = "bar", barmode = "stack") %>%
-        plotly::layout(xaxis = list(title = "Technician"), yaxis = list(title = "Extractions"), legend = list(title = list(text = "Ready for Freezer")))
-    })
+        df %>%
+          dplyr::filter(!is.na(.data$extraction_date)) %>%
+          dplyr::mutate(week = lubridate::floor_date(.data$extraction_date, "week")) %>%
+          dplyr::filter(!is.na(.data$week)) %>%
+          dplyr::group_by(.data$week) %>%
+          dplyr::summarise(
+            samples = dplyr::n(),
+            total_volume = sum(.data$drs_volume_ml, na.rm = TRUE),
+            mean_volume = safe_mean(.data$drs_volume_ml),
+            .groups = "drop"
+          ) %>%
+          dplyr::arrange(.data$week)
+      })
 
-    # NEW VISUALIZATIONS
+      output$kpi_linked <- renderText({
+        m <- metrics()
+        if (is.null(m$linked_total) || is.na(m$linked_total)) {
+          "--"
+        } else {
+          scales::comma(m$linked_total)
+        }
+      })
 
-    output$health_structure_volume_plot <- plotly::renderPlotly({
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df) || !"health_structure" %in% names(df)) {
-        return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "Health structure data not available"))
-      }
+      output$kpi_total <- renderText({
+        m <- metrics()
+        if (is.null(m$total) || is.na(m$total)) {
+          "--"
+        } else {
+          scales::comma(m$total)
+        }
+      })
 
-      summary_df <- summarise_health_structure_volume_overview(df)
+      output$kpi_mean_volume <- renderText({
+        m <- metrics()
+        if (is.null(m$mean_volume) || is.na(m$mean_volume)) {
+          "--"
+        } else {
+          scales::number(m$mean_volume, accuracy = 0.1)
+        }
+      })
 
-      if (!nrow(summary_df)) {
-        return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No health structure data available"))
-      }
+      output$kpi_top_run <- renderText({
+        usage <- rsc_usage()
+        if (is.null(usage$top_run) || is.na(usage$top_run)) {
+          "--"
+        } else {
+          usage$top_run
+        }
+      })
 
-      plot_df <- summary_df %>%
-        dplyr::select(health_structure, total_volume, median_volume, n_extractions) %>%
-        tidyr::pivot_longer(
-          cols = c(total_volume, median_volume),
-          names_to = "metric",
-          values_to = "value"
+      output$kpi_top_position <- renderText({
+        usage <- rsc_usage()
+        if (is.null(usage$top_position) || is.na(usage$top_position)) {
+          "--"
+        } else {
+          usage$top_position
+        }
+      })
+
+      output$drs_state_plot <- plotly::renderPlotly({
+        df <- extraction_data()
+        if (is.null(df) || !nrow(df)) {
+          return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No extraction data available"))
+        }
+
+        plot_df <- df %>%
+          dplyr::mutate(
+            drs_state = dplyr::coalesce(.data$drs_state, "Unknown"),
+            drs_state_code = dplyr::coalesce(.data$drs_state_code, stringr::str_sub(.data$drs_state, 1, 1)),
+            drs_state = factor(.data$drs_state, levels = c("Liquid", "Viscous", "Coagulated", "Unknown"), ordered = TRUE),
+            code_display = dplyr::if_else(is.na(.data$drs_state_code), "?", .data$drs_state_code)
+          ) %>%
+          dplyr::count(.data$drs_state, .data$code_display, name = "samples")
+
+        if (!nrow(plot_df)) {
+          return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No état DRS information"))
+        }
+
+        plotly::plot_ly(
+          plot_df,
+          x = ~drs_state,
+          y = ~samples,
+          type = "bar",
+          text = ~paste0("Code: ", code_display),
+          hovertemplate = "%{x}<br>Samples: %{y}<br>%{text}<extra></extra>"
         ) %>%
-        dplyr::filter(!is.na(value)) %>%
-        dplyr::mutate(
-          metric_label = dplyr::recode(
-            metric,
-            total_volume = "Total Volume (mL)",
-            median_volume = "Median Volume (mL)"
+          plotly::layout(
+            xaxis = list(title = "État DRS"),
+            yaxis = list(title = "Samples"),
+            showlegend = FALSE
           )
-        )
+      })
 
-      if (!nrow(plot_df)) {
-        return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "Volume metrics not available"))
-      }
+      output$extract_quality_plot <- plotly::renderPlotly({
+        df <- extraction_data()
+        if (is.null(df) || !nrow(df)) {
+          return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No extraction data available"))
+        }
 
-      plotly::plot_ly(
-        plot_df,
-        x = ~health_structure,
-        y = ~value,
-        color = ~metric_label,
-        type = "bar",
-        customdata = ~n_extractions,
-        hovertemplate = paste0(
-          "%{x}<br>",
-          "%{trace.name}: %{y:.1f} mL<br>",
-          "Extractions: %{customdata}<extra></extra>"
-        )
-      ) %>%
-        plotly::layout(
-          title = "DRS Volume Metrics by Health Structure",
-          xaxis = list(title = "Health Structure", tickangle = -45),
-          yaxis = list(title = "Volume (mL)"),
-          barmode = "group",
-          legend = list(title = list(text = "Metric")),
-          margin = list(b = 120)
-        )
-    })
+        plot_df <- df %>%
+          dplyr::mutate(
+            extract_quality = dplyr::coalesce(.data$extract_quality, "Unknown"),
+            extract_quality_code = dplyr::coalesce(.data$extract_quality_code, stringr::str_sub(.data$extract_quality, 1, 1)),
+            extract_quality = factor(.data$extract_quality, levels = c("Clear", "Foncé", "Échec", "Unknown"), ordered = TRUE),
+            code_display = dplyr::if_else(is.na(.data$extract_quality_code), "?", .data$extract_quality_code)
+          ) %>%
+          dplyr::count(.data$extract_quality, .data$code_display, name = "samples")
 
-    output$health_structure_metrics_plot <- plotly::renderPlotly({
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df) || !"health_structure" %in% names(df)) {
-        return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "Health structure data not available"))
-      }
+        if (!nrow(plot_df)) {
+          return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No extract evaluation data"))
+        }
 
-      summary_df <- summarise_by_health_structure(df)
-
-      if (!nrow(summary_df)) {
-        return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No health structure data available"))
-      }
-
-      # Bubble chart: Ready rate vs Volume, bubble size = number of extractions
-      plotly::plot_ly(summary_df, x = ~median_volume, y = ~pct_ready,
-                     size = ~n_extractions, sizes = c(10, 500),
-                     color = ~health_structure, type = "scatter", mode = "markers",
-                     text = ~paste0("<b>", health_structure, "</b><br>",
-                                   "Extractions: ", n_extractions, "<br>",
-                                   "Median Volume: ", round(median_volume, 1), " mL<br>",
-                                   "Ready Rate: ", scales::percent(pct_ready, accuracy = 0.1)),
-                     hoverinfo = "text") %>%
-        plotly::layout(
-          title = "Health Structure Performance: Quality vs Volume",
-          xaxis = list(title = "Median DRS Volume (mL)"),
-          yaxis = list(title = "% Ready for Freezer", tickformat = ".0%"),
-          showlegend = TRUE
-        )
-    })
-
-    output$validation_status_plot <- plotly::renderPlotly({
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df) || !"validation_status" %in% names(df)) {
-        return(plotly::plotly_empty(type = "pie") %>% plotly::layout(title = "Validation data not available"))
-      }
-
-      plot_df <- df %>%
-        dplyr::count(validation_status, name = "n") %>%
-        dplyr::arrange(dplyr::desc(n))
-
-      colors <- c("Valid" = "#27AE60", "Duplicate" = "#F39C12",
-                 "Invalid ID" = "#E74C3C", "Suspicious Barcode" = "#E67E22")
-
-      plotly::plot_ly(plot_df, labels = ~validation_status, values = ~n, type = "pie",
-                     marker = list(colors = colors[plot_df$validation_status]),
-                     textinfo = "label+percent",
-                     hoverinfo = "text",
-                     text = ~paste0(validation_status, ": ", n, " samples")) %>%
-        plotly::layout(title = "Sample ID Validation Status")
-    })
-
-    output$volume_timeseries_plot <- plotly::renderPlotly({
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df)) {
-        return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No extraction data available"))
-      }
-
-      plot_df <- df %>%
-        dplyr::mutate(week = lubridate::floor_date(extraction_date, "week")) %>%
-        dplyr::filter(!is.na(week)) %>%
-        dplyr::group_by(week) %>%
-        dplyr::summarise(
-          total_volume = sum(drs_volume_ml, na.rm = TRUE),
-          median_volume = stats::median(drs_volume_ml, na.rm = TRUE),
-          n = dplyr::n(),
-          .groups = "drop"
-        )
-
-      if (!nrow(plot_df)) {
-        return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No dated extraction records"))
-      }
-
-      plotly::plot_ly(plot_df, x = ~week, y = ~total_volume, type = "scatter", mode = "lines+markers",
-                     name = "Total Volume", line = list(color = "#3498DB"),
-                     text = ~paste0("Week: ", format(week, "%Y-%m-%d"), "<br>",
-                                   "Total: ", round(total_volume, 1), " mL<br>",
-                                   "Extractions: ", n),
-                     hoverinfo = "text") %>%
-        plotly::add_trace(y = ~median_volume, name = "Median Volume", mode = "lines",
-                         line = list(color = "#27AE60", dash = "dash"),
-                         yaxis = "y2") %>%
-        plotly::layout(
-          title = "DRS Volume Over Time",
-          xaxis = list(title = "Week"),
-          yaxis = list(title = "Total Volume (mL)", side = "left"),
-          yaxis2 = list(title = "Median Volume (mL)", overlaying = "y", side = "right"),
-          hovermode = "closest"
-        )
-    })
-
-    output$project_distribution_plot <- plotly::renderPlotly({
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df) || !"project" %in% names(df)) {
-        return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "Project data not available"))
-      }
-
-      plot_df <- df %>%
-        dplyr::filter(project != "UNSPECIFIED") %>%
-        dplyr::count(project, drs_state, name = "n")
-
-      if (!nrow(plot_df)) {
-        return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No project data available"))
-      }
-
-      plotly::plot_ly(plot_df, x = ~project, y = ~n, color = ~drs_state,
-                     type = "bar") %>%
-        plotly::layout(
-          title = "Extractions by Project and DRS State",
-          xaxis = list(title = "Project"),
-          yaxis = list(title = "Number of Extractions"),
-          barmode = "stack"
-        )
-    })
-
-    # NEW VISUALIZATIONS FOR VOLUME MONITORING
-    output$volume_evolution_plot <- plotly::renderPlotly({
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df)) {
-        return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No data available"))
-      }
-
-      time_series <- summarise_health_structure_volume_trends(df, time_unit = "month")
-
-      if (!nrow(time_series)) {
-        return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No time series data available"))
-      }
-
-      if (all(is.na(time_series$median_volume))) {
-        time_series <- time_series %>%
-          dplyr::mutate(median_volume = mean_volume)
-      }
-
-      plotly::plot_ly(
-        time_series,
-        x = ~period,
-        y = ~median_volume,
-        color = ~health_structure,
-        type = "scatter",
-        mode = "lines+markers",
-        hovertemplate = paste0(
-          "<b>%{text}</b><br>",
-          "Month: %{x|%b %Y}<br>",
-          "Median Volume: %{y:.1f} mL<br>",
-          "Total Volume: %{customdata[0]:.1f} mL<br>",
-          "Extractions: %{customdata[1]}<br>",
-          "Ready Rate: %{customdata[2]:.1%}<extra></extra>"
-        ),
-        text = ~health_structure,
-        customdata = ~cbind(total_volume, n_extractions, pct_ready)
-      ) %>%
-        plotly::layout(
-          title = "Median DRS Volume Trend by Health Structure",
-          xaxis = list(title = "Month"),
-          yaxis = list(title = "Median Volume (mL)"),
-          hovermode = "closest",
-          legend = list(title = list(text = "Health Structure"))
-        )
-    })
-
-    output$target_achievement_plot <- plotly::renderPlotly({
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df)) {
-        return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No data available"))
-      }
-
-      targets <- calculate_volume_targets(df, expected_monthly_volume = 50)
-
-      if (!nrow(targets)) {
-        return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No target data available"))
-      }
-
-      # Aggregate by health structure (latest month)
-      latest_targets <- targets %>%
-        dplyr::group_by(health_structure) %>%
-        dplyr::filter(month == max(month)) %>%
-        dplyr::ungroup() %>%
-        dplyr::mutate(
-          status = dplyr::if_else(meets_target, "Meets Target", "Below Target")
-        )
-
-      plotly::plot_ly(latest_targets, x = ~health_structure, y = ~pct_of_target,
-                     type = "bar",
-                     color = ~status,
-                     colors = c("Meets Target" = "#27AE60", "Below Target" = "#E74C3C"),
-                     text = ~paste0(health_structure, "<br>",
-                                   round(pct_of_target * 100, 1), "% of target<br>",
-                                   "Actual: ", round(actual_volume, 1), " mL<br>",
-                                   "Expected: ", expected_volume, " mL"),
-                     hoverinfo = "text") %>%
-        plotly::layout(
-          title = "Volume Target Achievement (Latest Month)",
-          xaxis = list(title = "Health Structure", tickangle = -45),
-          yaxis = list(title = "% of Target", tickformat = ".0%"),
-          showlegend = TRUE,
-          margin = list(b = 120)
+        plotly::plot_ly(
+          plot_df,
+          x = ~extract_quality,
+          y = ~samples,
+          type = "bar",
+          text = ~paste0("Code: ", code_display),
+          hovertemplate = "%{x}<br>Samples: %{y}<br>%{text}<extra></extra>"
         ) %>%
-        plotly::add_shape(
-          type = "line",
-          x0 = -0.5, x1 = length(unique(latest_targets$health_structure)) - 0.5,
-          y0 = 1, y1 = 1,
-          line = list(color = "red", dash = "dash", width = 2)
-        )
-    })
-
-    output$linkage_status_plot <- plotly::renderPlotly({
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df) || !"biobank_matched" %in% names(df)) {
-        return(plotly::plotly_empty(type = "pie") %>% plotly::layout(title = "Linkage data not available"))
-      }
-
-      plot_df <- df %>%
-        dplyr::mutate(
-          linkage_status = dplyr::case_when(
-            !biobank_matched ~ "Unmatched to Biobank",
-            health_structure_match == TRUE ~ "Matched - Structure OK",
-            health_structure_match == FALSE ~ "Matched - Structure Mismatch",
-            TRUE ~ "Matched - No Structure Info"
+          plotly::layout(
+            xaxis = list(title = "Évaluation"),
+            yaxis = list(title = "Samples"),
+            showlegend = FALSE
           )
+      })
+
+      output$volume_timeseries_plot <- plotly::renderPlotly({
+        ts_df <- volume_timeseries()
+        if (is.null(ts_df) || !nrow(ts_df)) {
+          return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No dated extraction records"))
+        }
+
+        p <- plotly::plot_ly(
+          ts_df,
+          x = ~week,
+          y = ~total_volume,
+          type = "bar",
+          name = "Total Volume (mL)",
+          marker = list(color = "#2980B9"),
+          customdata = ~samples,
+          hovertemplate = "Week of %{x|%Y-%m-%d}<br>Total volume: %{y:.1f} mL<br>Samples: %{customdata}<extra></extra>"
+        )
+
+        if (any(!is.na(ts_df$mean_volume))) {
+          p <- p %>%
+            plotly::add_trace(
+              y = ~mean_volume,
+              type = "scatter",
+              mode = "lines+markers",
+              name = "Mean Volume (mL)",
+              yaxis = "y2",
+              line = list(color = "#E67E22"),
+              hovertemplate = "Week of %{x|%Y-%m-%d}<br>Mean volume: %{y:.1f} mL<extra></extra>"
+            )
+        }
+
+        p %>%
+          plotly::layout(
+            xaxis = list(title = "Week"),
+            yaxis = list(title = "Total Volume (mL)"),
+            yaxis2 = list(title = "Mean Volume (mL)", overlaying = "y", side = "right"),
+            barmode = "group",
+            hovermode = "x unified",
+            legend = list(orientation = "h")
+          )
+      })
+
+      output$structure_volume_plot <- plotly::renderPlotly({
+        summary_df <- structure_summary()
+        if (is.null(summary_df) || !nrow(summary_df)) {
+          return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No structure data available"))
+        }
+
+        plot_df <- summary_df %>%
+          dplyr::mutate(
+            structure = factor(.data$structure, levels = summary_df$structure),
+            total_display = dplyr::if_else(is.na(.data$total_volume), "--", scales::number(.data$total_volume, accuracy = 0.1)),
+            mean_display = dplyr::if_else(is.na(.data$mean_volume), "--", scales::number(.data$mean_volume, accuracy = 0.1)),
+            linkage_display = dplyr::if_else(is.na(.data$linked_rate), "--", scales::percent(.data$linked_rate, accuracy = 0.1)),
+            hover_text = paste0(
+              "Structure: ", .data$structure, "<br>",
+              "Samples: ", scales::comma(.data$samples), "<br>",
+              "Linked: ", scales::comma(.data$linked), " (", linkage_display, ")<br>",
+              "Mean volume: ", mean_display, " mL"
+            )
+          )
+
+        plotly::plot_ly(
+          plot_df,
+          x = ~structure,
+          y = ~total_volume,
+          type = "bar",
+          text = ~hover_text,
+          hoverinfo = "text",
+          name = "Total Volume (mL)"
         ) %>%
-        dplyr::count(linkage_status, name = "n")
-
-      colors <- c(
-        "Matched - Structure OK" = "#27AE60",
-        "Matched - No Structure Info" = "#3498DB",
-        "Matched - Structure Mismatch" = "#F39C12",
-        "Unmatched to Biobank" = "#E74C3C"
-      )
-
-      plotly::plot_ly(plot_df, labels = ~linkage_status, values = ~n, type = "pie",
-                     marker = list(colors = colors[plot_df$linkage_status]),
-                     textinfo = "label+percent",
-                     hoverinfo = "text",
-                     text = ~paste0(linkage_status, ": ", n, " samples")) %>%
-        plotly::layout(title = "Biobank Linkage Quality")
-    })
-
-    output$unmatched_table <- DT::renderDT({
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df)) {
-        return(DT::datatable(
-          tibble::tibble(Message = "No data available"),
-          options = list(dom = "t"), rownames = FALSE
-        ))
-      }
-
-      unmatched <- get_unmatched_extractions(df)
-
-      if (!nrow(unmatched)) {
-        return(DT::datatable(
-          tibble::tibble(Message = "All samples are matched to biobank!"),
-          options = list(dom = "t"), rownames = FALSE
-        ))
-      }
-
-      DT::datatable(
-        unmatched,
-        options = c(APP_CONSTANTS$DT_OPTIONS, list(pageLength = 10)),
-        rownames = FALSE,
-        filter = "top",
-        caption = sprintf("Showing %d unmatched extraction records", nrow(unmatched))
-      )
-    })
-
-    output$mismatch_table <- DT::renderDT({
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df)) {
-        return(DT::datatable(
-          tibble::tibble(Message = "No data available"),
-          options = list(dom = "t"), rownames = FALSE
-        ))
-      }
-
-      mismatches <- get_health_structure_mismatches(df)
-
-      if (!nrow(mismatches)) {
-        return(DT::datatable(
-          tibble::tibble(Message = "No health structure mismatches found!"),
-          options = list(dom = "t"), rownames = FALSE
-        ))
-      }
-
-      DT::datatable(
-        mismatches,
-        options = c(APP_CONSTANTS$DT_OPTIONS, list(pageLength = 10)),
-        rownames = FALSE,
-        filter = "top",
-        caption = sprintf("Showing %d health structure mismatches", nrow(mismatches))
-      )
-    })
-
-    output$extraction_table <- DT::renderDT({
-      df <- extraction_data()
-      if (is.null(df) || !nrow(df)) {
-        return(DT::datatable(tibble::tibble(Message = "No extraction data available for the selected filters."), options = list(dom = "t"), rownames = FALSE))
-      }
-
-      # Select key columns for display
-      display_cols <- c("sample_id", "extraction_date", "health_structure", "drs_state",
-                       "drs_volume_ml", "extract_quality", "ready_for_freezer",
-                       "biobank_matched", "health_structure_match")
-
-      table_df <- df %>%
-        dplyr::select(dplyr::any_of(display_cols)) %>%
-        dplyr::arrange(dplyr::desc(extraction_date)) %>%
-        dplyr::mutate(
-          extraction_date = format(extraction_date, "%Y-%m-%d"),
-          drs_volume_ml = ifelse(is.na(drs_volume_ml), "", scales::number(drs_volume_ml, accuracy = 0.1)),
-          ready_for_freezer = dplyr::if_else(ready_for_freezer, "Yes", "No"),
-          biobank_matched = dplyr::if_else(biobank_matched %||% FALSE, "Yes", "No"),
-          health_structure_match = dplyr::case_when(
-            is.na(health_structure_match) ~ "N/A",
-            health_structure_match ~ "Match",
-            TRUE ~ "Mismatch"
+          plotly::layout(
+            xaxis = list(title = "Structure Sanitaire", tickangle = -45),
+            yaxis = list(title = "Total Volume (mL)"),
+            margin = list(b = 140)
           )
-        )
+      })
 
-      DT::datatable(
-        table_df,
-        options = c(APP_CONSTANTS$DT_OPTIONS, list(pageLength = 15)),
-        rownames = FALSE,
-        filter = "top"
-      )
-    })
-  })
+      output$rsc_position_plot <- plotly::renderPlotly({
+        usage <- rsc_usage()
+        pos_df <- usage$positions
+        if (is.null(pos_df) || !nrow(pos_df)) {
+          return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No RSC position data available"))
+        }
+
+        plot_df <- pos_df %>%
+          dplyr::mutate(
+            rsc_position = factor(.data$rsc_position, levels = rev(.data$rsc_position)),
+            hover_text = paste0("Position: ", .data$rsc_position, "<br>Samples: ", scales::comma(.data$n))
+          )
+
+        plotly::plot_ly(
+          plot_df,
+          x = ~n,
+          y = ~rsc_position,
+          type = "bar",
+          orientation = "h",
+          text = ~hover_text,
+          hoverinfo = "text",
+          marker = list(color = "#8E44AD")
+        ) %>%
+          plotly::layout(
+            xaxis = list(title = "Samples"),
+            yaxis = list(title = "RSC Position"),
+            margin = list(l = 140)
+          )
+      })
+
+      output$rsc_run_plot <- plotly::renderPlotly({
+        usage <- rsc_usage()
+        run_df <- usage$runs
+        if (is.null(run_df) || !nrow(run_df)) {
+          return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No RSC run data available"))
+        }
+
+        plot_df <- run_df %>%
+          dplyr::mutate(
+            rsc_run = factor(.data$rsc_run, levels = rev(.data$rsc_run)),
+            hover_text = paste0("Run: ", .data$rsc_run, "<br>Samples: ", scales::comma(.data$n))
+          )
+
+        plotly::plot_ly(
+          plot_df,
+          x = ~n,
+          y = ~rsc_run,
+          type = "bar",
+          orientation = "h",
+          text = ~hover_text,
+          hoverinfo = "text",
+          marker = list(color = "#1ABC9C")
+        ) %>%
+          plotly::layout(
+            xaxis = list(title = "Samples"),
+            yaxis = list(title = "RSC Run"),
+            margin = list(l = 140)
+          )
+      })
+
+      output$technician_table <- DT::renderDT({
+        summary_df <- technician_summary()
+        if (is.null(summary_df) || !nrow(summary_df)) {
+          return(DT::datatable(
+            tibble::tibble(Message = "No technician data available"),
+            options = list(dom = "t"),
+            rownames = FALSE
+          ))
+        }
+
+        display_df <- summary_df %>%
+          dplyr::mutate(
+            linkage_rate = dplyr::if_else(is.na(.data$linked_rate), "--", scales::percent(.data$linked_rate, accuracy = 0.1)),
+            total_volume = dplyr::if_else(is.na(.data$total_volume), "--", scales::number(.data$total_volume, accuracy = 0.1)),
+            mean_volume = dplyr::if_else(is.na(.data$mean_volume), "--", scales::number(.data$mean_volume, accuracy = 0.1)),
+            latest_extraction = dplyr::if_else(is.na(.data$latest_extraction), "", format(.data$latest_extraction, "%Y-%m-%d"))
+          ) %>%
+          dplyr::select(
+            Technician = technician,
+            Samples = samples,
+            Linked = linked,
+            `Linkage Rate` = linkage_rate,
+            `Total Volume (mL)` = total_volume,
+            `Mean Volume (mL)` = mean_volume,
+            `Last Extraction` = latest_extraction
+          )
+
+        DT::datatable(
+          display_df,
+          options = c(APP_CONSTANTS$DT_OPTIONS, list(pageLength = 8)),
+          rownames = FALSE
+        )
+      })
+
+      output$structure_volume_table <- DT::renderDT({
+        summary_df <- structure_summary()
+        if (is.null(summary_df) || !nrow(summary_df)) {
+          return(DT::datatable(
+            tibble::tibble(Message = "No structure data available"),
+            options = list(dom = "t"),
+            rownames = FALSE
+          ))
+        }
+
+        display_df <- summary_df %>%
+          dplyr::mutate(
+            linkage_rate = dplyr::if_else(is.na(.data$linked_rate), "--", scales::percent(.data$linked_rate, accuracy = 0.1)),
+            total_volume = dplyr::if_else(is.na(.data$total_volume), "--", scales::number(.data$total_volume, accuracy = 0.1)),
+            mean_volume = dplyr::if_else(is.na(.data$mean_volume), "--", scales::number(.data$mean_volume, accuracy = 0.1)),
+            median_volume = dplyr::if_else(is.na(.data$median_volume), "--", scales::number(.data$median_volume, accuracy = 0.1)),
+            latest_extraction = dplyr::if_else(is.na(.data$latest_extraction), "", format(.data$latest_extraction, "%Y-%m-%d"))
+          ) %>%
+          dplyr::select(
+            `Structure Sanitaire` = structure,
+            Samples = samples,
+            Linked = linked,
+            `Linkage Rate` = linkage_rate,
+            `Total Volume (mL)` = total_volume,
+            `Mean Volume (mL)` = mean_volume,
+            `Median Volume (mL)` = median_volume,
+            `Last Extraction` = latest_extraction
+          )
+
+        DT::datatable(
+          display_df,
+          options = c(APP_CONSTANTS$DT_OPTIONS, list(pageLength = 10)),
+          rownames = FALSE,
+          filter = "top"
+        )
+      })
+
+      output$extraction_table <- DT::renderDT({
+        df <- extraction_data()
+        if (is.null(df) || !nrow(df)) {
+          return(DT::datatable(
+            tibble::tibble(Message = "No extraction data available for the selected filters."),
+            options = list(dom = "t"),
+            rownames = FALSE
+          ))
+        }
+
+        table_df <- df %>%
+          dplyr::arrange(dplyr::desc(.data$extraction_date), .data$sample_id) %>%
+          dplyr::transmute(
+            `Sample ID (KPS)` = .data$sample_id,
+            `KPS Normalized` = dplyr::coalesce(.data$barcode_normalized, ""),
+            `Numero` = dplyr::coalesce(.data$record_number, ""),
+            `Numero Normalized` = dplyr::coalesce(.data$record_number_normalized, ""),
+            `Biobank Barcode` = dplyr::coalesce(.data$biobank_barcode, ""),
+            `Biobank Numero` = dplyr::coalesce(.data$biobank_lab_id, ""),
+            `Numero Match` = dplyr::case_when(
+              is.na(.data$numero_match) ~ "Unknown",
+              .data$numero_match ~ "Match",
+              TRUE ~ "Mismatch"
+            ),
+            `Linked to Biobank` = dplyr::case_when(
+              is.na(.data$biobank_matched) ~ "Unknown",
+              .data$biobank_matched ~ "Yes",
+              TRUE ~ "No"
+            ),
+            `Extraction Date` = dplyr::if_else(
+              is.na(.data$extraction_date),
+              "",
+              format(.data$extraction_date, "%Y-%m-%d")
+            ),
+            Technician = dplyr::coalesce(.data$technician, ""),
+            `Structure Sanitaire` = dplyr::coalesce(.data$health_structure, ""),
+            `Biobank Structure` = dplyr::coalesce(.data$biobank_health_facility, ""),
+            `État DRS` = dplyr::coalesce(.data$drs_state, ""),
+            `État Code` = dplyr::coalesce(.data$drs_state_code, ""),
+            `Évaluation` = dplyr::coalesce(.data$extract_quality, ""),
+            `Évaluation Code` = dplyr::coalesce(.data$extract_quality_code, ""),
+            `Volume (mL)` = dplyr::if_else(
+              is.na(.data$drs_volume_ml),
+              "",
+              scales::number(.data$drs_volume_ml, accuracy = 0.1)
+            ),
+            `RSC Run` = dplyr::coalesce(.data$rsc_run, ""),
+            `RSC Position` = dplyr::coalesce(.data$rsc_position, ""),
+            `Rack` = dplyr::coalesce(.data$rack, ""),
+            `Rack Row` = dplyr::coalesce(.data$rack_row, ""),
+            `Rack Column` = dplyr::coalesce(.data$rack_column, ""),
+            Remarks = dplyr::coalesce(.data$remarks, "")
+          )
+
+        DT::datatable(
+          table_df,
+          options = c(APP_CONSTANTS$DT_OPTIONS, list(pageLength = 15)),
+          rownames = FALSE,
+          filter = "top"
+        )
+      })
+    }
+  )
 }

@@ -448,26 +448,51 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "Health structure data not available"))
       }
 
-      summary_df <- summarise_by_health_structure(df)
+      summary_df <- summarise_health_structure_volume_overview(df)
 
       if (!nrow(summary_df)) {
         return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No health structure data available"))
       }
 
-      # Create grouped bar chart showing extractions and volume by health structure
-      plotly::plot_ly(summary_df, x = ~health_structure, y = ~n_extractions,
-                     type = "bar", name = "Number of Extractions",
-                     marker = list(color = "#3498DB")) %>%
-        plotly::add_trace(y = ~total_volume, name = "Total Volume (mL)",
-                         yaxis = "y2",
-                         marker = list(color = "#27AE60")) %>%
+      plot_df <- summary_df %>%
+        dplyr::select(health_structure, total_volume, median_volume, n_extractions) %>%
+        tidyr::pivot_longer(
+          cols = c(total_volume, median_volume),
+          names_to = "metric",
+          values_to = "value"
+        ) %>%
+        dplyr::filter(!is.na(value)) %>%
+        dplyr::mutate(
+          metric_label = dplyr::recode(
+            metric,
+            total_volume = "Total Volume (mL)",
+            median_volume = "Median Volume (mL)"
+          )
+        )
+
+      if (!nrow(plot_df)) {
+        return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "Volume metrics not available"))
+      }
+
+      plotly::plot_ly(
+        plot_df,
+        x = ~health_structure,
+        y = ~value,
+        color = ~metric_label,
+        type = "bar",
+        customdata = ~n_extractions,
+        hovertemplate = paste0(
+          "%{x}<br>",
+          "%{trace.name}: %{y:.1f} mL<br>",
+          "Extractions: %{customdata}<extra></extra>"
+        )
+      ) %>%
         plotly::layout(
-          title = "DRS Processing Volume by Health Structure",
+          title = "DRS Volume Metrics by Health Structure",
           xaxis = list(title = "Health Structure", tickangle = -45),
-          yaxis = list(title = "Number of Extractions", side = "left"),
-          yaxis2 = list(title = "Total Volume (mL)", overlaying = "y", side = "right"),
+          yaxis = list(title = "Volume (mL)"),
           barmode = "group",
-          legend = list(x = 0.8, y = 1),
+          legend = list(title = list(text = "Metric")),
           margin = list(b = 120)
         )
     })
@@ -592,26 +617,39 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No data available"))
       }
 
-      time_series <- summarise_health_structure_volumes_over_time(df)
+      time_series <- summarise_health_structure_volume_trends(df, time_unit = "month")
 
       if (!nrow(time_series)) {
         return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No time series data available"))
       }
 
-      # Create multi-line chart with one line per health structure
-      plotly::plot_ly(time_series, x = ~month, y = ~total_volume, color = ~health_structure,
-                     type = "scatter", mode = "lines+markers",
-                     text = ~paste0("<b>", health_structure, "</b><br>",
-                                   "Month: ", format(month, "%b %Y"), "<br>",
-                                   "Total Volume: ", round(total_volume, 1), " mL<br>",
-                                   "Extractions: ", n_extractions, "<br>",
-                                   "Median Volume: ", round(median_volume, 1), " mL<br>",
-                                   "Ready Rate: ", scales::percent(pct_ready, accuracy = 0.1)),
-                     hoverinfo = "text") %>%
+      if (all(is.na(time_series$median_volume))) {
+        time_series <- time_series %>%
+          dplyr::mutate(median_volume = mean_volume)
+      }
+
+      plotly::plot_ly(
+        time_series,
+        x = ~period,
+        y = ~median_volume,
+        color = ~health_structure,
+        type = "scatter",
+        mode = "lines+markers",
+        hovertemplate = paste0(
+          "<b>%{text}</b><br>",
+          "Month: %{x|%b %Y}<br>",
+          "Median Volume: %{y:.1f} mL<br>",
+          "Total Volume: %{customdata[0]:.1f} mL<br>",
+          "Extractions: %{customdata[1]}<br>",
+          "Ready Rate: %{customdata[2]:.1%}<extra></extra>"
+        ),
+        text = ~health_structure,
+        customdata = ~cbind(total_volume, n_extractions, pct_ready)
+      ) %>%
         plotly::layout(
-          title = "DRS Volume Collection Trend by Health Structure",
+          title = "Median DRS Volume Trend by Health Structure",
           xaxis = list(title = "Month"),
-          yaxis = list(title = "Total Volume Collected (mL)"),
+          yaxis = list(title = "Median Volume (mL)"),
           hovermode = "closest",
           legend = list(title = list(text = "Health Structure"))
         )

@@ -416,12 +416,12 @@ mod_extractions_server <- function(id) {
 
     output$kpi_total <- renderText({
       m <- metrics()
-      scales::comma(m$total)
+      if (is.null(m$total) || is.na(m$total)) "--" else scales::comma(m$total)
     })
 
     output$kpi_ready <- renderText({
       m <- metrics()
-      scales::comma(m$ready)
+      if (is.null(m$ready) || is.na(m$ready)) "--" else scales::comma(m$ready)
     })
 
     output$kpi_volume <- renderText({
@@ -441,7 +441,7 @@ mod_extractions_server <- function(id) {
 
     output$kpi_flagged <- renderText({
       m <- metrics()
-      scales::comma(m$flagged)
+      if (is.null(m$flagged) || is.na(m$flagged)) "--" else scales::comma(m$flagged)
     })
 
     output$kpi_valid_ids <- renderText({

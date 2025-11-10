@@ -233,6 +233,18 @@ load_extraction_file <- function(filepath) {
       health_structure = dplyr::if_else(is.na(health_structure) | health_structure == "", "Unspecified", health_structure),
       drs_state = dplyr::if_else(is.na(drs_state) | drs_state == "", "Unknown", drs_state),
       extract_quality = dplyr::if_else(is.na(extract_quality) | extract_quality == "", "Unknown", extract_quality),
+      drs_state_code = dplyr::case_when(
+        drs_state == "Liquid" ~ "L",
+        drs_state == "Viscous" ~ "V",
+        drs_state == "Coagulated" ~ "C",
+        TRUE ~ NA_character_
+      ),
+      extract_quality_code = dplyr::case_when(
+        extract_quality == "Clear" ~ "C",
+        extract_quality == "Foncé" ~ "F",
+        extract_quality == "Échec" ~ "E",
+        TRUE ~ NA_character_
+      ),
       flag_issue = dplyr::case_when(
         is.na(drs_volume_ml) ~ TRUE,
         drs_volume_ml < 1 ~ TRUE,
@@ -421,6 +433,13 @@ summarise_extraction_metrics <- function(df) {
     mean(x)
   }
 
+  safe_mean <- function(x) {
+    if (is.null(x)) return(NA_real_)
+    x <- x[!is.na(x)]
+    if (!length(x)) return(NA_real_)
+    mean(x)
+  }
+
   # Check if validation columns exist
   has_validation <- all(c("valid_sample_id", "duplicate_sample_id", "barcode_suspicious") %in% names(df))
 
@@ -437,6 +456,11 @@ summarise_extraction_metrics <- function(df) {
     },
     median_volume = if (has_column("drs_volume_ml")) {
       stats::median(df$drs_volume_ml, na.rm = TRUE)
+    } else {
+      NA_real_
+    },
+    mean_volume = if (has_column("drs_volume_ml")) {
+      safe_mean(df$drs_volume_ml)
     } else {
       NA_real_
     },
@@ -458,7 +482,12 @@ summarise_extraction_metrics <- function(df) {
     valid_ids = if (has_validation) sum(df$valid_sample_id, na.rm = TRUE) else NA_integer_,
     duplicates = if (has_validation) sum(df$duplicate_sample_id, na.rm = TRUE) else NA_integer_,
     suspicious_barcodes = if (has_validation) sum(df$barcode_suspicious, na.rm = TRUE) else NA_integer_,
-    validation_rate = if (has_validation) safe_pct(df$validation_status == "Valid") else NA_real_
+    validation_rate = if (has_validation) safe_pct(df$validation_status == "Valid") else NA_real_,
+    linked_total = if (has_column("biobank_matched")) {
+      sum(dplyr::coalesce(df$biobank_matched, FALSE))
+    } else {
+      NA_real_
+    }
   )
 }
 

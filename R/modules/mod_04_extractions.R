@@ -17,12 +17,12 @@ mod_extractions_ui <- function(id) {
       class = "container-fluid",
 
       layout_column_wrap(
-        width = 1/5, fixed_width = TRUE, heights_equal = "row", gap = "12px",
+        width = 1/6, fixed_width = TRUE, heights_equal = "row", gap = "12px",
         value_box(
-          title = "Linked to Biobank",
-          value = textOutput(ns("kpi_linked")),
-          showcase = icon("link"),
-          theme = "success"
+          title = "Files with Barcodes",
+          value = textOutput(ns("kpi_file_count")),
+          showcase = icon("folder-open"),
+          theme = "secondary"
         ),
         value_box(
           title = "Total Samples",
@@ -31,22 +31,28 @@ mod_extractions_ui <- function(id) {
           theme = "primary"
         ),
         value_box(
+          title = "Linked to Biobank",
+          value = textOutput(ns("kpi_linked")),
+          showcase = icon("link"),
+          theme = "success"
+        ),
+        value_box(
           title = "Mean Volume (mL)",
           value = textOutput(ns("kpi_mean_volume")),
           showcase = icon("flask"),
           theme = "info"
         ),
         value_box(
-          title = "Top RSC Run",
-          value = textOutput(ns("kpi_top_run")),
-          showcase = icon("gauge"),
-          theme = "secondary"
+          title = "Volume Range (mL)",
+          value = textOutput(ns("kpi_volume_range")),
+          showcase = icon("arrows-left-right"),
+          theme = "warning"
         ),
         value_box(
-          title = "Top RSC Position",
-          value = textOutput(ns("kpi_top_position")),
-          showcase = icon("border-all"),
-          theme = "warning"
+          title = "RSC Runs",
+          value = textOutput(ns("kpi_rsc_run_count")),
+          showcase = icon("gauge"),
+          theme = "secondary"
         )
       ),
 
@@ -164,6 +170,80 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         max(x)
       }
 
+      normalize_with_map <- function(x, mapping, default = NA_character_) {
+        if (is.null(x)) return(rep(default, length.out = 0))
+        key <- tolower(trimws(as.character(x)))
+        key[key %in% c("", "na", "n/a", "none")] <- NA_character_
+        out <- mapping[key]
+        out[is.na(out)] <- default
+        out
+      }
+
+      normalize_text <- function(x) {
+        if (is.null(x)) return(x)
+        out <- stringr::str_squish(as.character(x))
+        out[out == ""] <- NA_character_
+        out
+      }
+
+      drs_state_map <- c(
+        "liquid" = "Liquid",
+        "liquide" = "Liquid",
+        "liq" = "Liquid",
+        "l" = "Liquid",
+        "viscous" = "Viscous",
+        "visqueux" = "Viscous",
+        "visqueuse" = "Viscous",
+        "visc" = "Viscous",
+        "v" = "Viscous",
+        "coagulated" = "Coagulated",
+        "coagule" = "Coagulated",
+        "coagulé" = "Coagulated",
+        "coagulée" = "Coagulated",
+        "coag" = "Coagulated",
+        "c" = "Coagulated",
+        "unknown" = "Unknown",
+        "u" = "Unknown"
+      )
+
+      extract_quality_map <- c(
+        "clear" = "Clear",
+        "clair" = "Clear",
+        "c" = "Clear",
+        "fonce" = "Foncé",
+        "foncé" = "Foncé",
+        "foncee" = "Foncé",
+        "foncée" = "Foncé",
+        "dark" = "Foncé",
+        "f" = "Foncé",
+        "echec" = "Échec",
+        "échec" = "Échec",
+        "e" = "Échec",
+        "fail" = "Échec",
+        "unknown" = "Unknown",
+        "u" = "Unknown"
+      )
+
+      derive_drs_code <- function(state) {
+        dplyr::case_when(
+          state == "Liquid" ~ "L",
+          state == "Viscous" ~ "V",
+          state == "Coagulated" ~ "C",
+          state == "Unknown" ~ "?",
+          TRUE ~ NA_character_
+        )
+      }
+
+      derive_quality_code <- function(quality) {
+        dplyr::case_when(
+          quality == "Clear" ~ "C",
+          quality == "Foncé" ~ "F",
+          quality == "Échec" ~ "E",
+          quality == "Unknown" ~ "?",
+          TRUE ~ NA_character_
+        )
+      }
+
       extraction_data <- reactive({
         df <- filtered_data()
 
@@ -207,17 +287,51 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           linked_df$health_structure <- NA_character_
         }
 
-        if ("biobank_health_facility" %in% names(linked_df)) {
+        linked_df <- linked_df %>%
+          dplyr::mutate(
+            health_structure = normalize_text(.data$health_structure),
+            biobank_health_facility = normalize_text(.data$biobank_health_facility),
+            biobank_structure_sanitaire = normalize_text(.data$biobank_structure_sanitaire)
+          )
+
+        if ("biobank_health_facility" %in% names(linked_df) ||
+            "biobank_structure_sanitaire" %in% names(linked_df)) {
           linked_df <- linked_df %>%
             dplyr::mutate(
               health_structure = dplyr::coalesce(
                 dplyr::na_if(.data$health_structure, "Unspecified"),
-                dplyr::na_if(.data$health_structure, ""),
                 .data$biobank_health_facility,
+                .data$biobank_structure_sanitaire,
                 .data$health_structure
               )
             )
         }
+
+        linked_df <- linked_df %>%
+          dplyr::mutate(
+            drs_state_clean = normalize_with_map(
+              dplyr::coalesce(.data$drs_state, .data$drs_state_code),
+              drs_state_map,
+              default = "Unknown"
+            ),
+            extract_quality_clean = normalize_with_map(
+              dplyr::coalesce(.data$extract_quality, .data$extract_quality_code),
+              extract_quality_map,
+              default = "Unknown"
+            ),
+            drs_state_code_clean = derive_drs_code(.data$drs_state_clean),
+            extract_quality_code_clean = derive_quality_code(.data$extract_quality_clean),
+            drs_state = dplyr::coalesce(.data$drs_state_clean, .data$drs_state),
+            drs_state_code = dplyr::coalesce(.data$drs_state_code_clean, .data$drs_state_code),
+            extract_quality = dplyr::coalesce(.data$extract_quality_clean, .data$extract_quality),
+            extract_quality_code = dplyr::coalesce(.data$extract_quality_code_clean, .data$extract_quality_code)
+          ) %>%
+          dplyr::select(-dplyr::any_of(c(
+            "drs_state_clean",
+            "drs_state_code_clean",
+            "extract_quality_clean",
+            "extract_quality_code_clean"
+          )))
 
         linked_df
       })
@@ -268,10 +382,11 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
 
         df %>%
           dplyr::mutate(
+            structure = normalize_text(.data$health_structure),
             structure = dplyr::coalesce(
-              dplyr::na_if(.data$health_structure, ""),
-              dplyr::na_if(.data$health_structure, "Unspecified"),
-              .data$biobank_health_facility,
+              dplyr::na_if(structure, "Unspecified"),
+              normalize_text(.data$biobank_health_facility),
+              normalize_text(.data$biobank_structure_sanitaire),
               "Unspecified"
             )
           ) %>%
@@ -339,12 +454,42 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           dplyr::arrange(.data$week)
       })
 
-      output$kpi_linked <- renderText({
+      structure_volume_samples <- reactive({
+        df <- extraction_data()
+        if (is.null(df) || !nrow(df)) {
+          return(tibble::tibble())
+        }
+
+        df %>%
+          dplyr::mutate(
+            structure = normalize_text(.data$health_structure),
+            structure = dplyr::coalesce(
+              dplyr::na_if(structure, "Unspecified"),
+              normalize_text(.data$biobank_health_facility),
+              normalize_text(.data$biobank_structure_sanitaire),
+              structure
+            ),
+            structure = dplyr::if_else(
+              is.na(structure) | structure == "",
+              "Unspecified",
+              structure
+            ),
+            sample_date = dplyr::coalesce(.data$extraction_date, .data$biobank_date_sample),
+            sample_date = suppressWarnings(as.Date(sample_date)),
+            sample_week = suppressWarnings(lubridate::floor_date(sample_date, "week"))
+          ) %>%
+          dplyr::filter(
+            !is.na(.data$drs_volume_ml),
+            !is.na(.data$sample_week)
+          )
+      })
+
+      output$kpi_file_count <- renderText({
         m <- metrics()
-        if (is.null(m$linked_total) || is.na(m$linked_total)) {
+        if (is.null(m$files_with_barcodes) || is.na(m$files_with_barcodes)) {
           "--"
         } else {
-          scales::comma(m$linked_total)
+          scales::comma(m$files_with_barcodes)
         }
       })
 
@@ -357,6 +502,15 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         }
       })
 
+      output$kpi_linked <- renderText({
+        m <- metrics()
+        if (is.null(m$linked_total) || is.na(m$linked_total)) {
+          "--"
+        } else {
+          scales::comma(m$linked_total)
+        }
+      })
+
       output$kpi_mean_volume <- renderText({
         m <- metrics()
         if (is.null(m$mean_volume) || is.na(m$mean_volume)) {
@@ -366,21 +520,26 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         }
       })
 
-      output$kpi_top_run <- renderText({
-        usage <- rsc_usage()
-        if (is.null(usage$top_run) || is.na(usage$top_run)) {
+      output$kpi_volume_range <- renderText({
+        m <- metrics()
+        if (is.null(m$volume_min) || is.null(m$volume_max) ||
+            is.na(m$volume_min) || is.na(m$volume_max)) {
           "--"
         } else {
-          usage$top_run
+          paste0(
+            scales::number(m$volume_min, accuracy = 0.1),
+            " – ",
+            scales::number(m$volume_max, accuracy = 0.1)
+          )
         }
       })
 
-      output$kpi_top_position <- renderText({
-        usage <- rsc_usage()
-        if (is.null(usage$top_position) || is.na(usage$top_position)) {
+      output$kpi_rsc_run_count <- renderText({
+        m <- metrics()
+        if (is.null(m$rsc_run_count) || is.na(m$rsc_run_count)) {
           "--"
         } else {
-          usage$top_position
+          scales::comma(m$rsc_run_count)
         }
       })
 
@@ -494,38 +653,52 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
       })
 
       output$structure_volume_plot <- plotly::renderPlotly({
-        summary_df <- structure_summary()
-        if (is.null(summary_df) || !nrow(summary_df)) {
-          return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No structure data available"))
+        sample_df <- structure_volume_samples()
+        if (is.null(sample_df) || !nrow(sample_df)) {
+          return(plotly::plotly_empty(type = "box") %>% plotly::layout(title = "No volume data by structure"))
         }
 
-        plot_df <- summary_df %>%
+        structure_levels <- sample_df %>%
+          dplyr::count(.data$structure, sort = TRUE) %>%
+          dplyr::pull(.data$structure)
+
+        if (!length(structure_levels)) {
+          structure_levels <- unique(sample_df$structure)
+        }
+
+        plot_df <- sample_df %>%
           dplyr::mutate(
-            structure = factor(.data$structure, levels = summary_df$structure),
-            total_display = dplyr::if_else(is.na(.data$total_volume), "--", scales::number(.data$total_volume, accuracy = 0.1)),
-            mean_display = dplyr::if_else(is.na(.data$mean_volume), "--", scales::number(.data$mean_volume, accuracy = 0.1)),
-            linkage_display = dplyr::if_else(is.na(.data$linked_rate), "--", scales::percent(.data$linked_rate, accuracy = 0.1)),
+            structure = factor(.data$structure, levels = structure_levels),
             hover_text = paste0(
               "Structure: ", .data$structure, "<br>",
-              "Samples: ", scales::comma(.data$samples), "<br>",
-              "Linked: ", scales::comma(.data$linked), " (", linkage_display, ")<br>",
-              "Mean volume: ", mean_display, " mL"
+              "Semaine: ", format(.data$sample_week, "%Y-%m-%d"), "<br>",
+              "Volume: ", scales::number(.data$drs_volume_ml, accuracy = 0.1), " mL",
+              dplyr::if_else(
+                is.na(.data$sample_id) | .data$sample_id == "",
+                "",
+                paste0("<br>Sample: ", .data$sample_id)
+              )
             )
           )
 
         plotly::plot_ly(
           plot_df,
-          x = ~structure,
-          y = ~total_volume,
-          type = "bar",
+          x = ~sample_week,
+          y = ~drs_volume_ml,
+          color = ~structure,
+          type = "box",
+          boxpoints = "all",
+          jitter = 0.4,
+          pointpos = 0,
           text = ~hover_text,
           hoverinfo = "text",
-          name = "Total Volume (mL)"
+          marker = list(size = 6, opacity = 0.7)
         ) %>%
           plotly::layout(
-            xaxis = list(title = "Structure Sanitaire", tickangle = -45),
-            yaxis = list(title = "Total Volume (mL)"),
-            margin = list(b = 140)
+            xaxis = list(title = "Semaine", tickformat = "%Y-%m-%d"),
+            yaxis = list(title = "Volume (mL)"),
+            legend = list(orientation = "h", x = 0, y = 1.1),
+            boxmode = "group"
           )
       })
 

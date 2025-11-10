@@ -433,6 +433,7 @@ summarise_extraction_metrics <- function(df) {
   if (is.null(df) || !nrow(df)) {
     return(list(
       total = 0,
+      files_with_barcodes = 0,
       ready = 0,
       median_volume = NA_real_,
       pct_liquid = NA_real_,
@@ -441,7 +442,12 @@ summarise_extraction_metrics <- function(df) {
       valid_ids = 0,
       duplicates = 0,
       suspicious_barcodes = 0,
-      validation_rate = NA_real_
+      validation_rate = NA_real_,
+      mean_volume = NA_real_,
+      volume_min = NA_real_,
+      volume_max = NA_real_,
+      rsc_run_count = 0,
+      linked_total = 0
     ))
   }
 
@@ -466,8 +472,47 @@ summarise_extraction_metrics <- function(df) {
     column %in% names(df)
   }
 
+  has_source <- "source_file" %in% names(df)
+  barcode_candidates <- NULL
+  if (has_column("barcode_normalized")) {
+    barcode_candidates <- df$barcode_normalized
+  } else if (has_column("sample_id")) {
+    barcode_candidates <- df$sample_id
+  }
+  if (!is.null(barcode_candidates)) {
+    barcode_candidates <- stringr::str_trim(as.character(barcode_candidates))
+    barcode_candidates[barcode_candidates %in% c("", "NA", "na")] <- NA_character_
+  }
+
+  files_with_barcodes <- if (has_source && !is.null(barcode_candidates)) {
+    unique_files <- unique(df$source_file[!is.na(barcode_candidates) & barcode_candidates != ""])
+    length(unique_files)
+  } else if (has_source) {
+    0L
+  } else {
+    NA_integer_
+  }
+
+  volume_values <- if (has_column("drs_volume_ml")) {
+    df$drs_volume_ml[!is.na(df$drs_volume_ml)]
+  } else {
+    numeric(0)
+  }
+
+  volume_min <- if (length(volume_values)) min(volume_values) else NA_real_
+  volume_max <- if (length(volume_values)) max(volume_values) else NA_real_
+
+  rsc_runs <- if (has_column("rsc_run")) {
+    runs <- df$rsc_run
+    runs <- runs[!is.na(runs) & runs != ""]
+    length(unique(runs))
+  } else {
+    NA_integer_
+  }
+
   list(
     total = nrow(df),
+    files_with_barcodes = files_with_barcodes,
     ready = if (has_column("ready_for_freezer")) {
       sum(df$ready_for_freezer, na.rm = TRUE)
     } else {
@@ -506,7 +551,10 @@ summarise_extraction_metrics <- function(df) {
       sum(dplyr::coalesce(df$biobank_matched, FALSE))
     } else {
       NA_real_
-    }
+    },
+    volume_min = volume_min,
+    volume_max = volume_max,
+    rsc_run_count = rsc_runs
   )
 }
 

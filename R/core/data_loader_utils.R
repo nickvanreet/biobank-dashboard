@@ -316,7 +316,8 @@ analyze_data_quality <- function(df_raw) {
 #' @return Filtered data frame
 #' @export
 apply_filters <- function(df, date_range = NULL, study = "all",
-                          province = "all", zone = "all") {
+                          province = "all", zone = "all",
+                          structure = "all") {
   
   if (is.null(df) || nrow(df) == 0) return(df)
   
@@ -343,7 +344,12 @@ apply_filters <- function(df, date_range = NULL, study = "all",
   if (zone != "all" && "health_zone" %in% names(df)) {
     df <- df %>% dplyr::filter(.data$health_zone == !!zone)
   }
-  
+
+  # Structure filter
+  if (structure != "all" && "health_structure" %in% names(df)) {
+    df <- df %>% dplyr::filter(.data$health_structure == !!structure)
+  }
+
   df
 }
 
@@ -381,6 +387,16 @@ update_filter_choices <- function(session, df) {
     updateSelectInput(
       session, "filter_zone",
       choices = c("All" = "all", stats::setNames(zones, zones))
+    )
+  }
+
+  # Update structure choices
+  if ("health_structure" %in% names(df)) {
+    structures <- df$health_structure[!is.na(df$health_structure) & df$health_structure != ""]
+    structures <- sort(unique(structures))
+    updateSelectInput(
+      session, "filter_structure",
+      choices = c("All" = "all", stats::setNames(structures, structures))
     )
   }
 }

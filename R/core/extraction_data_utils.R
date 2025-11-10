@@ -381,7 +381,26 @@ load_extraction_dataset <- function(directory = config$paths$extractions_dir,
   }
 
   message(sprintf("Loading %d extraction files...", length(files)))
-  df <- purrr::map_dfr(files, load_extraction_file)
+
+  safe_loader <- purrr::safely(
+    load_extraction_file,
+    otherwise = tibble::tibble(),
+    quiet = TRUE
+  )
+
+  loaded_files <- purrr::map(files, safe_loader)
+
+  purrr::walk2(files, loaded_files, function(path, result) {
+    if (!is.null(result$error)) {
+      message(sprintf(
+        "Failed to load extraction file %s: %s",
+        basename(path),
+        result$error$message
+      ))
+    }
+  })
+
+  df <- purrr::map_dfr(loaded_files, "result")
 
   # Remove duplicates if requested
   if (remove_dups && nrow(df) > 0) {

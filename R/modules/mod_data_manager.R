@@ -29,11 +29,13 @@ mod_data_manager_ui <- function(id) {
       start = as.Date("2025-04-01"),
       end = Sys.Date()
     ),
-    selectInput(ns("filter_study"), "Study", 
+    selectInput(ns("filter_study"), "Study",
                 choices = c("All" = "all")),
-    selectInput(ns("filter_province"), "Province", 
+    selectInput(ns("filter_province"), "Province",
                 choices = c("All" = "all")),
-    selectInput(ns("filter_zone"), "Health Zone", 
+    selectInput(ns("filter_zone"), "Health Zone",
+                choices = c("All" = "all")),
+    selectInput(ns("filter_structure"), "Structure Sanitaire",
                 choices = c("All" = "all")),
     
     hr(),
@@ -215,7 +217,8 @@ mod_data_manager_server <- function(id) {
         date_range = input$date_range,
         study = input$filter_study,
         province = input$filter_province,
-        zone = input$filter_zone
+        zone = input$filter_zone,
+        structure = input$filter_structure
       )
     })
     

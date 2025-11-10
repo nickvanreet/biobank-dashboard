@@ -235,7 +235,7 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
 
   moduleServer(
     id,
-    function(input, output, session) {
+    function(input, output, session, filtered_data, biobank_data) {
 
       extraction_data <- reactive({
         df <- filtered_data()

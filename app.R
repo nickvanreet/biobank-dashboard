@@ -57,8 +57,12 @@ server <- function(input, output, session) {
     filtered_data = data$filtered_data
   )
 
-  # Extraction quality module (loads its own data set)
-  mod_extractions_server("extractions")
+  # Extraction quality module (uses shared data manager reactives)
+  mod_extractions_server(
+    "extractions",
+    filtered_data = data$filtered_data,
+    biobank_data = data$clean_data
+  )
   
   # Add other module servers here:
   # mod_transport_server("transport", filtered_data = data$filtered_data)

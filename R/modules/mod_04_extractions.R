@@ -75,6 +75,16 @@ mod_extractions_ui <- function(id) {
       layout_columns(
         col_widths = c(12), gap = "16px",
         card(
+          card_header("Mean DRS Volume Over Time"),
+          card_body_fill(
+            plotly::plotlyOutput(ns("mean_volume_timeseries_plot"), height = "360px")
+          )
+        )
+      ),
+
+      layout_columns(
+        col_widths = c(12), gap = "16px",
+        card(
           card_header("Extraction Volume Over Time"),
           card_body_fill(
             plotly::plotlyOutput(ns("volume_timeseries_plot"), height = "360px")
@@ -136,6 +146,12 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         x <- x[!is.na(x)]
         if (!length(x)) return(NA_real_)
         mean(x)
+      }
+
+      safe_sd <- function(x) {
+        x <- x[!is.na(x)]
+        if (length(x) < 2) return(NA_real_)
+        stats::sd(x)
       }
 
       safe_median <- function(x) {
@@ -388,6 +404,7 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
             samples = dplyr::n(),
             total_volume = sum(.data$drs_volume_ml, na.rm = TRUE),
             mean_volume = safe_mean(.data$drs_volume_ml),
+            sd_volume = safe_sd(.data$drs_volume_ml),
             .groups = "drop"
           ) %>%
           dplyr::arrange(.data$week)
@@ -556,6 +573,92 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
             yaxis = list(title = "Total Volume (mL)"),
             yaxis2 = list(title = "Mean Volume (mL)", overlaying = "y", side = "right"),
             barmode = "group",
+            hovermode = "x unified",
+            legend = list(orientation = "h")
+          )
+      })
+
+      output$mean_volume_timeseries_plot <- plotly::renderPlotly({
+        ts_df <- volume_timeseries()
+        if (is.null(ts_df) || !nrow(ts_df)) {
+          return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No dated extraction records"))
+        }
+
+        if (all(is.na(ts_df$mean_volume))) {
+          return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No mean volume data"))
+        }
+
+        has_sd <- any(!is.na(ts_df$sd_volume))
+        ts_df <- ts_df %>%
+          dplyr::mutate(
+            sd_hover = dplyr::if_else(
+              is.na(.data$sd_volume),
+              "SD: N/A",
+              paste0("SD: ", scales::number(.data$sd_volume, accuracy = 0.01), " mL")
+            )
+          )
+
+        error_y <- if (has_sd) {
+          list(
+            type = "data",
+            array = ts_df$sd_volume,
+            color = "#E67E22",
+            thickness = 1.5,
+            width = 4
+          )
+        } else {
+          NULL
+        }
+
+        plotly::plot_ly(
+          ts_df,
+          x = ~week,
+          y = ~mean_volume,
+          type = "scatter",
+          mode = "lines+markers",
+          name = "Mean DRS Volume (mL)",
+          line = list(color = "#E67E22"),
+          marker = list(color = "#E67E22"),
+          text = ~sd_hover,
+          hovertemplate = "Week of %{x|%Y-%m-%d}<br>Mean volume: %{y:.2f} mL<br>%{text}<extra></extra>",
+          error_y = error_y
+        ) %>%
+          plotly::layout(
+            xaxis = list(title = "Week"),
+            yaxis = list(title = "Mean DRS Volume (mL)", range = c(0, 4)),
+            shapes = list(
+              list(
+                type = "rect",
+                xref = "paper",
+                x0 = 0,
+                x1 = 1,
+                yref = "y",
+                y0 = 1.5,
+                y1 = 2,
+                fillcolor = "rgba(39, 174, 96, 0.15)",
+                line = list(color = "rgba(39, 174, 96, 0)")
+              ),
+              list(
+                type = "line",
+                xref = "paper",
+                x0 = 0,
+                x1 = 1,
+                yref = "y",
+                y0 = 1.5,
+                y1 = 1.5,
+                line = list(color = "#27AE60", dash = "dash")
+              ),
+              list(
+                type = "line",
+                xref = "paper",
+                x0 = 0,
+                x1 = 1,
+                yref = "y",
+                y0 = 2,
+                y1 = 2,
+                line = list(color = "#27AE60", dash = "dash")
+              )
+            ),
             hovermode = "x unified",
             legend = list(orientation = "h")
           )

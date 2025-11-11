@@ -609,7 +609,7 @@ suppressPackageStartupMessages({
     n_runs      = length(unique(tib$run_id)),
     n_rows      = nrow(tib),
     n_samples   = sum(!tib$is_control, na.rm = TRUE),
-    n_controls  = sum( tib$is_control, na.rm = TRUE),
+    n_controls  = sum(tib$is_control, na.rm = TRUE),
     n_pos       = sum(tib$final_category == "positive", na.rm = TRUE),
     n_neg       = sum(tib$final_category == "negative", na.rm = TRUE),
     n_fail      = sum(tib$final_category == "failed", na.rm = TRUE),

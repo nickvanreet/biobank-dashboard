@@ -385,6 +385,15 @@ suppressPackageStartupMessages({
       values_fill = 0
     )
 
+  needed_control_cols <- c(
+    "control_total_PC", "control_fail_PC", "control_pass_PC",
+    "control_total_NTC", "control_fail_NTC", "control_pass_NTC"
+  )
+  missing_control_cols <- setdiff(needed_control_cols, names(control_counts))
+  if (length(missing_control_cols)) {
+    control_counts[missing_control_cols] <- 0L
+  }
+
   ntc_reps <- replic_df %>% filter(control_type == "NTC") %>%
     mutate(ntc_min = suppressWarnings(pmin(Cq_177T, Cq_18S2, na.rm = TRUE)))
 

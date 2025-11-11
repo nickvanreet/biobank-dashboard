@@ -85,7 +85,7 @@ mod_extractions_ui <- function(id) {
       layout_columns(
         col_widths = c(12), gap = "16px",
         card(
-          card_header("Volume par Structure Sanitaire"),
+          card_header("Mean DRS Volume Over Time"),
           card_body_fill(
             plotly::plotlyOutput(ns("structure_volume_plot"), height = "360px")
           )
@@ -120,7 +120,7 @@ mod_extractions_ui <- function(id) {
       layout_columns(
         col_widths = c(12), gap = "16px",
         card(
-          card_header("Structure Sanitaire Volume Summary"),
+          card_header("Extraction Volume Summary"),
           card_body(
             DT::DTOutput(ns("structure_volume_table"))
           )
@@ -184,27 +184,6 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         out <- stringr::str_squish(as.character(x))
         out[out == ""] <- NA_character_
         out
-      }
-
-      normalize_key <- function(x) {
-        if (is.null(x)) {
-          return(rep(NA_character_, length.out = 0))
-        }
-
-        values <- stringr::str_trim(as.character(x))
-        values[values %in% c("", "NA", "N/A", "NULL")] <- NA_character_
-        values <- stringi::stri_trans_general(values, "Latin-ASCII")
-        stringr::str_to_upper(values)
-      }
-
-      format_structure_label <- function(x) {
-        if (is.null(x)) {
-          return(x)
-        }
-
-        out <- normalize_text(x)
-        out <- stringr::str_to_lower(out)
-        stringr::str_to_title(out)
       }
 
       drs_state_map <- c(
@@ -436,60 +415,29 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           return(tibble::tibble())
         }
 
-        required_structure_cols <- c(
-          "health_structure",
-          "biobank_health_facility",
-          "biobank_structure_sanitaire"
-        )
-
-        if (!any(required_structure_cols %in% names(df))) {
-          return(tibble::tibble())
-        }
-
         if (!"drs_volume_ml" %in% names(df)) {
           return(tibble::tibble())
         }
 
-        df %>%
-          dplyr::mutate(
-            structure_raw = normalize_text(.data$health_structure),
-            structure_raw = dplyr::coalesce(
-              dplyr::na_if(structure_raw, "Unspecified"),
-              normalize_text(.data$biobank_health_facility),
-              normalize_text(.data$biobank_structure_sanitaire),
-              "Unspecified"
-            ),
-            structure_key = normalize_key(structure_raw),
-            structure_label = dplyr::if_else(
-              is.na(structure_key),
-              "Unspecified",
-              format_structure_label(structure_raw)
-            )
-          ) %>%
-          dplyr::group_by(.data$structure_key, .data$structure_label) %>%
-          dplyr::summarise(
-            samples = dplyr::n(),
-            linked = sum(dplyr::coalesce(.data$biobank_matched, FALSE)),
-            total_volume = sum(.data$drs_volume_ml, na.rm = TRUE),
-            mean_volume = safe_mean(.data$drs_volume_ml),
-            median_volume = safe_median(.data$drs_volume_ml),
-            latest_extraction = safe_max_date(.data$extraction_date),
-            .groups = "drop"
-          ) %>%
-          dplyr::mutate(
-            linked_rate = dplyr::if_else(.data$samples > 0, .data$linked / .data$samples, NA_real_)
-          ) %>%
-          dplyr::arrange(dplyr::desc(.data$total_volume)) %>%
-          dplyr::select(
-            structure = .data$structure_label,
-            samples,
-            linked,
-            total_volume,
-            mean_volume,
-            median_volume,
-            latest_extraction,
-            linked_rate
-          )
+        samples <- nrow(df)
+        linked_values <- if ("biobank_matched" %in% names(df)) df$biobank_matched else logical()
+        linked <- sum(dplyr::coalesce(linked_values, FALSE))
+        volumes <- df$drs_volume_ml
+        latest_extraction <- if ("extraction_date" %in% names(df)) {
+          safe_max_date(df$extraction_date)
+        } else {
+          as.Date(NA)
+        }
+
+        tibble::tibble(
+          samples = samples,
+          linked = linked,
+          total_volume = sum(volumes, na.rm = TRUE),
+          mean_volume = safe_mean(volumes),
+          median_volume = safe_median(volumes),
+          latest_extraction = latest_extraction,
+          linked_rate = if (samples > 0) linked / samples else NA_real_
+        )
       })
 
       technician_summary <- reactive({
@@ -538,52 +486,6 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
             .groups = "drop"
           ) %>%
           dplyr::arrange(.data$week)
-      })
-
-      structure_volume_samples <- reactive({
-        df <- extraction_data()
-        if (is.null(df) || !nrow(df)) {
-          return(tibble::tibble())
-        }
-
-        required_structure_cols <- c(
-          "health_structure",
-          "biobank_health_facility",
-          "biobank_structure_sanitaire"
-        )
-
-        if (!any(required_structure_cols %in% names(df))) {
-          return(tibble::tibble())
-        }
-
-        if (!"drs_volume_ml" %in% names(df)) {
-          return(tibble::tibble())
-        }
-
-        df %>%
-          dplyr::mutate(
-            structure_raw = normalize_text(.data$health_structure),
-            structure_raw = dplyr::coalesce(
-              dplyr::na_if(structure_raw, "Unspecified"),
-              normalize_text(.data$biobank_health_facility),
-              normalize_text(.data$biobank_structure_sanitaire),
-              structure_raw,
-              "Unspecified"
-            ),
-            structure_key = normalize_key(structure_raw),
-            structure = dplyr::if_else(
-              is.na(structure_key),
-              "Unspecified",
-              format_structure_label(structure_raw)
-            ),
-            sample_date = dplyr::coalesce(.data$extraction_date, .data$biobank_date_sample),
-            sample_date = suppressWarnings(as.Date(sample_date)),
-            sample_week = suppressWarnings(lubridate::floor_date(sample_date, "week"))
-          ) %>%
-          dplyr::filter(
-            !is.na(.data$drs_volume_ml),
-            !is.na(.data$sample_week)
-          )
       })
 
       output$kpi_file_count <- renderText({
@@ -755,9 +657,9 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
       })
 
       output$structure_volume_plot <- plotly::renderPlotly({
-        sample_df <- structure_volume_samples()
-        if (is.null(sample_df) || !nrow(sample_df)) {
-          return(plotly::plotly_empty(type = "box") %>% plotly::layout(title = "No volume data by structure"))
+        ts_df <- volume_timeseries()
+        if (is.null(ts_df) || !nrow(ts_df)) {
+          return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No mean volume data available"))
         }
 
         structure_levels <- sample_df %>%
@@ -766,8 +668,8 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           dplyr::arrange(dplyr::desc(.data$mean_volume)) %>%
           dplyr::pull(.data$structure)
 
-        if (!length(structure_levels)) {
-          structure_levels <- unique(sample_df$structure)
+        if (!nrow(mean_df)) {
+          return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No mean volume data available"))
         }
 
         plot_df <- sample_df %>%
@@ -910,7 +812,7 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         summary_df <- structure_summary()
         if (is.null(summary_df) || !nrow(summary_df)) {
           return(DT::datatable(
-            tibble::tibble(Message = "No structure data available"),
+            tibble::tibble(Message = "No volume summary data available"),
             options = list(dom = "t"),
             rownames = FALSE
           ))

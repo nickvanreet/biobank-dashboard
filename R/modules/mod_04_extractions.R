@@ -588,28 +588,6 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No mean volume data"))
         }
 
-        has_sd <- any(!is.na(ts_df$sd_volume))
-        ts_df <- ts_df %>%
-          dplyr::mutate(
-            sd_hover = dplyr::if_else(
-              is.na(.data$sd_volume),
-              "SD: N/A",
-              paste0("SD: ", scales::number(.data$sd_volume, accuracy = 0.01), " mL")
-            )
-          )
-
-        error_y <- if (has_sd) {
-          list(
-            type = "data",
-            array = ts_df$sd_volume,
-            color = "#E67E22",
-            thickness = 1.5,
-            width = 4
-          )
-        } else {
-          NULL
-        }
-
         plotly::plot_ly(
           ts_df,
           x = ~week,
@@ -619,9 +597,7 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           name = "Mean DRS Volume (mL)",
           line = list(color = "#E67E22"),
           marker = list(color = "#E67E22"),
-          text = ~sd_hover,
-          hovertemplate = "Week of %{x|%Y-%m-%d}<br>Mean volume: %{y:.2f} mL<br>%{text}<extra></extra>",
-          error_y = error_y
+          hovertemplate = "Week of %{x|%Y-%m-%d}<br>Mean volume: %{y:.2f} mL<extra></extra>"
         ) %>%
           plotly::layout(
             xaxis = list(title = "Week"),

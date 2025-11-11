@@ -244,7 +244,9 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           bio_df <- biobank_data()
         }
 
-        linked_df <- if (!is.null(bio_df)) {
+        needs_linkage <- !"biobank_matched" %in% names(df)
+
+        linked_df <- if (!is.null(bio_df) && needs_linkage) {
           tryCatch(
             link_extraction_to_biobank(df, bio_df),
             error = function(e) {

@@ -238,6 +238,152 @@ mod_data_manager_server <- function(id) {
       )
     })
 
+    filtered_for_choices <- function(exclude = character()) {
+      df <- rv$clean_data
+
+      if (is.null(df) || !nrow(df)) {
+        return(df)
+      }
+
+      if (!"study" %in% exclude &&
+          !is.null(input$filter_study) &&
+          input$filter_study != "all" &&
+          "study" %in% names(df)) {
+        df <- df %>%
+          dplyr::filter(.data$study == !!input$filter_study)
+      }
+
+      if (!"province" %in% exclude &&
+          !is.null(input$filter_province) &&
+          input$filter_province != "all" &&
+          "province" %in% names(df)) {
+        df <- df %>%
+          dplyr::filter(.data$province == !!input$filter_province)
+      }
+
+      if (!"zone" %in% exclude &&
+          !is.null(input$filter_zone) &&
+          input$filter_zone != "all" &&
+          "health_zone" %in% names(df)) {
+        df <- df %>%
+          dplyr::filter(.data$health_zone == !!input$filter_zone)
+      }
+
+      if (!"structure" %in% exclude &&
+          !is.null(input$filter_structure) &&
+          input$filter_structure != "all") {
+        target <- input$filter_structure
+        candidate_cols <- intersect(
+          c(
+            "health_structure",
+            "health_facility",
+            "structure_sanitaire",
+            "biobank_health_facility",
+            "biobank_structure_sanitaire"
+          ),
+          names(df)
+        )
+
+        if (length(candidate_cols) && !is.na(target)) {
+          df <- df %>%
+            dplyr::filter(
+              dplyr::if_any(
+                dplyr::all_of(candidate_cols),
+                ~ normalize_structure_value(.x) == target
+              )
+            )
+        }
+      }
+
+      df
+    }
+
+    update_select_with_values <- function(input_id, values) {
+      current_value <- input[[input_id]]
+      values <- sort(unique(values[!is.na(values)]))
+
+      choices <- c("All" = "all")
+
+      if (length(values)) {
+        choices <- c(choices, stats::setNames(values, values))
+      }
+
+      selected <- "all"
+
+      if (!is.null(current_value)) {
+        if (identical(current_value, "all")) {
+          selected <- "all"
+        } else if (length(values) && current_value %in% values) {
+          selected <- current_value
+        }
+      }
+
+      updateSelectInput(session, input_id, choices = choices, selected = selected)
+    }
+
+    observeEvent(
+      list(
+        rv$clean_data,
+        input$filter_study,
+        input$filter_province,
+        input$filter_zone,
+        input$filter_structure
+      ),
+      {
+        df <- rv$clean_data
+
+        if (is.null(df) || !nrow(df)) {
+          return()
+        }
+
+        if ("study" %in% names(df)) {
+          df_study <- filtered_for_choices("study")
+          update_select_with_values("filter_study", df_study$study)
+        }
+
+        if ("province" %in% names(df)) {
+          df_province <- filtered_for_choices("province")
+          update_select_with_values("filter_province", df_province$province)
+        }
+
+        if ("health_zone" %in% names(df)) {
+          df_zone <- filtered_for_choices("zone")
+          update_select_with_values("filter_zone", df_zone$health_zone)
+        }
+
+        structure_df <- filtered_for_choices("structure")
+        structure_choices <- build_structure_choices(structure_df)
+
+        current_structure <- input$filter_structure
+        selected_structure <- "all"
+
+        if (!is.null(current_structure)) {
+          if (identical(current_structure, "all")) {
+            selected_structure <- "all"
+          } else if (nrow(structure_choices) && current_structure %in% structure_choices$key) {
+            selected_structure <- current_structure
+          }
+        }
+
+        structure_select_choices <- c("All" = "all")
+
+        if (nrow(structure_choices)) {
+          structure_select_choices <- c(
+            structure_select_choices,
+            stats::setNames(structure_choices$label, structure_choices$key)
+          )
+        }
+
+        updateSelectInput(
+          session,
+          "filter_structure",
+          choices = structure_select_choices,
+          selected = selected_structure
+        )
+      },
+      ignoreNULL = FALSE
+    )
+
     normalize_filter_value <- function(x) {
       if (is.null(x)) {
         return(rep(NA_character_, length.out = 0))

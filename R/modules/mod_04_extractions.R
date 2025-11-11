@@ -148,6 +148,12 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         mean(x)
       }
 
+      safe_sd <- function(x) {
+        x <- x[!is.na(x)]
+        if (length(x) < 2) return(NA_real_)
+        stats::sd(x)
+      }
+
       safe_median <- function(x) {
         x <- x[!is.na(x)]
         if (!length(x)) return(NA_real_)
@@ -398,6 +404,7 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
             samples = dplyr::n(),
             total_volume = sum(.data$drs_volume_ml, na.rm = TRUE),
             mean_volume = safe_mean(.data$drs_volume_ml),
+            sd_volume = safe_sd(.data$drs_volume_ml),
             .groups = "drop"
           ) %>%
           dplyr::arrange(.data$week)

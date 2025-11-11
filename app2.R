@@ -20,7 +20,9 @@ ui <- page_navbar(
   mod_overview_demographics_ui("overview_demographics"),
   mod_transport_ui("transport"),
   mod_extractions_ui("extractions"),
-  mod_pcr_ui("pcr")
+  mod_pcr_ui("pcr"),
+  mod_mic_pcr_ui("mic05")
+  
   
   # Add other modules here as they're developed:
   # mod_transport_ui("transport"),
@@ -71,6 +73,11 @@ server <- function(input, output, session) {
     biobank_df = data$clean_data,
     extractions_df = data$filtered_extractions,
     filters_reactive = NULL
+  )
+  
+  mod_mic_pcr_server(
+    "mic05", 
+    default_dir = "data/MIC"
   )
   
   # Add other module servers here:

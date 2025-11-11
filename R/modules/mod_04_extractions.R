@@ -761,7 +761,9 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         }
 
         structure_levels <- sample_df %>%
-          dplyr::count(.data$structure, sort = TRUE) %>%
+          dplyr::group_by(.data$structure) %>%
+          dplyr::summarise(mean_volume = safe_mean(.data$drs_volume_ml), .groups = "drop") %>%
+          dplyr::arrange(dplyr::desc(.data$mean_volume)) %>%
           dplyr::pull(.data$structure)
 
         if (!length(structure_levels)) {
@@ -773,7 +775,7 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
             structure = factor(.data$structure, levels = structure_levels),
             hover_text = paste0(
               "Structure: ", .data$structure, "<br>",
-              "Semaine: ", format(.data$sample_week, "%Y-%m-%d"), "<br>",
+              "Date: ", format(.data$sample_week, "%Y-%m-%d"), "<br>",
               "Volume: ", scales::number(.data$drs_volume_ml, accuracy = 0.1), " mL",
               dplyr::if_else(
                 is.na(.data$sample_id) | .data$sample_id == "",
@@ -785,11 +787,12 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
 
         plotly::plot_ly(
           plot_df,
-          x = ~sample_week,
+          x = ~structure,
           y = ~drs_volume_ml,
           color = ~structure,
           type = "box",
           boxpoints = "all",
+          boxmean = TRUE,
           jitter = 0.4,
           pointpos = 0,
           text = ~hover_text,
@@ -797,7 +800,12 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           marker = list(size = 6, opacity = 0.7)
         ) %>%
           plotly::layout(
-            xaxis = list(title = "Semaine", tickformat = "%Y-%m-%d"),
+            xaxis = list(
+              title = "Structure Sanitaire",
+              categoryorder = "array",
+              categoryarray = structure_levels,
+              tickangle = -45
+            ),
             yaxis = list(title = "Volume (mL)"),
             legend = list(orientation = "h", x = 0, y = 1.1),
             boxmode = "group"
@@ -917,7 +925,6 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
             latest_extraction = dplyr::if_else(is.na(.data$latest_extraction), "", format(.data$latest_extraction, "%Y-%m-%d"))
           ) %>%
           dplyr::select(
-            `Structure Sanitaire` = structure,
             Samples = samples,
             Linked = linked,
             `Linkage Rate` = linkage_rate,
@@ -970,8 +977,6 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
               format(.data$extraction_date, "%Y-%m-%d")
             ),
             Technician = dplyr::coalesce(.data$technician, ""),
-            `Structure Sanitaire` = dplyr::coalesce(.data$health_structure, ""),
-            `Biobank Structure` = dplyr::coalesce(.data$biobank_health_facility, ""),
             `État DRS` = dplyr::coalesce(.data$drs_state, ""),
             `État Code` = dplyr::coalesce(.data$drs_state_code, ""),
             `Évaluation` = dplyr::coalesce(.data$extract_quality, ""),

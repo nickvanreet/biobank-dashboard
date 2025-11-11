@@ -662,29 +662,55 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No mean volume data available"))
         }
 
-        mean_df <- ts_df %>%
-          dplyr::filter(!is.na(.data$mean_volume)) %>%
-          dplyr::arrange(.data$week)
+        structure_levels <- sample_df %>%
+          dplyr::group_by(.data$structure) %>%
+          dplyr::summarise(mean_volume = safe_mean(.data$drs_volume_ml), .groups = "drop") %>%
+          dplyr::arrange(dplyr::desc(.data$mean_volume)) %>%
+          dplyr::pull(.data$structure)
 
         if (!nrow(mean_df)) {
           return(plotly::plotly_empty(type = "bar") %>% plotly::layout(title = "No mean volume data available"))
         }
 
+        plot_df <- sample_df %>%
+          dplyr::mutate(
+            structure = factor(.data$structure, levels = structure_levels),
+            hover_text = paste0(
+              "Structure: ", .data$structure, "<br>",
+              "Date: ", format(.data$sample_week, "%Y-%m-%d"), "<br>",
+              "Volume: ", scales::number(.data$drs_volume_ml, accuracy = 0.1), " mL",
+              dplyr::if_else(
+                is.na(.data$sample_id) | .data$sample_id == "",
+                "",
+                paste0("<br>Sample: ", .data$sample_id)
+              )
+            )
+          )
+
         plotly::plot_ly(
-          mean_df,
-          x = ~week,
-          y = ~mean_volume,
-          type = "bar",
-          name = "Mean Volume (mL)",
-          marker = list(color = "#8E44AD"),
-          customdata = ~samples,
-          hovertemplate = "Week of %{x|%Y-%m-%d}<br>Mean volume: %{y:.1f} mL<br>Samples: %{customdata}<extra></extra>"
+          plot_df,
+          x = ~structure,
+          y = ~drs_volume_ml,
+          color = ~structure,
+          type = "box",
+          boxpoints = "all",
+          boxmean = TRUE,
+          jitter = 0.4,
+          pointpos = 0,
+          text = ~hover_text,
+          hoverinfo = "text",
+          marker = list(size = 6, opacity = 0.7)
         ) %>%
           plotly::layout(
-            xaxis = list(title = "Week"),
-            yaxis = list(title = "Mean Volume (mL)"),
-            showlegend = FALSE,
-            hovermode = "x unified"
+            xaxis = list(
+              title = "Structure Sanitaire",
+              categoryorder = "array",
+              categoryarray = structure_levels,
+              tickangle = -45
+            ),
+            yaxis = list(title = "Volume (mL)"),
+            legend = list(orientation = "h", x = 0, y = 1.1),
+            boxmode = "group"
           )
       })
 

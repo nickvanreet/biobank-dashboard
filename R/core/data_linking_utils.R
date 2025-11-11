@@ -98,7 +98,28 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
       )
     )
 
-  # Normalize extraction sample_id
+  biobank_barcode_value <- resolve_first_present(biobank_df, c("barcode", "code_barres_kps"))
+  biobank_lab_id_value <- resolve_first_present(biobank_df, c("lab_id", "numero"))
+  biobank_health_facility_value <- resolve_first_present(biobank_df, c("health_structure", "health_facility", "structure_sanitaire"))
+  biobank_structure_value <- resolve_first_present(biobank_df, c("structure_sanitaire", "health_structure", "health_facility"))
+  biobank_study_value <- resolve_first_present(biobank_df, c("study", "etude"))
+  biobank_province_value <- resolve_first_present(biobank_df, c("province"))
+  biobank_health_zone_value <- resolve_first_present(biobank_df, c("health_zone", "zone_de_sante"))
+  biobank_date_sample_value <- resolve_first_present(biobank_df, c("date_sample", ".__date_sample", "date_prelevement"))
+
+  biobank_prepared <- biobank_prepared %>%
+    dplyr::mutate(
+      biobank_barcode_value = biobank_barcode_value,
+      biobank_lab_id_value = biobank_lab_id_value,
+      biobank_health_facility_value = biobank_health_facility_value,
+      biobank_structure_value = biobank_structure_value,
+      biobank_study_value = biobank_study_value,
+      biobank_province_value = biobank_province_value,
+      biobank_health_zone_value = biobank_health_zone_value,
+      biobank_date_sample_value = suppressWarnings(as.Date(biobank_date_sample_value))
+    )
+
+  # Normalize extraction identifiers
   sample_barcode_raw <- resolve_first_present(
     extraction_df,
     c("sample_id", "code_barres_kps", "code_barre", "code_bar", "barcode")
@@ -114,54 +135,63 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
       sample_barcode_raw = sample_barcode_raw,
       record_number_raw = record_number_raw,
       barcode_normalized = normalize_barcode(sample_barcode_raw),
-      record_number_normalized = normalize_barcode(record_number_raw),
-      linkage_key = dplyr::coalesce(barcode_normalized, record_number_normalized)
+      record_number_normalized = normalize_barcode(record_number_raw)
     )
 
-  # Select key biobank columns for linking (include both match keys)
+  if (!"record_number" %in% names(extraction_df)) {
+    extraction_df$record_number <- record_number_raw
+  }
+
+  # Prepare lookup tables for barcode-first then numero matching
   biobank_by_barcode <- biobank_prepared %>%
     dplyr::filter(!is.na(.__barcode_norm)) %>%
     dplyr::select(
       .__match_key = .__barcode_norm,
-      biobank_barcode = dplyr::any_of(c("barcode", "code_barres_kps")),
-      biobank_lab_id = dplyr::any_of(c("lab_id", "numero")),
-      biobank_health_facility = dplyr::any_of(c("health_structure", "health_facility", "structure_sanitaire")),
-      biobank_structure_sanitaire = dplyr::any_of(c("structure_sanitaire", "health_structure", "health_facility")),
-      biobank_study = dplyr::any_of(c("study", "etude")),
-      biobank_province = dplyr::any_of(c("province")),
-      biobank_health_zone = dplyr::any_of(c("health_zone", "zone_de_sante")),
-      biobank_date_sample = dplyr::any_of(c("date_sample", ".__date_sample", "date_prelevement"))
+      biobank_barcode = biobank_barcode_value,
+      biobank_lab_id = biobank_lab_id_value,
+      biobank_health_facility = biobank_health_facility_value,
+      biobank_structure_sanitaire = biobank_structure_value,
+      biobank_study = biobank_study_value,
+      biobank_province = biobank_province_value,
+      biobank_health_zone = biobank_health_zone_value,
+      biobank_date_sample = biobank_date_sample_value
     ) %>%
-    dplyr::mutate(match_type = "barcode") %>%
+    dplyr::mutate(
+      match_type = "barcode",
+      biobank_barcode_normalized = normalize_barcode(biobank_barcode),
+      biobank_lab_id_normalized = normalize_barcode(biobank_lab_id)
+    ) %>%
     dplyr::distinct(.__match_key, .keep_all = TRUE)
 
   biobank_by_numero <- biobank_prepared %>%
     dplyr::filter(!is.na(.__numero_norm)) %>%
     dplyr::select(
       .__match_key = .__numero_norm,
-      biobank_barcode = dplyr::any_of(c("barcode", "code_barres_kps")),
-      biobank_lab_id = dplyr::any_of(c("lab_id", "numero")),
-      biobank_health_facility = dplyr::any_of(c("health_structure", "health_facility", "structure_sanitaire")),
-      biobank_structure_sanitaire = dplyr::any_of(c("structure_sanitaire", "health_structure", "health_facility")),
-      biobank_study = dplyr::any_of(c("study", "etude")),
-      biobank_province = dplyr::any_of(c("province")),
-      biobank_health_zone = dplyr::any_of(c("health_zone", "zone_de_sante")),
-      biobank_date_sample = dplyr::any_of(c("date_sample", ".__date_sample", "date_prelevement"))
+      biobank_barcode = biobank_barcode_value,
+      biobank_lab_id = biobank_lab_id_value,
+      biobank_health_facility = biobank_health_facility_value,
+      biobank_structure_sanitaire = biobank_structure_value,
+      biobank_study = biobank_study_value,
+      biobank_province = biobank_province_value,
+      biobank_health_zone = biobank_health_zone_value,
+      biobank_date_sample = biobank_date_sample_value
     ) %>%
-    dplyr::mutate(match_type = "numero") %>%
+    dplyr::mutate(
+      match_type = "numero",
+      biobank_barcode_normalized = normalize_barcode(biobank_barcode),
+      biobank_lab_id_normalized = normalize_barcode(biobank_lab_id)
+    ) %>%
     dplyr::distinct(.__match_key, .keep_all = TRUE)
 
-  # Combine both lookup tables, preferring barcode matches
-  biobank_key_cols <- dplyr::bind_rows(biobank_by_barcode, biobank_by_numero) %>%
-    dplyr::group_by(.__match_key) %>%
-    dplyr::slice_head(n = 1) %>%  # Prefer first match (barcode)
-    dplyr::ungroup()
-
-  # Perform left join on normalized key
   linked_df <- extraction_df %>%
     dplyr::left_join(
-      biobank_key_cols,
-      by = c("linkage_key" = ".__match_key")
+      biobank_by_barcode,
+      by = c("barcode_normalized" = ".__match_key")
+    ) %>%
+    dplyr::left_join(
+      biobank_by_numero,
+      by = c("record_number_normalized" = ".__match_key"),
+      suffix = c("", "_numero")
     )
 
   # Ensure required columns exist (they might not if any_of didn't find matches)
@@ -181,8 +211,75 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
     linked_df$match_type <- NA_character_
   }
 
+  numero_defaults <- list(
+    match_type_numero = NA_character_,
+    biobank_barcode_numero = NA_character_,
+    biobank_lab_id_numero = NA_character_,
+    biobank_health_facility_numero = NA_character_,
+    biobank_structure_sanitaire_numero = NA_character_,
+    biobank_study_numero = NA_character_,
+    biobank_province_numero = NA_character_,
+    biobank_health_zone_numero = NA_character_,
+    biobank_date_sample_numero = as.Date(NA),
+    biobank_barcode_normalized_numero = NA_character_,
+    biobank_lab_id_normalized_numero = NA_character_
+  )
+
+  for (col in names(numero_defaults)) {
+    if (!col %in% names(linked_df)) {
+      linked_df[[col]] <- numero_defaults[[col]]
+    }
+  }
+
   linked_df <- linked_df %>%
     dplyr::mutate(
+      matched_by_barcode = !is.na(match_type) & match_type == "barcode" & !is.na(biobank_barcode),
+      matched_by_numero = !matched_by_barcode & !is.na(match_type_numero) & match_type_numero == "numero" & !is.na(biobank_lab_id_numero),
+      biobank_barcode = dplyr::coalesce(
+        biobank_barcode,
+        dplyr::if_else(matched_by_numero, biobank_barcode_numero, NA_character_)
+      ),
+      biobank_lab_id = dplyr::coalesce(
+        biobank_lab_id,
+        dplyr::if_else(matched_by_numero, biobank_lab_id_numero, NA_character_)
+      ),
+      biobank_health_facility = dplyr::coalesce(
+        biobank_health_facility,
+        dplyr::if_else(matched_by_numero, biobank_health_facility_numero, NA_character_)
+      ),
+      biobank_structure_sanitaire = dplyr::coalesce(
+        biobank_structure_sanitaire,
+        dplyr::if_else(matched_by_numero, biobank_structure_sanitaire_numero, NA_character_)
+      ),
+      biobank_study = dplyr::coalesce(
+        biobank_study,
+        dplyr::if_else(matched_by_numero, biobank_study_numero, NA_character_)
+      ),
+      biobank_province = dplyr::coalesce(
+        biobank_province,
+        dplyr::if_else(matched_by_numero, biobank_province_numero, NA_character_)
+      ),
+      biobank_health_zone = dplyr::coalesce(
+        biobank_health_zone,
+        dplyr::if_else(matched_by_numero, biobank_health_zone_numero, NA_character_)
+      ),
+      biobank_date_sample = dplyr::coalesce(
+        biobank_date_sample,
+        dplyr::if_else(matched_by_numero, biobank_date_sample_numero, as.Date(NA))
+      ),
+      biobank_barcode_normalized = dplyr::coalesce(
+        biobank_barcode_normalized,
+        dplyr::if_else(matched_by_numero, biobank_barcode_normalized_numero, NA_character_)
+      ),
+      biobank_lab_id_normalized = dplyr::coalesce(
+        biobank_lab_id_normalized,
+        dplyr::if_else(matched_by_numero, biobank_lab_id_normalized_numero, NA_character_)
+      ),
+      match_type = dplyr::case_when(
+        matched_by_barcode ~ "barcode",
+        matched_by_numero ~ "numero",
+        TRUE ~ NA_character_
+      ),
       biobank_structure_sanitaire = dplyr::coalesce(
         biobank_structure_sanitaire,
         biobank_health_facility
@@ -191,8 +288,6 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
         biobank_health_facility,
         biobank_structure_sanitaire
       ),
-      biobank_barcode_normalized = normalize_barcode(biobank_barcode),
-      biobank_lab_id_normalized = normalize_barcode(biobank_lab_id),
       barcode_match = dplyr::case_when(
         is.na(barcode_normalized) | is.na(biobank_barcode_normalized) ~ NA,
         TRUE ~ barcode_normalized == biobank_barcode_normalized
@@ -202,17 +297,15 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
         TRUE ~ record_number_normalized == biobank_lab_id_normalized
       ),
       biobank_matched = dplyr::case_when(
-        barcode_match == TRUE ~ TRUE,
+        match_type == "barcode" & barcode_match == TRUE ~ TRUE,
         match_type == "numero" & numero_match == TRUE ~ TRUE,
         TRUE ~ FALSE
       ),
       biobank_match_type = dplyr::case_when(
-        barcode_match == TRUE ~ "barcode",
+        match_type == "barcode" & barcode_match == TRUE ~ "barcode",
         match_type == "numero" & numero_match == TRUE ~ "numero",
         TRUE ~ NA_character_
       ),
-
-      # Check if health structures match (normalize for comparison)
       health_structure_normalized = normalize_structure_value(health_structure),
       biobank_structure_normalized = normalize_structure_value(biobank_health_facility),
       health_structure_match = dplyr::case_when(
@@ -221,8 +314,25 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
         health_structure_normalized == biobank_structure_normalized ~ TRUE,
         TRUE ~ FALSE
       )
-    ) %>%
-    dplyr::select(-match_type, -linkage_key)
+    )
+
+  linked_df <- linked_df %>%
+    dplyr::select(-dplyr::any_of(c(
+      "match_type_numero",
+      "biobank_barcode_numero",
+      "biobank_lab_id_numero",
+      "biobank_health_facility_numero",
+      "biobank_structure_sanitaire_numero",
+      "biobank_study_numero",
+      "biobank_province_numero",
+      "biobank_health_zone_numero",
+      "biobank_date_sample_numero",
+      "biobank_barcode_normalized_numero",
+      "biobank_lab_id_normalized_numero",
+      "matched_by_barcode",
+      "matched_by_numero"
+    ))) %>%
+    dplyr::select(-dplyr::any_of(c("match_type")))
 
   linked_df <- linked_df %>%
     dplyr::select(-dplyr::any_of(c(

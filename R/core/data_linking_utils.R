@@ -37,6 +37,23 @@ normalize_barcode <- function(barcode) {
 #' @export
 link_extraction_to_biobank <- function(extraction_df, biobank_df) {
 
+  resolve_first_present <- function(df, columns) {
+    present <- intersect(columns, names(df))
+    if (!length(present)) {
+      return(rep(NA_character_, nrow(df)))
+    }
+
+    out <- rep(NA_character_, nrow(df))
+    for (col in present) {
+      values <- as.character(df[[col]])
+      values[values == ""] <- NA_character_
+      needs_value <- is.na(out)
+      out[needs_value] <- values[needs_value]
+    }
+
+    out
+  }
+
   if (is.null(extraction_df) || !nrow(extraction_df)) {
     message("No extraction data to link")
     return(tibble::tibble())
@@ -82,10 +99,22 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
     )
 
   # Normalize extraction sample_id
+  sample_barcode_raw <- resolve_first_present(
+    extraction_df,
+    c("sample_id", "code_barres_kps", "code_barre", "code_bar", "barcode")
+  )
+
+  record_number_raw <- resolve_first_present(
+    extraction_df,
+    c("record_number", "numero", "lab_id", "sample_numero")
+  )
+
   extraction_df <- extraction_df %>%
     dplyr::mutate(
-      barcode_normalized = normalize_barcode(sample_id),
-      record_number_normalized = normalize_barcode(record_number),
+      sample_barcode_raw = sample_barcode_raw,
+      record_number_raw = record_number_raw,
+      barcode_normalized = normalize_barcode(sample_barcode_raw),
+      record_number_normalized = normalize_barcode(record_number_raw),
       linkage_key = dplyr::coalesce(barcode_normalized, record_number_normalized)
     )
 
@@ -162,14 +191,25 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
         biobank_health_facility,
         biobank_structure_sanitaire
       ),
-      # Flag if matched
-      biobank_matched = !is.na(biobank_barcode) | !is.na(biobank_lab_id),
-      biobank_match_type = dplyr::if_else(biobank_matched, match_type, NA_character_),
+      biobank_barcode_normalized = normalize_barcode(biobank_barcode),
       biobank_lab_id_normalized = normalize_barcode(biobank_lab_id),
+      barcode_match = dplyr::case_when(
+        is.na(barcode_normalized) | is.na(biobank_barcode_normalized) ~ NA,
+        TRUE ~ barcode_normalized == biobank_barcode_normalized
+      ),
       numero_match = dplyr::case_when(
-        !biobank_matched ~ NA,
         is.na(record_number_normalized) | is.na(biobank_lab_id_normalized) ~ NA,
         TRUE ~ record_number_normalized == biobank_lab_id_normalized
+      ),
+      biobank_matched = dplyr::case_when(
+        barcode_match == TRUE ~ TRUE,
+        match_type == "numero" & numero_match == TRUE ~ TRUE,
+        TRUE ~ FALSE
+      ),
+      biobank_match_type = dplyr::case_when(
+        barcode_match == TRUE ~ "barcode",
+        match_type == "numero" & numero_match == TRUE ~ "numero",
+        TRUE ~ NA_character_
       ),
 
       # Check if health structures match (normalize for comparison)
@@ -198,7 +238,11 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
     linked_df$health_structure <- dplyr::coalesce(
       dplyr::na_if(linked_df$health_structure, "Unspecified"),
       dplyr::na_if(linked_df$health_structure, ""),
-      linked_df$biobank_health_facility,
+      dplyr::if_else(
+        linked_df$biobank_matched,
+        linked_df$biobank_health_facility,
+        NA_character_
+      ),
       linked_df$health_structure
     )
   }

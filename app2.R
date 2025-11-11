@@ -76,8 +76,9 @@ server <- function(input, output, session) {
 #  )
   
   mod_mic_pcr_server(
-    "mic05", 
-    default_dir = "data/MIC"
+    "mic05",
+    default_dir = "data/MIC",
+    filtered_biobank = data$filtered_data
   )
   
   # Add other module servers here:

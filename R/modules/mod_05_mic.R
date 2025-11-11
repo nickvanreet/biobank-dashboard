@@ -510,8 +510,9 @@ suppressPackageStartupMessages({
 
   samples_df %>%
     filter(!isTRUE(is_control)) %>%
+    rowwise() %>%
     mutate(
-      anomaly_flags = purrr::map_chr(seq_len(n()), function(idx) {
+      anomaly_flags = {
         flags <- character()
         if (!is.na(late_pos_flag) && late_pos_flag) flags <- c(flags, "Late positive")
         if (!is.na(replicate_dispersion_flag) && replicate_dispersion_flag) flags <- c(flags, "High replicate spread")
@@ -520,8 +521,9 @@ suppressPackageStartupMessages({
         if (!is.na(missing_targets) && missing_targets > 0) flags <- c(flags, "Missing targets")
         if (!length(flags)) return(NA_character_)
         paste(unique(flags), collapse = ", ")
-      })
+      }
     ) %>%
+    ungroup() %>%
     filter(!is.na(anomaly_flags))
 }
 

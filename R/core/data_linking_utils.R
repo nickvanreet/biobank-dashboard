@@ -173,14 +173,22 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
       ),
 
       # Check if health structures match (normalize for comparison)
+      health_structure_normalized = normalize_structure_value(health_structure),
+      biobank_structure_normalized = normalize_structure_value(biobank_health_facility),
       health_structure_match = dplyr::case_when(
         !biobank_matched ~ NA,
-        is.na(health_structure) | is.na(biobank_health_facility) ~ NA,
-        tolower(trimws(health_structure)) == tolower(trimws(biobank_health_facility)) ~ TRUE,
+        is.na(health_structure_normalized) | is.na(biobank_structure_normalized) ~ NA,
+        health_structure_normalized == biobank_structure_normalized ~ TRUE,
         TRUE ~ FALSE
       )
     ) %>%
-    dplyr::select(-match_type, -linkage_key)  # Remove temporary column
+    dplyr::select(-match_type, -linkage_key)
+
+  linked_df <- linked_df %>%
+    dplyr::select(-dplyr::any_of(c(
+      "health_structure_normalized",
+      "biobank_structure_normalized"
+    )))
 
   if (!"health_structure" %in% names(linked_df)) {
     linked_df$health_structure <- NA_character_

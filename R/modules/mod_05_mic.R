@@ -511,16 +511,40 @@ suppressPackageStartupMessages({
   samples_df %>%
     filter(!isTRUE(is_control)) %>%
     mutate(
-      anomaly_flags = purrr::map_chr(seq_len(n()), function(idx) {
-        flags <- character()
-        if (!is.na(late_pos_flag) && late_pos_flag) flags <- c(flags, "Late positive")
-        if (!is.na(replicate_dispersion_flag) && replicate_dispersion_flag) flags <- c(flags, "High replicate spread")
-        if (!is.na(call_basis) && call_basis %in% c("DNA", "RNA")) flags <- c(flags, "Discordant DNA/RNA")
-        if (!is.na(RNP_grade) && RNP_grade %in% c("Poor", "No RNA")) flags <- c(flags, "Poor preservation")
-        if (!is.na(missing_targets) && missing_targets > 0) flags <- c(flags, "Missing targets")
-        if (!length(flags)) return(NA_character_)
-        paste(unique(flags), collapse = ", ")
-      })
+      anomaly_flags = purrr::pmap_chr(
+        list(
+          late_pos_flag = late_pos_flag,
+          replicate_dispersion_flag = replicate_dispersion_flag,
+          call_basis = call_basis,
+          RNP_grade = RNP_grade,
+          missing_targets = missing_targets
+        ),
+        function(late_pos_flag, replicate_dispersion_flag, call_basis, RNP_grade, missing_targets) {
+          flags <- character()
+
+          if (isTRUE(late_pos_flag)) {
+            flags <- c(flags, "Late positive")
+          }
+          if (isTRUE(replicate_dispersion_flag)) {
+            flags <- c(flags, "High replicate spread")
+          }
+          if (!is.na(call_basis) && call_basis %in% c("DNA", "RNA")) {
+            flags <- c(flags, "Discordant DNA/RNA")
+          }
+          if (!is.na(RNP_grade) && RNP_grade %in% c("Poor", "No RNA")) {
+            flags <- c(flags, "Poor preservation")
+          }
+          if (!is.na(missing_targets) && missing_targets > 0) {
+            flags <- c(flags, "Missing targets")
+          }
+
+          if (!length(flags)) {
+            return(NA_character_)
+          }
+
+          paste(unique(flags), collapse = ", ")
+        }
+      )
     ) %>%
     filter(!is.na(anomaly_flags))
 }

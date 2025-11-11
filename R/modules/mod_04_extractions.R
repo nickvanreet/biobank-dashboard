@@ -287,7 +287,20 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
 
         needs_link <- TRUE
         if ("biobank_matched" %in% names(df)) {
-          if (any(!is.na(df$biobank_matched))) {
+          if (any(df$biobank_matched %in% TRUE, na.rm = TRUE)) {
+            needs_link <- FALSE
+          }
+        }
+
+        if (needs_link &&
+            ("biobank_health_facility" %in% names(df) ||
+             "biobank_structure_sanitaire" %in% names(df))) {
+          has_facility <- c(
+            if ("biobank_health_facility" %in% names(df)) df$biobank_health_facility else NULL,
+            if ("biobank_structure_sanitaire" %in% names(df)) df$biobank_structure_sanitaire else NULL
+          )
+
+          if (length(has_facility) && any(!is.na(has_facility) & has_facility != "")) {
             needs_link <- FALSE
           }
         }

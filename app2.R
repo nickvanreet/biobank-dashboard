@@ -21,7 +21,7 @@ ui <- page_navbar(
   mod_transport_ui("transport"),
   mod_extractions_ui("extractions"),
 #  mod_pcr_ui("pcr"),
-  mod_mic_pcr_ui("mic05")
+#  mod_mic_pcr_ui("mic05")
   
   
   # Add other modules here as they're developed:
@@ -75,11 +75,11 @@ server <- function(input, output, session) {
 #    filters_reactive = NULL
 #  )
   
-  mod_mic_pcr_server(
-    "mic05",
-    default_dir = "data/MIC",
-    filtered_biobank = data$filtered_data
-  )
+#  mod_mic_pcr_server(
+#    "mic05",
+#    default_dir = "data/MIC",
+#    filtered_biobank = data$filtered_data
+#  )
   
   # Add other module servers here:
   # mod_transport_server("transport", filtered_data = data$filtered_data)

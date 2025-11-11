@@ -75,6 +75,16 @@ mod_extractions_ui <- function(id) {
       layout_columns(
         col_widths = c(12), gap = "16px",
         card(
+          card_header("Mean DRS Volume Over Time"),
+          card_body_fill(
+            plotly::plotlyOutput(ns("mean_volume_timeseries_plot"), height = "360px")
+          )
+        )
+      ),
+
+      layout_columns(
+        col_widths = c(12), gap = "16px",
+        card(
           card_header("Extraction Volume Over Time"),
           card_body_fill(
             plotly::plotlyOutput(ns("volume_timeseries_plot"), height = "360px")
@@ -556,6 +566,68 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
             yaxis = list(title = "Total Volume (mL)"),
             yaxis2 = list(title = "Mean Volume (mL)", overlaying = "y", side = "right"),
             barmode = "group",
+            hovermode = "x unified",
+            legend = list(orientation = "h")
+          )
+      })
+
+      output$mean_volume_timeseries_plot <- plotly::renderPlotly({
+        ts_df <- volume_timeseries()
+        if (is.null(ts_df) || !nrow(ts_df)) {
+          return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No dated extraction records"))
+        }
+
+        if (all(is.na(ts_df$mean_volume))) {
+          return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No mean volume data"))
+        }
+
+        plotly::plot_ly(
+          ts_df,
+          x = ~week,
+          y = ~mean_volume,
+          type = "scatter",
+          mode = "lines+markers",
+          name = "Mean DRS Volume (mL)",
+          line = list(color = "#E67E22"),
+          marker = list(color = "#E67E22"),
+          hovertemplate = "Week of %{x|%Y-%m-%d}<br>Mean volume: %{y:.2f} mL<extra></extra>"
+        ) %>%
+          plotly::layout(
+            xaxis = list(title = "Week"),
+            yaxis = list(title = "Mean DRS Volume (mL)", range = c(0, 4)),
+            shapes = list(
+              list(
+                type = "rect",
+                xref = "paper",
+                x0 = 0,
+                x1 = 1,
+                yref = "y",
+                y0 = 1.5,
+                y1 = 2,
+                fillcolor = "rgba(39, 174, 96, 0.15)",
+                line = list(color = "rgba(39, 174, 96, 0)")
+              ),
+              list(
+                type = "line",
+                xref = "paper",
+                x0 = 0,
+                x1 = 1,
+                yref = "y",
+                y0 = 1.5,
+                y1 = 1.5,
+                line = list(color = "#27AE60", dash = "dash")
+              ),
+              list(
+                type = "line",
+                xref = "paper",
+                x0 = 0,
+                x1 = 1,
+                yref = "y",
+                y0 = 2,
+                y1 = 2,
+                line = list(color = "#27AE60", dash = "dash")
+              )
+            ),
             hovermode = "x unified",
             legend = list(orientation = "h")
           )

@@ -317,6 +317,28 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           df
         }
 
+        # Ensure downstream columns exist even when linkage isn't available
+        default_columns <- list(
+          biobank_matched = NA,
+          biobank_match_type = NA_character_,
+          biobank_barcode = NA_character_,
+          biobank_lab_id = NA_character_,
+          biobank_health_facility = NA_character_,
+          biobank_structure_sanitaire = NA_character_,
+          biobank_study = NA_character_,
+          biobank_province = NA_character_,
+          biobank_health_zone = NA_character_,
+          biobank_date_sample = as.Date(NA),
+          drs_volume_ml = NA_real_,
+          extraction_date = as.Date(NA)
+        )
+
+        for (col in names(default_columns)) {
+          if (!col %in% names(linked_df)) {
+            linked_df[[col]] <- default_columns[[col]]
+          }
+        }
+
         if (!"health_structure" %in% names(linked_df)) {
           linked_df$health_structure <- NA_character_
         }
@@ -414,6 +436,20 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           return(tibble::tibble())
         }
 
+        required_structure_cols <- c(
+          "health_structure",
+          "biobank_health_facility",
+          "biobank_structure_sanitaire"
+        )
+
+        if (!any(required_structure_cols %in% names(df))) {
+          return(tibble::tibble())
+        }
+
+        if (!"drs_volume_ml" %in% names(df)) {
+          return(tibble::tibble())
+        }
+
         df %>%
           dplyr::mutate(
             structure_raw = normalize_text(.data$health_structure),
@@ -507,6 +543,20 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
       structure_volume_samples <- reactive({
         df <- extraction_data()
         if (is.null(df) || !nrow(df)) {
+          return(tibble::tibble())
+        }
+
+        required_structure_cols <- c(
+          "health_structure",
+          "biobank_health_facility",
+          "biobank_structure_sanitaire"
+        )
+
+        if (!any(required_structure_cols %in% names(df))) {
+          return(tibble::tibble())
+        }
+
+        if (!"drs_volume_ml" %in% names(df)) {
           return(tibble::tibble())
         }
 

@@ -320,18 +320,18 @@ mod_data_manager_server <- function(id) {
 
       # Structure filter (fall back across known columns)
       if (!is.null(input$filter_structure) && input$filter_structure != "all") {
-        target <- normalize_filter_value(input$filter_structure)
+        target <- normalize_structure_value(input$filter_structure)
         candidate_cols <- intersect(
           c("health_structure", "biobank_health_facility", "structure_sanitaire", "biobank_structure_sanitaire"),
           names(df)
         )
 
-        if (length(candidate_cols)) {
+        if (length(candidate_cols) && !is.na(target)) {
           df <- df %>%
             dplyr::filter(
               dplyr::if_any(
                 dplyr::all_of(candidate_cols),
-                ~ normalize_filter_value(.x) == target
+                ~ normalize_structure_value(.x) == target
               )
             )
         }

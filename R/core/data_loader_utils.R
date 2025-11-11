@@ -318,7 +318,7 @@ analyze_data_quality <- function(df_raw) {
 apply_filters <- function(df, date_range = NULL, study = "all",
                           province = "all", zone = "all",
                           structure = "all") {
-  
+
   if (is.null(df) || nrow(df) == 0) return(df)
   
   # Date filter
@@ -346,20 +346,109 @@ apply_filters <- function(df, date_range = NULL, study = "all",
   }
 
   # Structure filter
-  if (structure != "all") {
-    structure_col <- NULL
-    if ("health_structure" %in% names(df)) {
-      structure_col <- "health_structure"
-    } else if ("health_facility" %in% names(df)) {
-      structure_col <- "health_facility"
-    }
+  if (!is.null(structure) && structure != "all") {
+    target <- normalize_structure_value(structure)
 
-    if (!is.null(structure_col)) {
-      df <- df %>% dplyr::filter(.data[[structure_col]] == !!structure)
+    if (!is.na(target)) {
+      candidate_cols <- intersect(
+        c(
+          "health_structure",
+          "health_facility",
+          "structure_sanitaire",
+          "biobank_health_facility",
+          "biobank_structure_sanitaire"
+        ),
+        names(df)
+      )
+
+      if (length(candidate_cols)) {
+        df <- df %>%
+          dplyr::filter(
+            dplyr::if_any(
+              dplyr::all_of(candidate_cols),
+              ~ normalize_structure_value(.x) == target
+            )
+          )
+      }
     }
   }
 
   df
+}
+
+# -----------------------------------------------------------------------------
+#' Normalize structure names to a canonical key
+#' @param x Character vector of structure names
+#' @return Uppercase character vector suitable for equality checks
+#' @export
+normalize_structure_value <- function(x) {
+  if (is.null(x)) {
+    return(rep(NA_character_, length.out = 0))
+  }
+
+  values <- stringr::str_trim(as.character(x))
+  values <- stringr::str_replace_all(values, "\\s+", " ")
+  values <- stringi::stri_trans_general(values, "Latin-ASCII")
+  values <- stringr::str_to_upper(values)
+  values[values %in% c("", "NA", "N/A", "NONE", "NULL")] <- NA_character_
+  values
+}
+
+# -----------------------------------------------------------------------------
+#' Format raw structure labels for display
+#' @param x Character vector of structure names
+#' @return Trimmed character vector with empty values set to NA
+format_structure_label <- function(x) {
+  if (is.null(x)) {
+    return(rep(NA_character_, length.out = 0))
+  }
+
+  labels <- stringr::str_squish(as.character(x))
+  labels[labels == ""] <- NA_character_
+  labels
+}
+
+# -----------------------------------------------------------------------------
+#' Build unique structure choices from available columns
+#' @param df Data frame containing structure columns
+#' @return Tibble with key/label pairs for the filter
+build_structure_choices <- function(df) {
+  candidate_cols <- intersect(
+    c(
+      "health_structure",
+      "health_facility",
+      "structure_sanitaire",
+      "biobank_health_facility",
+      "biobank_structure_sanitaire"
+    ),
+    names(df)
+  )
+
+  if (!length(candidate_cols)) {
+    return(tibble::tibble())
+  }
+
+  values <- unlist(lapply(candidate_cols, function(col) df[[col]]), use.names = FALSE)
+
+  tibble::tibble(
+    key = normalize_structure_value(values),
+    label = format_structure_label(values)
+  ) %>%
+    dplyr::filter(!is.na(.data$key)) %>%
+    dplyr::group_by(.data$key) %>%
+    dplyr::summarise(
+      label = {
+        valid <- label[!is.na(label)]
+        if (!length(valid)) {
+          NA_character_
+        } else {
+          valid[which.max(nchar(valid))]
+        }
+      },
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(label = dplyr::coalesce(.data$label, .data$key)) %>%
+    dplyr::arrange(.data$label)
 }
 
 # -----------------------------------------------------------------------------
@@ -400,21 +489,28 @@ update_filter_choices <- function(session, df) {
   }
 
   # Update structure choices
-  structure_values <- NULL
-  if ("health_structure" %in% names(df)) {
-    structure_values <- df$health_structure
-  } else if ("health_facility" %in% names(df)) {
-    structure_values <- df$health_facility
-  } else if ("structure_sanitaire" %in% names(df)) {
-    structure_values <- df$structure_sanitaire
-  }
+  structure_choices <- build_structure_choices(df)
 
-  if (!is.null(structure_values)) {
-    structures <- structure_values[!is.na(structure_values) & structure_values != ""]
-    structures <- sort(unique(structures))
+  if (nrow(structure_choices)) {
+    current_value <- session$input[["filter_structure"]]
+    selected_value <- "all"
+
+    if (!is.null(current_value) && current_value != "all") {
+      normalized <- normalize_structure_value(current_value)
+      if (!is.na(normalized) && normalized %in% structure_choices$key) {
+        selected_value <- normalized
+      }
+    } else if (identical(current_value, "all")) {
+      selected_value <- "all"
+    }
+
     updateSelectInput(
       session, "filter_structure",
-      choices = c("All" = "all", stats::setNames(structures, structures))
+      choices = c(
+        "All" = "all",
+        stats::setNames(structure_choices$label, structure_choices$key)
+      ),
+      selected = selected_value
     )
   }
 }

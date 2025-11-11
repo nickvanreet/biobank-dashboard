@@ -155,14 +155,6 @@ suppressPackageStartupMessages({
   samples_df <- tibble::as_tibble(samples_df)
   replic_df <- tibble::as_tibble(replic_df)
 
-  if (!"is_control" %in% names(samples_df)) samples_df$is_control <- rep_len(FALSE, nrow(samples_df))
-  if (!"control_type" %in% names(samples_df)) samples_df$control_type <- rep_len(NA_character_, nrow(samples_df))
-  if (!"final_category" %in% names(samples_df)) samples_df$final_category <- rep_len(NA_character_, nrow(samples_df))
-  if (!"final_decision" %in% names(samples_df)) samples_df$final_decision <- rep_len(NA_character_, nrow(samples_df))
-
-  if (!"is_control" %in% names(replic_df)) replic_df$is_control <- rep_len(FALSE, nrow(replic_df))
-  if (!"control_type" %in% names(replic_df)) replic_df$control_type <- rep_len(NA_character_, nrow(replic_df))
-
   if (!nrow(samples_df)) {
     if (!"sample_key" %in% names(samples_df) && nrow(samples_df)) {
       samples_df$sample_key <- .mic_make_sample_key(samples_df$run_id, samples_df$Name)
@@ -179,8 +171,7 @@ suppressPackageStartupMessages({
                                                  c("Barcode", "barcode", "SampleID", "Sample_Id", "Name")),
       sample_lab_norm = .mic_normalize_first(cur_data_all(),
                                              c("LabID", "lab_id", "Lab_Id", "numero", "record_number", "Name")),
-      sample_key = .mic_make_sample_key(run_id, Name, sample_barcode_norm, sample_lab_norm),
-      .control_flag = dplyr::coalesce(is_control, FALSE)
+      sample_key = .mic_make_sample_key(run_id, Name, sample_barcode_norm, sample_lab_norm)
     )
 
   replic_df <- replic_df %>%
@@ -189,21 +180,16 @@ suppressPackageStartupMessages({
                                                  c("Barcode", "barcode", "SampleID", "Name")),
       sample_lab_norm = .mic_normalize_first(cur_data_all(),
                                              c("LabID", "lab_id", "Lab_Id", "numero", "record_number", "Name")),
-      sample_key = .mic_make_sample_key(run_id, Name, sample_barcode_norm, sample_lab_norm),
-      .control_flag = dplyr::coalesce(is_control, FALSE)
+      sample_key = .mic_make_sample_key(run_id, Name, sample_barcode_norm, sample_lab_norm)
     )
 
   if (is.null(biobank_df) || !nrow(biobank_df)) {
-    samples_df <- dplyr::select(samples_df, -dplyr::any_of(".control_flag"))
-    replic_df <- dplyr::select(replic_df, -dplyr::any_of(".control_flag"))
     return(list(samples = samples_df, replicates = replic_df, biobank_lookup = tibble()))
   }
 
   lookup <- .mic_prepare_biobank_lookup(biobank_df)
 
   if (!nrow(lookup)) {
-    samples_df <- dplyr::select(samples_df, -dplyr::any_of(".control_flag"))
-    replic_df <- dplyr::select(replic_df, -dplyr::any_of(".control_flag"))
     return(list(samples = samples_df, replicates = replic_df, biobank_lookup = tibble()))
   }
 
@@ -212,19 +198,18 @@ suppressPackageStartupMessages({
   samples_df <- samples_df %>%
     mutate(
       keep_sample = dplyr::case_when(
-        .control_flag ~ TRUE,
+        isTRUE(is_control) ~ TRUE,
         ( (!is.na(sample_barcode_norm) & sample_barcode_norm %in% filter_keys) |
             (!is.na(sample_lab_norm) & sample_lab_norm %in% filter_keys) ) ~ TRUE,
         TRUE ~ FALSE
       )
     ) %>%
     filter(keep_sample) %>%
-    select(-keep_sample, -.control_flag)
+    select(-keep_sample)
 
   keep_keys <- unique(samples_df$sample_key)
   replic_df <- replic_df %>%
-    filter(is.na(sample_key) | sample_key %in% keep_keys) %>%
-    select(-dplyr::any_of(".control_flag"))
+    filter(is.na(sample_key) | sample_key %in% keep_keys)
 
   meta_barcode <- lookup %>%
     filter(join_type == "barcode") %>%
@@ -277,10 +262,6 @@ suppressPackageStartupMessages({
 
   thresholds <- modifyList(.mic_default_thresholds(), thresholds %||% list())
 
-  if (!"is_control" %in% names(samples_df)) samples_df$is_control <- rep_len(FALSE, nrow(samples_df))
-  if (!"final_category" %in% names(samples_df)) samples_df$final_category <- rep_len(NA_character_, nrow(samples_df))
-  if (!"final_decision" %in% names(samples_df)) samples_df$final_decision <- rep_len(NA_character_, nrow(samples_df))
-
   rep_metrics <- replic_df %>%
     mutate(sample_key = dplyr::coalesce(sample_key, .mic_make_sample_key(run_id, Name, sample_barcode_norm, sample_lab_norm))) %>%
     group_by(sample_key) %>%
@@ -304,13 +285,12 @@ suppressPackageStartupMessages({
     mutate(sample_key = dplyr::coalesce(sample_key, .mic_make_sample_key(run_id, Name, sample_barcode_norm, sample_lab_norm))) %>%
     left_join(rep_metrics, by = "sample_key") %>%
     mutate(
-      .control_flag = dplyr::coalesce(is_control, FALSE),
       Cq_gap_TNA = if (all(c("avg_18S2_Cq", "avg_177T_Cq") %in% names(cur_data_all()))) {
         as.numeric(avg_18S2_Cq) - as.numeric(avg_177T_Cq)
       } else NA_real_,
       RNP_delta = ifelse(is.finite(mean_rnp_dna) & is.finite(mean_rnp_rna), mean_rnp_dna - mean_rnp_rna, NA_real_),
       RNP_grade = dplyr::case_when(
-        .control_flag ~ NA_character_,
+        isTRUE(is_control) ~ NA_character_,
         is.na(mean_rnp_rna) & !is.na(mean_rnp_dna) ~ "No RNA",
         is.na(mean_rnp_rna) & is.na(mean_rnp_dna) ~ NA_character_,
         is.na(RNP_delta) ~ NA_character_,
@@ -320,7 +300,7 @@ suppressPackageStartupMessages({
         TRUE ~ "Poor"
       ),
       RNP_grade = dplyr::case_when(
-        !.control_flag & is.na(RNP_grade) & !is.na(mean_rnp_rna) & mean_rnp_rna >= thresholds$rnp_no_rna_cq ~ "No RNA",
+        !isTRUE(is_control) & is.na(RNP_grade) & !is.na(mean_rnp_rna) & mean_rnp_rna >= thresholds$rnp_no_rna_cq ~ "No RNA",
         TRUE ~ RNP_grade
       ),
       missing_targets = rowSums(cbind(
@@ -328,14 +308,14 @@ suppressPackageStartupMessages({
         if ("avg_18S2_Cq" %in% names(cur_data_all())) is.na(avg_18S2_Cq) else FALSE
       ), na.rm = TRUE),
       call_basis = dplyr::case_when(
-        .control_flag ~ NA_character_,
+        isTRUE(is_control) ~ NA_character_,
         (!is.na(avg_177T_Cq) & !is.na(avg_18S2_Cq)) ~ "TNA",
         !is.na(avg_177T_Cq) ~ "DNA",
         !is.na(avg_18S2_Cq) ~ "RNA",
         TRUE ~ NA_character_
       ),
       call_confidence_value = dplyr::case_when(
-        .control_flag ~ NA_real_,
+        isTRUE(is_control) ~ NA_real_,
         final_category == "positive" ~ dplyr::coalesce(40 - min_cq_177, NA_real_),
         final_category %in% c("negative", "failed", "inconclusive") ~ dplyr::coalesce(min_cq_ge35 - thresholds$neg_cutoff, NA_real_),
         TRUE ~ dplyr::coalesce(40 - min_cq_177, min_cq_ge35 - thresholds$neg_cutoff)
@@ -351,11 +331,11 @@ suppressPackageStartupMessages({
         dplyr::coalesce(replicate_mad_177T > thresholds$replicate_mad_warn, FALSE) |
         dplyr::coalesce(replicate_mad_18S2 > thresholds$replicate_mad_warn, FALSE),
       late_pos_flag = dplyr::coalesce(late_pos_flag, FALSE),
-      needs_reextract_auto = !.control_flag & final_category %in% c("negative", "failed", "inconclusive") &
+      needs_reextract_auto = !isTRUE(is_control) & final_category %in% c("negative", "failed", "inconclusive") &
         RNP_grade %in% c("Poor", "No RNA"),
-      needs_repeat_pcr_auto = !.control_flag & (late_pos_flag | replicate_dispersion_flag),
+      needs_repeat_pcr_auto = !isTRUE(is_control) & (late_pos_flag | replicate_dispersion_flag),
       reason_invalid = dplyr::case_when(
-        .control_flag ~ NA_character_,
+        isTRUE(is_control) ~ NA_character_,
         missing_targets >= 2 ~ "No wells",
         missing_targets == 1 ~ "Missing target",
         late_pos_flag ~ "Late positive",
@@ -363,8 +343,7 @@ suppressPackageStartupMessages({
         RNP_grade %in% c("Poor", "No RNA") ~ "RNAseP high Cq",
         TRUE ~ NA_character_
       )
-    ) %>%
-    select(-.control_flag)
+    )
 
   samples_df
 }
@@ -374,8 +353,8 @@ suppressPackageStartupMessages({
 
   thresholds <- modifyList(.mic_default_thresholds(), thresholds %||% list())
 
-  samples_only <- samples_df %>% filter(!dplyr::coalesce(is_control, FALSE))
-  controls <- samples_df %>% filter(dplyr::coalesce(is_control, FALSE))
+  samples_only <- samples_df %>% filter(!isTRUE(is_control))
+  controls <- samples_df %>% filter(isTRUE(is_control))
 
   run_base <- samples_df %>% distinct(run_id)
 
@@ -521,7 +500,7 @@ suppressPackageStartupMessages({
   if (!nrow(samples_df)) return(tibble())
 
   samples_df %>%
-    filter(!dplyr::coalesce(is_control, FALSE)) %>%
+    filter(!isTRUE(is_control)) %>%
     mutate(
       anomaly_flags = purrr::map_chr(seq_len(n()), function(idx) {
         flags <- character()
@@ -614,18 +593,8 @@ suppressPackageStartupMessages({
     ))
   }
 
-  tib <- tibble::as_tibble(samples_df)
-  if (!"is_control" %in% names(tib)) tib$is_control <- rep_len(FALSE, nrow(tib))
-  tib$is_control <- dplyr::coalesce(tib$is_control, FALSE)
-  if (!"final_category" %in% names(tib)) tib$final_category <- rep_len(NA_character_, nrow(tib))
-  if (!"file" %in% names(tib)) tib$file <- rep_len(NA_character_, nrow(tib))
-  if (!"run_id" %in% names(tib)) tib$run_id <- rep_len(NA_character_, nrow(tib))
-  if (!"late_pos_flag" %in% names(tib)) tib$late_pos_flag <- rep_len(NA, nrow(tib))
-  if (!"missing_targets" %in% names(tib)) tib$missing_targets <- rep_len(NA_real_, nrow(tib))
-  if (!"needs_reextract_auto" %in% names(tib)) tib$needs_reextract_auto <- rep_len(FALSE, nrow(tib))
-  if (!"needs_repeat_pcr_auto" %in% names(tib)) tib$needs_repeat_pcr_auto <- rep_len(FALSE, nrow(tib))
-
-  samples_only <- tib %>% filter(!dplyr::coalesce(is_control, FALSE))
+  tib <- samples_df
+  samples_only <- tib %>% filter(!isTRUE(is_control))
   run_summary <- run_summary %||% tibble()
   anomalies_df <- anomalies_df %||% tibble()
 
@@ -649,10 +618,10 @@ suppressPackageStartupMessages({
     runs_review = status_counts %>% filter(run_status_suggested == "REVIEW") %>% pull(n) %||% 0,
     runs_invalid = status_counts %>% filter(run_status_suggested == "INVALID") %>% pull(n) %||% 0,
     pct_samples_valid = if (nrow(samples_only)) mean(samples_only$final_category %in% c("positive", "negative"), na.rm = TRUE) * 100 else NA_real_,
-    pct_samples_late_pos = if (nrow(samples_only)) mean(dplyr::coalesce(samples_only$late_pos_flag, FALSE), na.rm = TRUE) * 100 else NA_real_,
-    pct_samples_missing = if (nrow(samples_only)) mean(dplyr::coalesce(samples_only$missing_targets > 0, FALSE), na.rm = TRUE) * 100 else NA_real_,
-    n_auto_reextract = sum(dplyr::coalesce(samples_only$needs_reextract_auto, FALSE), na.rm = TRUE),
-    n_auto_repeat = sum(dplyr::coalesce(samples_only$needs_repeat_pcr_auto, FALSE), na.rm = TRUE),
+    pct_samples_late_pos = if (nrow(samples_only)) mean(coalesce(samples_only$late_pos_flag, FALSE), na.rm = TRUE) * 100 else NA_real_,
+    pct_samples_missing = if (nrow(samples_only)) mean(coalesce(samples_only$missing_targets > 0, FALSE), na.rm = TRUE) * 100 else NA_real_,
+    n_auto_reextract = sum(coalesce(samples_only$needs_reextract_auto, FALSE), na.rm = TRUE),
+    n_auto_repeat = sum(coalesce(samples_only$needs_repeat_pcr_auto, FALSE), na.rm = TRUE),
     n_anomalies = nrow(anomalies_df)
   )
 }
@@ -664,13 +633,13 @@ suppressPackageStartupMessages({
 
   replic_df <- processed$replicates %||% tibble()
   run_qc <- processed$run_summary %||% tibble()
-  controls <- samples_df %>% filter(dplyr::coalesce(is_control, FALSE)) %>%
+  controls <- samples_df %>% filter(isTRUE(is_control)) %>%
     mutate(
       pass = final_category == "control_ok",
       reason = dplyr::coalesce(reason_invalid, final_decision)
     ) %>%
     select(run_id, file, Name, control_type, pass, final_decision, final_category, reason, dplyr::everything())
-  samples <- samples_df %>% filter(!dplyr::coalesce(is_control, FALSE))
+  samples <- samples_df %>% filter(!isTRUE(is_control))
   anomalies <- processed$anomalies %||% tibble()
 
   writexl::write_xlsx(
@@ -896,7 +865,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
     # ====================== Tables ==========================================
     output$tbl_samples <- renderDT({
       mp <- mic_processed()
-      df <- mp$samples %>% filter(!dplyr::coalesce(is_control, FALSE))
+      df <- mp$samples %>% filter(!isTRUE(is_control))
       if (!nrow(df)) return(DT::datatable(tibble(note = "No sample rows.")))
 
       display <- df %>%
@@ -965,7 +934,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
     output$tbl_controls <- renderDT({
       mp <- mic_processed()
       ctrl <- mp$samples %>%
-        filter(dplyr::coalesce(is_control, FALSE)) %>%
+        filter(isTRUE(is_control)) %>%
         mutate(
           pass = final_category == "control_ok",
           reason = dplyr::coalesce(reason_invalid, final_decision)
@@ -1140,7 +1109,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
 
     output$plot_gap_tna <- renderPlotly({
       mp <- mic_processed()
-      df <- mp$samples %>% filter(!dplyr::coalesce(is_control, FALSE), is.finite(Cq_gap_TNA))
+      df <- mp$samples %>% filter(!isTRUE(is_control), is.finite(Cq_gap_TNA))
       if (!nrow(df)) {
         return(plotly_empty() %>% layout(title = list(text = "No Cq gap data")))
       }
@@ -1154,7 +1123,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
 
     output$plot_rnp_delta <- renderPlotly({
       mp <- mic_processed()
-      df <- mp$samples %>% filter(!dplyr::coalesce(is_control, FALSE), is.finite(RNP_delta))
+      df <- mp$samples %>% filter(!isTRUE(is_control), is.finite(RNP_delta))
       if (!nrow(df)) {
         return(plotly_empty() %>% layout(title = list(text = "No RNP data")))
       }
@@ -1172,7 +1141,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
 
     output$plot_scatter_tna <- renderPlotly({
       mp <- mic_processed()
-      smp <- mp$samples %>% filter(!dplyr::coalesce(is_control, FALSE)) %>%
+      smp <- mp$samples %>% filter(!isTRUE(is_control)) %>%
         mutate(Cq_177T = as.numeric(avg_177T_Cq), Cq_18S2 = as.numeric(avg_18S2_Cq)) %>%
         filter(is.finite(Cq_177T) | is.finite(Cq_18S2))
       if (!nrow(smp)) return(plotly_empty() %>% layout(title = "No sample data"))

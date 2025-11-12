@@ -64,7 +64,7 @@ suppressPackageStartupMessages({
   if (is.null(df) || !nrow(df) || !length(columns)) {
     return(rep(NA_character_, ifelse(is.null(df), 0, nrow(df))))
   }
-
+  
   res <- rep(NA_character_, nrow(df))
   for (col in columns) {
     if (!col %in% names(df)) next
@@ -78,7 +78,7 @@ suppressPackageStartupMessages({
   if (is.null(df) || !nrow(df) || !length(columns)) {
     return(rep(NA_character_, ifelse(is.null(df), 0, nrow(df))))
   }
-
+  
   res <- rep(NA_character_, nrow(df))
   for (col in columns) {
     if (!col %in% names(df)) next
@@ -105,12 +105,12 @@ suppressPackageStartupMessages({
   if (is.null(biobank_df) || !nrow(biobank_df)) {
     return(tibble())
   }
-
+  
   df <- tibble::as_tibble(biobank_df)
-
+  
   barcode_norm <- .mic_normalize_first(df, c("barcode", "code_barres_kps", "barcode_normalized", "sample_id", "SampleID"))
   lab_norm <- .mic_normalize_first(df, c("lab_id", "LabID", "numero", "record_number", "record_number_normalized"))
-
+  
   study_vals <- .mic_pick_first(df, c("study", "biobank_study", "etude"))
   province_vals <- .mic_pick_first(df, c("province", "biobank_province"))
   zone_vals <- .mic_pick_first(df, c("health_zone", "biobank_health_zone", "zone_de_sante"))
@@ -118,7 +118,7 @@ suppressPackageStartupMessages({
   date_vals <- suppressWarnings(as.Date(.mic_pick_first(df, c("date_sample", "biobank_date_sample", "date_prelevement"))))
   barcode_raw <- .mic_pick_first(df, c("barcode", "code_barres_kps", "barcode_normalized", "sample_id"))
   lab_raw <- .mic_pick_first(df, c("lab_id", "LabID", "numero", "record_number"))
-
+  
   by_barcode <- tibble(
     join_key = barcode_norm,
     join_type = "barcode",
@@ -132,7 +132,7 @@ suppressPackageStartupMessages({
   ) %>%
     filter(!is.na(join_key)) %>%
     distinct(join_key, .keep_all = TRUE)
-
+  
   by_lab <- tibble(
     join_key = lab_norm,
     join_type = "lab",
@@ -146,7 +146,7 @@ suppressPackageStartupMessages({
   ) %>%
     filter(!is.na(join_key)) %>%
     distinct(join_key, .keep_all = TRUE)
-
+  
   bind_rows(by_barcode, by_lab) %>%
     distinct(join_type, join_key, .keep_all = TRUE)
 }
@@ -154,7 +154,7 @@ suppressPackageStartupMessages({
 .mic_join_with_biobank <- function(samples_df, replic_df, biobank_df) {
   samples_df <- tibble::as_tibble(samples_df)
   replic_df <- tibble::as_tibble(replic_df)
-
+  
   if (!nrow(samples_df)) {
     if (!"sample_key" %in% names(samples_df) && nrow(samples_df)) {
       samples_df$sample_key <- .mic_make_sample_key(samples_df$run_id, samples_df$Name)
@@ -164,7 +164,7 @@ suppressPackageStartupMessages({
     }
     return(list(samples = samples_df, replicates = replic_df, biobank_lookup = tibble()))
   }
-
+  
   samples_df <- samples_df %>%
     mutate(
       sample_barcode_norm = .mic_normalize_first(cur_data_all(),
@@ -173,7 +173,7 @@ suppressPackageStartupMessages({
                                              c("LabID", "lab_id", "Lab_Id", "numero", "record_number", "Name")),
       sample_key = .mic_make_sample_key(run_id, Name, sample_barcode_norm, sample_lab_norm)
     )
-
+  
   replic_df <- replic_df %>%
     mutate(
       sample_barcode_norm = .mic_normalize_first(cur_data_all(),
@@ -182,19 +182,19 @@ suppressPackageStartupMessages({
                                              c("LabID", "lab_id", "Lab_Id", "numero", "record_number", "Name")),
       sample_key = .mic_make_sample_key(run_id, Name, sample_barcode_norm, sample_lab_norm)
     )
-
+  
   if (is.null(biobank_df) || !nrow(biobank_df)) {
     return(list(samples = samples_df, replicates = replic_df, biobank_lookup = tibble()))
   }
-
+  
   lookup <- .mic_prepare_biobank_lookup(biobank_df)
-
+  
   if (!nrow(lookup)) {
     return(list(samples = samples_df, replicates = replic_df, biobank_lookup = tibble()))
   }
-
+  
   filter_keys <- unique(lookup$join_key)
-
+  
   samples_df <- samples_df %>%
     mutate(
       keep_sample = dplyr::case_when(
@@ -206,16 +206,16 @@ suppressPackageStartupMessages({
     ) %>%
     filter(keep_sample) %>%
     select(-keep_sample)
-
+  
   keep_keys <- unique(samples_df$sample_key)
   replic_df <- replic_df %>%
     filter(is.na(sample_key) | sample_key %in% keep_keys)
-
+  
   meta_barcode <- lookup %>%
     filter(join_type == "barcode") %>%
     select(join_key, biobank_barcode, biobank_lab_id, study, province, health_zone, structure, date_sample) %>%
     distinct(join_key, .keep_all = TRUE)
-
+  
   meta_lab <- lookup %>%
     filter(join_type == "lab") %>%
     select(join_key,
@@ -227,7 +227,7 @@ suppressPackageStartupMessages({
            structure_lab = structure,
            date_sample_lab = date_sample) %>%
     distinct(join_key, .keep_all = TRUE)
-
+  
   samples_df <- samples_df %>%
     left_join(meta_barcode, by = c("sample_barcode_norm" = "join_key")) %>%
     left_join(meta_lab, by = c("sample_lab_norm" = "join_key")) %>%
@@ -241,7 +241,7 @@ suppressPackageStartupMessages({
       date_sample = dplyr::coalesce(date_sample, date_sample_lab)
     ) %>%
     select(-dplyr::ends_with("_lab"))
-
+  
   list(samples = samples_df, replicates = replic_df, biobank_lookup = lookup)
 }
 
@@ -259,9 +259,9 @@ suppressPackageStartupMessages({
 
 .mic_compute_sample_metrics <- function(samples_df, replic_df, thresholds) {
   if (!nrow(samples_df)) return(samples_df)
-
+  
   thresholds <- modifyList(.mic_default_thresholds(), thresholds %||% list())
-
+  
   rep_metrics <- replic_df %>%
     mutate(sample_key = dplyr::coalesce(sample_key, .mic_make_sample_key(run_id, Name, sample_barcode_norm, sample_lab_norm))) %>%
     group_by(sample_key) %>%
@@ -277,10 +277,10 @@ suppressPackageStartupMessages({
       min_cq_ge35 = if ("Cq_177T" %in% names(.)) suppressWarnings(min(Cq_177T[Cq_177T >= thresholds$neg_cutoff], na.rm = TRUE)) else NA_real_,
       .groups = "drop"
     )
-
+  
   rep_metrics$min_cq_177[is.infinite(rep_metrics$min_cq_177)] <- NA_real_
   rep_metrics$min_cq_ge35[is.infinite(rep_metrics$min_cq_ge35)] <- NA_real_
-
+  
   samples_df <- samples_df %>%
     mutate(sample_key = dplyr::coalesce(sample_key, .mic_make_sample_key(run_id, Name, sample_barcode_norm, sample_lab_norm))) %>%
     left_join(rep_metrics, by = "sample_key") %>%
@@ -344,20 +344,20 @@ suppressPackageStartupMessages({
         TRUE ~ NA_character_
       )
     )
-
+  
   samples_df
 }
 
 .mic_compute_run_summary <- function(samples_df, replic_df, thresholds) {
   if (!nrow(samples_df)) return(tibble())
-
+  
   thresholds <- modifyList(.mic_default_thresholds(), thresholds %||% list())
-
+  
   samples_only <- samples_df %>% filter(!isTRUE(is_control))
   controls <- samples_df %>% filter(isTRUE(is_control))
-
+  
   run_base <- samples_df %>% distinct(run_id)
-
+  
   sample_summary <- samples_only %>%
     group_by(run_id) %>%
     summarise(
@@ -369,7 +369,7 @@ suppressPackageStartupMessages({
       auto_repeat = sum(needs_repeat_pcr_auto, na.rm = TRUE),
       .groups = "drop"
     )
-
+  
   control_counts <- controls %>%
     group_by(run_id, control_type) %>%
     summarise(
@@ -384,19 +384,10 @@ suppressPackageStartupMessages({
       names_sep = "_",
       values_fill = 0
     )
-
-  needed_control_cols <- c(
-    "control_total_PC", "control_fail_PC", "control_pass_PC",
-    "control_total_NTC", "control_fail_NTC", "control_pass_NTC"
-  )
-  missing_control_cols <- setdiff(needed_control_cols, names(control_counts))
-  if (length(missing_control_cols)) {
-    control_counts[missing_control_cols] <- 0L
-  }
-
+  
   ntc_reps <- replic_df %>% filter(control_type == "NTC") %>%
     mutate(ntc_min = suppressWarnings(pmin(Cq_177T, Cq_18S2, na.rm = TRUE)))
-
+  
   ntc_summary <- ntc_reps %>%
     group_by(run_id) %>%
     summarise(
@@ -412,11 +403,11 @@ suppressPackageStartupMessages({
         TRUE ~ NA_real_
       )
     )
-
+  
   pc_reps <- replic_df %>% filter(control_type == "PC", is.finite(Cq_177T))
   global_pc_mean <- if (nrow(pc_reps)) mean(pc_reps$Cq_177T, na.rm = TRUE) else NA_real_
   global_pc_sd <- if (nrow(pc_reps) > 1) stats::sd(pc_reps$Cq_177T, na.rm = TRUE) else NA_real_
-
+  
   pc_summary <- pc_reps %>%
     group_by(run_id) %>%
     summarise(
@@ -429,7 +420,7 @@ suppressPackageStartupMessages({
                           (pc_cq_mean - global_pc_mean) / global_pc_sd,
                           NA_real_)
     )
-
+  
   run_summary <- run_base %>%
     left_join(sample_summary, by = "run_id") %>%
     left_join(control_counts, by = "run_id") %>%
@@ -452,17 +443,17 @@ suppressPackageStartupMessages({
       )
     ) %>%
     arrange(run_id)
-
+  
   run_summary
 }
 
 .mic_compute_control_trends <- function(replic_df, thresholds) {
   thresholds <- modifyList(.mic_default_thresholds(), thresholds %||% list())
-
+  
   if (!nrow(replic_df)) {
     return(list(pc = tibble(), ntc = tibble()))
   }
-
+  
   pc_reps <- replic_df %>% filter(control_type == "PC", is.finite(Cq_177T))
   pc_trend <- tibble()
   if (nrow(pc_reps)) {
@@ -484,10 +475,10 @@ suppressPackageStartupMessages({
         lower_2sd = global_mean - 2 * global_sd
       )
   }
-
+  
   ntc_reps <- replic_df %>% filter(control_type == "NTC") %>%
     mutate(ntc_min = suppressWarnings(pmin(Cq_177T, Cq_18S2, na.rm = TRUE)))
-
+  
   ntc_trend <- tibble()
   if (nrow(ntc_reps)) {
     ntc_trend <- ntc_reps %>%
@@ -501,18 +492,17 @@ suppressPackageStartupMessages({
       arrange(run_id) %>%
       mutate(limit = thresholds$ntc_max)
   }
-
+  
   list(pc = pc_trend, ntc = ntc_trend)
 }
 
 .mic_compute_anomalies <- function(samples_df) {
   if (!nrow(samples_df)) return(tibble())
-
+  
   samples_df %>%
     filter(!isTRUE(is_control)) %>%
-    rowwise() %>%
     mutate(
-      anomaly_flags = {
+      anomaly_flags = purrr::map_chr(seq_len(n()), function(idx) {
         flags <- character()
         if (!is.na(late_pos_flag) && late_pos_flag) flags <- c(flags, "Late positive")
         if (!is.na(replicate_dispersion_flag) && replicate_dispersion_flag) flags <- c(flags, "High replicate spread")
@@ -521,9 +511,8 @@ suppressPackageStartupMessages({
         if (!is.na(missing_targets) && missing_targets > 0) flags <- c(flags, "Missing targets")
         if (!length(flags)) return(NA_character_)
         paste(unique(flags), collapse = ", ")
-      }
+      })
     ) %>%
-    ungroup() %>%
     filter(!is.na(anomaly_flags))
 }
 
@@ -603,24 +592,24 @@ suppressPackageStartupMessages({
       n_anomalies = if (!is.null(anomalies_df)) nrow(anomalies_df) else 0
     ))
   }
-
+  
   tib <- samples_df
   samples_only <- tib %>% filter(!isTRUE(is_control))
   run_summary <- run_summary %||% tibble()
   anomalies_df <- anomalies_df %||% tibble()
-
+  
   status_counts <- if (nrow(run_summary)) {
     run_summary %>% count(run_status_suggested, name = "n")
   } else {
     tibble(run_status_suggested = character(), n = integer())
   }
-
+  
   list(
     n_files     = length(unique(c(files %||% character(), tib$file))),
     n_runs      = length(unique(tib$run_id)),
     n_rows      = nrow(tib),
     n_samples   = sum(!tib$is_control, na.rm = TRUE),
-    n_controls  = sum(tib$is_control, na.rm = TRUE),
+    n_controls  = sum( tib$is_control, na.rm = TRUE),
     n_pos       = sum(tib$final_category == "positive", na.rm = TRUE),
     n_neg       = sum(tib$final_category == "negative", na.rm = TRUE),
     n_fail      = sum(tib$final_category == "failed", na.rm = TRUE),
@@ -641,7 +630,7 @@ suppressPackageStartupMessages({
 .mic_export_qc <- function(processed, out_path) {
   samples_df <- processed$samples
   if (is.null(samples_df) || !nrow(samples_df)) stop("No data to export")
-
+  
   replic_df <- processed$replicates %||% tibble()
   run_qc <- processed$run_summary %||% tibble()
   controls <- samples_df %>% filter(isTRUE(is_control)) %>%
@@ -652,7 +641,7 @@ suppressPackageStartupMessages({
     select(run_id, file, Name, control_type, pass, final_decision, final_category, reason, dplyr::everything())
   samples <- samples_df %>% filter(!isTRUE(is_control))
   anomalies <- processed$anomalies %||% tibble()
-
+  
   writexl::write_xlsx(
     list(
       "Run QC"          = run_qc,
@@ -688,7 +677,7 @@ mod_mic_pcr_ui <- function(id) {
           value_box(title = "Run Status",  value = textOutput(ns("kpi_run_status")), showcase = icon("traffic-light"),   theme = "success"),
           value_box(title = "Anomalies",   value = textOutput(ns("kpi_anomalies")),  showcase = icon("exclamation-triangle"), theme = "danger")
         ),
-
+        
         layout_column_wrap(
           width = 1/6, fixed_width = TRUE, heights_equal = "row", gap = "12px",
           value_box(title = "Pos / Neg",        value = textOutput(ns("kpi_posneg")),        showcase = icon("check-circle"), theme = "info"),
@@ -726,27 +715,27 @@ mod_mic_pcr_ui <- function(id) {
           card_header(class = "h5 mb-0", icon("flask"), " Controls by Run"),
           card_body(DTOutput(ns("tbl_controls")))
         ),
-
+        
         card(
           card_header(class = "h5 mb-0", icon("triangle-exclamation"), " Anomalies"),
           card_body(DTOutput(ns("tbl_anomalies")))
         ),
-
+        
         # ==== Plots ===========================================================
         h4(class = "mt-4 mb-3", icon("chart-line"), " Run QC & Trends"),
-
+        
         layout_columns(
           col_widths = c(6,6), gap = "16px",
           card(card_header("Levey–Jennings — PC 177T"), card_body_fill(plotly::plotlyOutput(ns("plot_lj_pc"), height = "320px"))),
           card(card_header("Levey–Jennings — NTC"),     card_body_fill(plotly::plotlyOutput(ns("plot_lj_ntc"), height = "320px")))
         ),
-
+        
         layout_columns(
           col_widths = c(6,6), gap = "16px",
           card(card_header("Run Quality Overview"),    card_body_fill(plotly::plotlyOutput(ns("plot_run_overview"), height = "320px"))),
           card(card_header("Cq Gap (18S2 − 177T)"),    card_body_fill(plotly::plotlyOutput(ns("plot_gap_tna"), height = "320px")))
         ),
-
+        
         layout_columns(
           col_widths = c(6,6), gap = "16px",
           card(card_header("RNP Δ per Run"),            card_body_fill(plotly::plotlyOutput(ns("plot_rnp_delta"), height = "320px"))),
@@ -764,13 +753,13 @@ mod_mic_pcr_ui <- function(id) {
 mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = NULL) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
-
+    
     observeEvent(TRUE, {
       updateTextInput(session, "mic_dir", value = default_dir)
     }, once = TRUE)
-
+    
     mic_raw <- reactiveVal(list(samples = tibble(), replicates = tibble(), files = character()))
-
+    
     reload_now <- function() {
       d <- trimws(input$mic_dir %||% "")
       md <- .mic_read_dir(d, verbose = FALSE)
@@ -785,14 +774,14 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
     observeEvent(input$mic_dir, {
       reload_now()
     }, ignoreInit = FALSE)
-
+    
     biobank_filtered <- reactive({
       if (is.null(filtered_biobank)) {
         return(NULL)
       }
       tryCatch(filtered_biobank(), error = function(e) NULL)
     })
-
+    
     mic_processed <- reactive({
       md <- mic_raw()
       samples <- md$samples %||% tibble()
@@ -800,14 +789,14 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
       files <- md$files %||% character()
       thresholds <- .mic_default_thresholds()
       bb <- biobank_filtered()
-
+      
       joined <- .mic_join_with_biobank(samples, replics, bb)
       enriched <- .mic_compute_sample_metrics(joined$samples, joined$replicates, thresholds)
       run_summary <- .mic_compute_run_summary(enriched, joined$replicates, thresholds)
       control_trends <- .mic_compute_control_trends(joined$replicates, thresholds)
       anomalies <- .mic_compute_anomalies(enriched)
       kpi <- .kpi(enriched, run_summary, anomalies, files)
-
+      
       list(
         samples = enriched,
         replicates = joined$replicates,
@@ -819,13 +808,13 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
         thresholds = thresholds
       )
     })
-
+    
     # ====================== KPIs ============================================
     format_pct <- function(x) {
       if (is.na(x)) return("—")
       scales::percent(x / 100, accuracy = 0.1)
     }
-
+    
     output$kpi_files <- renderText({
       mp <- mic_processed()
       scales::comma(mp$kpi$n_files)
@@ -878,7 +867,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
       mp <- mic_processed()
       df <- mp$samples %>% filter(!isTRUE(is_control))
       if (!nrow(df)) return(DT::datatable(tibble(note = "No sample rows.")))
-
+      
       display <- df %>%
         mutate(
           date_sample = suppressWarnings(as.Date(date_sample)),
@@ -899,7 +888,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
           "avg_preservation_delta", "n_replicates", "n_positive", "n_negative",
           "n_failed", "n_inconclusive"
         )))
-
+      
       datatable(
         display,
         rownames = FALSE,
@@ -941,7 +930,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
           backgroundColor = styleEqual(c(TRUE), c("#d6eaff"))
         )
     }, server = TRUE)
-
+    
     output$tbl_controls <- renderDT({
       mp <- mic_processed()
       ctrl <- mp$samples %>%
@@ -956,7 +945,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
                         "avg_177T_Cq", "avg_18S2_Cq", "avg_preservation_delta"))) %>%
         arrange(run_id, control_type, Name)
       if (!nrow(ctrl)) return(DT::datatable(tibble(note = "No control rows.")))
-
+      
       datatable(
         ctrl,
         rownames = FALSE,
@@ -969,14 +958,14 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
           backgroundColor = styleEqual(c(TRUE, FALSE), c("#d4edda", "#fdecea"))
         )
     }, server = TRUE)
-
+    
     output$tbl_anomalies <- renderDT({
       mp <- mic_processed()
       df <- mp$anomalies
       if (is.null(df) || !nrow(df)) {
         return(DT::datatable(tibble(note = "No anomalies detected.")))
       }
-
+      
       display <- df %>%
         mutate(
           date_sample = suppressWarnings(as.Date(date_sample)),
@@ -990,7 +979,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
           "replicate_mad_177T", "missing_targets", "needs_reextract_auto",
           "needs_repeat_pcr_auto", "reason_invalid", "anomaly_flags"
         )))
-
+      
       datatable(
         display,
         rownames = FALSE,
@@ -1010,7 +999,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
           backgroundColor = styleEqual(unique(display$anomaly_flags), rep("#fce4ec", length(unique(display$anomaly_flags))))
         )
     }, server = TRUE)
-
+    
     # ====================== Plots ===========================================
     output$plot_lj_pc <- renderPlotly({
       mp <- mic_processed()
@@ -1021,7 +1010,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
       df <- df %>% arrange(run_id)
       gm <- df$global_mean[1]
       gsd <- df$global_sd[1]
-
+      
       p <- plot_ly(
         df,
         x = ~run_id,
@@ -1035,7 +1024,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
                        "<br>n: ", n),
         hoverinfo = "text"
       )
-
+      
       if (!is.na(gm)) {
         runs <- df$run_id
         p <- p %>%
@@ -1046,7 +1035,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
             add_lines(x = runs, y = rep(gm - 2 * gsd, length(runs)), name = "-2 SD", line = list(color = "#e74c3c", dash = "dash"))
         }
       }
-
+      
       p %>% layout(
         title = "PC 177T Controls",
         xaxis = list(title = "Run"),
@@ -1054,7 +1043,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
         legend = list(orientation = "h", y = -0.2)
       )
     })
-
+    
     output$plot_lj_ntc <- renderPlotly({
       mp <- mic_processed()
       df <- mp$control_trends$ntc
@@ -1063,7 +1052,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
       }
       df <- df %>% arrange(run_id)
       limit <- df$limit[1]
-
+      
       p <- plot_ly(
         df,
         x = ~run_id,
@@ -1077,11 +1066,11 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
                        "<br>n: ", n),
         hoverinfo = "text"
       )
-
+      
       if (!is.na(limit)) {
         p <- p %>% add_lines(x = df$run_id, y = rep(limit, nrow(df)), name = "NTC max", line = list(color = "#e74c3c", dash = "dash"))
       }
-
+      
       p %>% layout(
         title = "NTC Minimum Cq",
         xaxis = list(title = "Run"),
@@ -1089,14 +1078,14 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
         legend = list(orientation = "h", y = -0.2)
       )
     })
-
+    
     output$plot_run_overview <- renderPlotly({
       mp <- mic_processed()
       df <- mp$run_summary
       if (is.null(df) || !nrow(df)) {
         return(plotly_empty() %>% layout(title = list(text = "No run summaries available")))
       }
-
+      
       df_long <- df %>%
         select(run_id, samples_valid_pct, samples_late_pos_pct, samples_missing_targets_pct) %>%
         tidyr::pivot_longer(
@@ -1107,7 +1096,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
         mutate(metric = factor(metric,
                                levels = c("samples_valid_pct", "samples_late_pos_pct", "samples_missing_targets_pct"),
                                labels = c("% Valid", "% Late", "% Missing")))
-
+      
       plot_ly(df_long, x = ~run_id, y = ~value, color = ~metric, type = "bar") %>%
         layout(
           title = "% of Samples by Run",
@@ -1117,28 +1106,28 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
           legend = list(orientation = "h", y = -0.2)
         )
     })
-
+    
     output$plot_gap_tna <- renderPlotly({
       mp <- mic_processed()
       df <- mp$samples %>% filter(!isTRUE(is_control), is.finite(Cq_gap_TNA))
       if (!nrow(df)) {
         return(plotly_empty() %>% layout(title = list(text = "No Cq gap data")))
       }
-
+      
       plot_ly(df, x = ~run_id, y = ~Cq_gap_TNA, color = ~call_basis, type = "box", boxpoints = "outliers",
               text = ~paste0("Sample: ", Name, "<br>Gap: ", round(Cq_gap_TNA, 2)), hoverinfo = "text") %>%
         layout(title = "Cq Gap (18S2 − 177T) by Run",
                xaxis = list(title = "Run"),
                yaxis = list(title = "Cq Gap"))
     })
-
+    
     output$plot_rnp_delta <- renderPlotly({
       mp <- mic_processed()
       df <- mp$samples %>% filter(!isTRUE(is_control), is.finite(RNP_delta))
       if (!nrow(df)) {
         return(plotly_empty() %>% layout(title = list(text = "No RNP data")))
       }
-
+      
       plot_ly(df, x = ~run_id, y = ~RNP_delta, type = "scatter", mode = "markers",
               color = ~RNP_grade,
               text = ~paste0("Sample: ", Name,
@@ -1149,7 +1138,7 @@ mod_mic_pcr_server <- function(id, default_dir = "data/MIC", filtered_biobank = 
                xaxis = list(title = "Run"),
                yaxis = list(title = "RNP Δ (DNA − RNA)"))
     })
-
+    
     output$plot_scatter_tna <- renderPlotly({
       mp <- mic_processed()
       smp <- mp$samples %>% filter(!isTRUE(is_control)) %>%

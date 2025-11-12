@@ -72,11 +72,14 @@ source("R/modules/mod_05_mic_qpcr.R")
 
 app_theme <- bslib::bs_theme(
   version = 5,
+  bootswatch = "flatly",
   primary = "#3498DB",
   success = "#27AE60",
   danger = "#E74C3C",
   warning = "#F39C12",
-  info = "#2980B9"
+  info = "#2980B9",
+  heading_font = "'Helvetica Neue', Helvetica, Arial, sans-serif",
+  base_font = "'Source Sans Pro', 'Segoe UI', system-ui, sans-serif"
 )
 
 # ============================================================================

@@ -225,6 +225,31 @@ mod_data_manager_server <- function(id) {
     # DATA FILTERING
     # ========================================================================
     
+    sanitize_date_range <- function(x) {
+      if (is.null(x) || length(x) != 2) {
+        return(NULL)
+      }
+
+      dates <- tryCatch(
+        suppressWarnings(as.Date(x)),
+        warning = function(w) rep(NA, length(x)),
+        error = function(e) rep(NA, length(x))
+      )
+
+      if (any(is.na(dates))) {
+        return(NULL)
+      }
+
+      dates
+    }
+
+    normalize_filter_choice <- function(x) {
+      if (is.null(x) || !length(x)) {
+        return("all")
+      }
+      x
+    }
+
     filtered_data <- reactive({
       req(rv$clean_data)
 
@@ -235,6 +260,16 @@ mod_data_manager_server <- function(id) {
         province = input$filter_province,
         zone = input$filter_zone,
         structure = input$filter_structure
+      )
+    })
+
+    filters <- reactive({
+      list(
+        date_range = sanitize_date_range(input$date_range),
+        province = normalize_filter_choice(input$filter_province),
+        zone = normalize_filter_choice(input$filter_zone),
+        structure = normalize_filter_choice(input$filter_structure),
+        cohort = normalize_filter_choice(input$filter_study)
       )
     })
 
@@ -532,7 +567,8 @@ mod_data_manager_server <- function(id) {
       filtered_data = filtered_data,
       extraction_data = reactive(rv$extraction_data),
       filtered_extractions = filtered_extractions,
-      quality_report = reactive(rv$quality_report)
+      quality_report = reactive(rv$quality_report),
+      filters = filters
     ))
   })
 }

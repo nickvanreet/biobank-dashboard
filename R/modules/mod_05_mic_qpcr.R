@@ -921,62 +921,22 @@ mod_mic_qpcr_ui <- function(id) {
       ),
 
       # =========================================================================
-      # TAB 2: SAMPLES & RESULTS (with filters!)
+      # TAB 2: SAMPLES & RESULTS
       # =========================================================================
       nav_panel(
         title = "Samples",
         icon = icon("vials"),
 
-        layout_columns(
-          col_widths = c(12),
-
-          # Filters card
-          card(
-            class = "mb-3",
-            card_header("Filters"),
-            card_body(
-              class = "py-2",
-              layout_columns(
-                col_widths = c(3, 3, 3, 3),
-                selectInput(
-                  ns("filter_call"),
-                  "Final Call",
-                  choices = c("All" = "all", "Positive", "Negative", "LatePositive", "Invalid_NoDNA"),
-                  selected = "all"
-                ),
-                selectInput(
-                  ns("filter_province"),
-                  "Province",
-                  choices = c("All" = "all"),
-                  selected = "all"
-                ),
-                selectInput(
-                  ns("filter_structure"),
-                  "Health Structure",
-                  choices = c("All" = "all"),
-                  selected = "all"
-                ),
-                checkboxInput(
-                  ns("filter_flagged_only"),
-                  "Show flagged only",
-                  value = FALSE
-                )
-              )
-            )
+        card(
+          full_screen = TRUE,
+          card_header(
+            class = "d-flex justify-content-between align-items-center",
+            span("Sample Results", style = "font-size: 1.2rem; font-weight: 600;"),
+            downloadButton(ns("dl_samples_filtered"), "Download Filtered", class = "btn-sm btn-success")
           ),
-
-          # Results table
-          card(
-            full_screen = TRUE,
-            card_header(
-              class = "d-flex justify-content-between align-items-center",
-              span("Sample Results"),
-              downloadButton(ns("dl_samples_filtered"), "Download", class = "btn-sm btn-outline-primary")
-            ),
-            card_body(
-              DTOutput(ns("tbl_samples")),
-              class = "p-3"
-            )
+          card_body(
+            DTOutput(ns("tbl_samples")),
+            class = "p-2"
           )
         )
       ),
@@ -1474,7 +1434,7 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
     })
 
     # =========================================================================
-    # FILTERED SAMPLES (with UI filters)
+    # FILTERED SAMPLES (using global filters only)
     # =========================================================================
 
     filtered_samples <- reactive({
@@ -1483,47 +1443,10 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
 
       if (!nrow(df)) return(df)
 
-      # Apply global filters first
+      # Apply global filters from side panel
       df <- apply_global_filters(df, if (is.null(filters)) NULL else filters())
 
-      # Apply UI filters
-      if (!is.null(input$filter_call) && input$filter_call != "all") {
-        df <- df %>% filter(FinalCall == input$filter_call)
-      }
-
-      if (!is.null(input$filter_province) && input$filter_province != "all") {
-        df <- df %>% filter(Province == input$filter_province)
-      }
-
-      if (!is.null(input$filter_structure) && input$filter_structure != "all") {
-        df <- df %>% filter(Structure == input$filter_structure)
-      }
-
-      if (isTRUE(input$filter_flagged_only)) {
-        df <- df %>% filter(AnyFlag == TRUE)
-      }
-
       df
-    })
-
-    # Update filter dropdowns dynamically
-    observe({
-      df <- processed_data()$samples
-      if (nrow(df) > 0 && "Province" %in% names(df)) {
-        provinces <- sort(unique(na.omit(df$Province)))
-        if (length(provinces) > 0) {
-          updateSelectInput(session, "filter_province",
-                            choices = c("All" = "all", provinces))
-        }
-      }
-
-      if (nrow(df) > 0 && "Structure" %in% names(df)) {
-        structures <- sort(unique(na.omit(df$Structure)))
-        if (length(structures) > 0) {
-          updateSelectInput(session, "filter_structure",
-                            choices = c("All" = "all", structures))
-        }
-      }
     })
 
     # =========================================================================
@@ -1716,8 +1639,12 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
 
       if (!nrow(df)) {
         return(datatable(
-          tibble(Message = "No samples found. Check MIC files and filters."),
-          options = list(dom = 't'),
+          tibble(Message = "No samples found. Use the side panel filters to refine your search."),
+          options = list(dom = 't', initComplete = JS(
+            "function(settings) {",
+            "  $(this.api().table().container()).css({'font-size': '14px'});",
+            "}"
+          )),
           rownames = FALSE
         ))
       }
@@ -1740,50 +1667,103 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
         ))
       }
 
-      # Round numeric columns
-      numeric_cols <- intersect(
-        c("Cq_median_177T", "Cq_median_18S2", "Cq_median_RNAseP_DNA",
-          "Cq_median_RNAseP_RNA", "Delta_18S2_177T", "Delta_RP"),
-        names(df)
+      # Round numeric columns and create display dataframe
+      display_df <- df %>%
+        mutate(
+          # Round Cq values
+          across(c(Cq_median_177T, Cq_median_18S2, Cq_median_RNAseP_DNA, Cq_median_RNAseP_RNA),
+                 ~if_else(!is.na(.x), round(.x, 1), NA_real_)),
+          # Round deltas
+          across(c(Delta_18S2_177T, Delta_RP),
+                 ~if_else(!is.na(.x), round(.x, 1), NA_real_)),
+          # Simplify match columns
+          Biobank = if_else(BiobankMatched, "✓", "—"),
+          Extraction = if_else(ExtractionMatched, "✓", "—"),
+          # Clean call names
+          Result = case_when(
+            FinalCall == "Positive" ~ "Positive",
+            FinalCall == "Negative" ~ "Negative",
+            FinalCall == "LatePositive" ~ "Late+",
+            FinalCall == "Invalid_NoDNA" ~ "No DNA",
+            TRUE ~ FinalCall
+          )
+        )
+
+      # Select and rename columns for display
+      display_cols <- c(
+        "SampleName", "Result",
+        "Cq_median_177T", "Cq_median_18S2",
+        "Cq_median_RNAseP_DNA", "Cq_median_RNAseP_RNA",
+        "Delta_RP", "Biobank", "Extraction"
       )
 
-      if (length(numeric_cols) > 0) {
-        df <- df %>%
-          mutate(across(all_of(numeric_cols), ~round(.x, 2)))
+      # Add optional columns if they exist
+      if ("Province" %in% names(display_df)) display_cols <- c(display_cols, "Province")
+      if ("Structure" %in% names(display_df)) display_cols <- c(display_cols, "Structure")
+      if ("Flags" %in% names(display_df)) display_cols <- c(display_cols, "Flags")
+
+      # Filter to existing columns
+      display_cols <- intersect(display_cols, names(display_df))
+
+      # Create final display dataframe
+      final_df <- display_df %>% select(all_of(display_cols))
+
+      # Rename columns to readable names
+      colnames(final_df) <- c(
+        "Sample", "Result",
+        "177T", "18S2",
+        "RNP-DNA", "RNP-RNA",
+        "ΔCq RNA",
+        "BB", "Ext"
+      )[1:length(display_cols)]
+
+      # Add back optional columns with proper names
+      if ("Province" %in% names(display_df)) {
+        col_idx <- which(display_cols == "Province")
+        colnames(final_df)[col_idx] <- "Province"
+      }
+      if ("Structure" %in% names(display_df)) {
+        col_idx <- which(display_cols == "Structure")
+        colnames(final_df)[col_idx] <- "Structure"
+      }
+      if ("Flags" %in% names(display_df)) {
+        col_idx <- which(display_cols == "Flags")
+        colnames(final_df)[col_idx] <- "QC Flags"
       }
 
-      # Select columns
-      available_cols <- intersect(
-        c("RunID", "SampleName", "FinalCall",
-          "Cq_median_177T", "Cq_median_18S2",
-          "Cq_median_RNAseP_DNA", "Cq_median_RNAseP_RNA",
-          "Delta_18S2_177T", "Delta_RP",
-          "Province", "Structure",
-          "BiobankMatched", "ExtractionMatched", "Flags"),
-        names(df)
-      )
-
       datatable(
-        df %>% select(all_of(available_cols)),
+        final_df,
         options = list(
-          pageLength = 25,
+          pageLength = 50,
           scrollX = TRUE,
+          scrollY = "600px",
           dom = 'Blfrtip',
           buttons = c('copy', 'csv', 'excel'),
-          lengthMenu = list(c(10, 25, 50, 100, -1), c('10', '25', '50', '100', 'All')),
+          lengthMenu = list(c(25, 50, 100, -1), c('25', '50', '100', 'All')),
           columnDefs = list(
-            list(className = 'dt-center', targets = which(available_cols %in% c('FinalCall', 'BiobankMatched', 'ExtractionMatched')) - 1)
+            list(className = 'dt-center', targets = '_all'),
+            list(width = '120px', targets = 0),  # Sample name wider
+            list(width = '70px', targets = 1:8)   # Other columns consistent
+          ),
+          initComplete = JS(
+            "function(settings) {",
+            "  $(this.api().table().container()).css({'font-size': '13px'});",
+            "  $(this.api().table().header()).css({'font-weight': 'bold', 'font-size': '13px'});",
+            "}"
           )
         ),
         rownames = FALSE,
         class = "display compact stripe hover",
         filter = 'top'
       ) %>%
-        formatStyle('FinalCall',
+        formatStyle('Result',
                     backgroundColor = styleEqual(
-                      c('Positive', 'Negative', 'Invalid_NoDNA'),
-                      c('#d4edda', '#f8f9fa', '#f8d7da')
-                    ))
+                      c('Positive', 'Negative', 'Late+', 'No DNA'),
+                      c('#d4edda', '#ffffff', '#fff3cd', '#f8d7da')
+                    ),
+                    fontWeight = 'bold') %>%
+        formatStyle(c('BB', 'Ext'),
+                    color = styleEqual(c('✓', '—'), c('#28a745', '#6c757d')))
     })
 
     output$tbl_controls <- renderDT({
@@ -1884,34 +1864,73 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
 
         if (!nrow(lj$data)) {
           return(plotly_empty() %>%
-                   layout(title = list(text = glue("No {target_name} control data"),
-                                       font = list(size = 14))))
+                   layout(
+                     title = list(text = glue("No {target_name} control data"),
+                                 font = list(size = 18)),
+                     font = list(size = 14)
+                   ))
         }
 
         plot_ly(lj$data, x = ~RunID, y = ~Cq_mean,
                 type = 'scatter', mode = 'markers+lines',
                 name = 'Run Mean',
-                marker = list(size = 10, color = '#2c3e50'),
-                line = list(width = 2, color = '#2c3e50')) %>%
+                marker = list(size = 12, color = '#2c3e50', line = list(color = '#ffffff', width = 1)),
+                line = list(width = 3, color = '#2c3e50'),
+                hovertemplate = paste0(
+                  "<b style='font-size:14px'>Run: %{x}</b><br>",
+                  "<span style='font-size:13px'>Mean Cq: <b>%{y:.2f}</b></span><br>",
+                  "<extra></extra>"
+                )) %>%
           add_lines(y = ~Mean, name = 'Mean',
-                    line = list(color = 'black', width = 2)) %>%
+                    line = list(color = '#000000', width = 2, dash = 'solid'),
+                    hoverinfo = 'skip') %>%
           add_lines(y = ~plus1, name = '+1 SD',
-                    line = list(color = '#3498db', dash = 'dot', width = 1)) %>%
+                    line = list(color = '#17a2b8', dash = 'dot', width = 2),
+                    hoverinfo = 'skip') %>%
           add_lines(y = ~minus1, name = '-1 SD',
-                    line = list(color = '#3498db', dash = 'dot', width = 1)) %>%
+                    line = list(color = '#17a2b8', dash = 'dot', width = 2),
+                    hoverinfo = 'skip') %>%
           add_lines(y = ~plus2, name = '+2 SD',
-                    line = list(color = '#f39c12', dash = 'dash', width = 2)) %>%
+                    line = list(color = '#ffc107', dash = 'dash', width = 2),
+                    hoverinfo = 'skip') %>%
           add_lines(y = ~minus2, name = '-2 SD',
-                    line = list(color = '#f39c12', dash = 'dash', width = 2)) %>%
+                    line = list(color = '#ffc107', dash = 'dash', width = 2),
+                    hoverinfo = 'skip') %>%
           add_lines(y = ~plus3, name = '+3 SD',
-                    line = list(color = '#e74c3c', dash = 'dashdot', width = 2)) %>%
+                    line = list(color = '#dc3545', dash = 'dashdot', width = 2),
+                    hoverinfo = 'skip') %>%
           add_lines(y = ~minus3, name = '-3 SD',
-                    line = list(color = '#e74c3c', dash = 'dashdot', width = 2)) %>%
+                    line = list(color = '#dc3545', dash = 'dashdot', width = 2),
+                    hoverinfo = 'skip') %>%
           layout(
-            xaxis = list(title = "Run ID", tickangle = -45),
-            yaxis = list(title = "Cq Value"),
-            legend = list(orientation = 'h', y = -0.3, x = 0.1),
-            margin = list(b = 100)
+            title = list(
+              text = glue("<b>Levey-Jennings Chart: {target_name}</b>"),
+              font = list(size = 18, color = '#2c3e50')
+            ),
+            xaxis = list(
+              title = list(text = "<b>Run ID</b>", font = list(size = 14)),
+              tickangle = -45,
+              tickfont = list(size = 12),
+              gridcolor = '#e9ecef'
+            ),
+            yaxis = list(
+              title = list(text = "<b>Cq Value</b>", font = list(size = 14)),
+              tickfont = list(size = 12),
+              gridcolor = '#e9ecef'
+            ),
+            legend = list(
+              orientation = 'v',
+              x = 1.02,
+              y = 1,
+              font = list(size = 12),
+              bgcolor = 'rgba(255,255,255,0.8)',
+              bordercolor = '#dee2e6',
+              borderwidth = 1
+            ),
+            hovermode = 'closest',
+            plot_bgcolor = '#ffffff',
+            paper_bgcolor = '#ffffff',
+            margin = list(l = 70, r = 120, t = 80, b = 100)
           )
       })
     }
@@ -1929,7 +1948,11 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
       df <- filtered_samples()
 
       if (!nrow(df)) {
-        return(plotly_empty() %>% layout(title = "No data available"))
+        return(plotly_empty() %>%
+                 layout(
+                   title = list(text = "No data available", font = list(size = 18)),
+                   font = list(size = 14)
+                 ))
       }
 
       required_cols <- c("ControlType", "Cq_median_177T", "Cq_median_18S2", "FinalCall", "SampleName")
@@ -1937,7 +1960,11 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
 
       if (length(missing_cols) > 0) {
         return(plotly_empty() %>%
-                 layout(title = paste("Missing columns:", paste(missing_cols, collapse = ", "))))
+                 layout(
+                   title = list(text = paste("Missing columns:", paste(missing_cols, collapse = ", ")),
+                               font = list(size = 18)),
+                   font = list(size = 14)
+                 ))
       }
 
       df <- df %>%
@@ -1948,28 +1975,54 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
         )
 
       if (!nrow(df)) {
-        return(plotly_empty() %>% layout(title = "No samples with both 177T and 18S2 data"))
+        return(plotly_empty() %>%
+                 layout(
+                   title = list(text = "No samples with both 177T and 18S2 data", font = list(size = 18)),
+                   font = list(size = 14)
+                 ))
       }
 
       plot_ly(df, x = ~Cq_median_177T, y = ~Cq_median_18S2,
               color = ~FinalCall,
-              colors = c("Positive" = "#27ae60", "Negative" = "#95a5a6",
-                         "LatePositive" = "#f39c12", "Invalid_NoDNA" = "#e74c3c"),
+              colors = c("Positive" = "#28a745", "Negative" = "#6c757d",
+                         "LatePositive" = "#ffc107", "Invalid_NoDNA" = "#dc3545"),
               type = 'scatter', mode = 'markers',
               text = ~SampleName,
               hovertemplate = paste0(
-                "<b>%{text}</b><br>",
-                "177T Cq: %{x:.2f}<br>",
-                "18S2 Cq: %{y:.2f}<br>",
+                "<b style='font-size:14px'>%{text}</b><br>",
+                "<span style='font-size:13px'>177T: <b>%{x:.1f}</b></span><br>",
+                "<span style='font-size:13px'>18S2: <b>%{y:.1f}</b></span><br>",
                 "<extra></extra>"
               ),
-              marker = list(size = 10, opacity = 0.7)) %>%
+              marker = list(size = 12, opacity = 0.8, line = list(color = '#ffffff', width = 1))) %>%
         layout(
-          title = list(text = "Trypanozoon Detection: 18S2 vs 177T", font = list(size = 16)),
-          xaxis = list(title = "177T Cq (DNA)"),
-          yaxis = list(title = "18S2 Cq (RNA)"),
-          legend = list(title = list(text = "Call")),
-          hovermode = 'closest'
+          title = list(
+            text = "<b>Trypanozoon Detection: 18S2 vs 177T</b>",
+            font = list(size = 20, color = '#2c3e50')
+          ),
+          xaxis = list(
+            title = list(text = "<b>177T Cq (DNA)</b>", font = list(size = 16)),
+            tickfont = list(size = 14),
+            gridcolor = '#e9ecef',
+            showgrid = TRUE
+          ),
+          yaxis = list(
+            title = list(text = "<b>18S2 Cq (RNA)</b>", font = list(size = 16)),
+            tickfont = list(size = 14),
+            gridcolor = '#e9ecef',
+            showgrid = TRUE
+          ),
+          legend = list(
+            title = list(text = "<b>Result</b>", font = list(size = 14)),
+            font = list(size = 13),
+            bgcolor = 'rgba(255,255,255,0.8)',
+            bordercolor = '#dee2e6',
+            borderwidth = 1
+          ),
+          hovermode = 'closest',
+          plot_bgcolor = '#ffffff',
+          paper_bgcolor = '#ffffff',
+          margin = list(l = 80, r = 80, t = 100, b = 80)
         )
     })
 
@@ -1977,7 +2030,11 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
       df <- filtered_samples()
 
       if (!nrow(df)) {
-        return(plotly_empty() %>% layout(title = "No data available"))
+        return(plotly_empty() %>%
+                 layout(
+                   title = list(text = "No data available", font = list(size = 18)),
+                   font = list(size = 14)
+                 ))
       }
 
       required_cols <- c("ControlType", "Cq_median_RNAseP_DNA", "Cq_median_RNAseP_RNA", "SampleName", "Delta_RP")
@@ -1985,7 +2042,11 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
 
       if (length(missing_cols) > 0) {
         return(plotly_empty() %>%
-                 layout(title = paste("Missing columns:", paste(missing_cols, collapse = ", "))))
+                 layout(
+                   title = list(text = paste("Missing columns:", paste(missing_cols, collapse = ", ")),
+                               font = list(size = 18)),
+                   font = list(size = 14)
+                 ))
       }
 
       df <- df %>%
@@ -1997,35 +2058,61 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
         mutate(
           Quality = case_when(
             is.na(Delta_RP) ~ "Unknown",
-            Delta_RP <= 5 ~ "Good",
-            Delta_RP <= 8 ~ "Moderate",
+            Delta_RP <= 5 ~ "Excellent",
+            Delta_RP <= 8 ~ "Good",
             TRUE ~ "Poor"
           )
         )
 
       if (!nrow(df)) {
-        return(plotly_empty() %>% layout(title = "No samples with RNAseP data"))
+        return(plotly_empty() %>%
+                 layout(
+                   title = list(text = "No samples with RNAseP data", font = list(size = 18)),
+                   font = list(size = 14)
+                 ))
       }
 
       plot_ly(df, x = ~Cq_median_RNAseP_DNA, y = ~Cq_median_RNAseP_RNA,
               color = ~Quality,
-              colors = c("Good" = "#27ae60", "Moderate" = "#f39c12",
-                         "Poor" = "#e74c3c", "Unknown" = "#95a5a6"),
+              colors = c("Excellent" = "#28a745", "Good" = "#17a2b8",
+                         "Poor" = "#dc3545", "Unknown" = "#6c757d"),
               type = 'scatter', mode = 'markers',
-              text = ~paste0(SampleName, "<br>ΔCq: ", round(Delta_RP, 2)),
+              text = ~paste0(SampleName, "<br>ΔCq: ", round(Delta_RP, 1)),
               hovertemplate = paste0(
-                "<b>%{text}</b><br>",
-                "DNA Cq: %{x:.2f}<br>",
-                "RNA Cq: %{y:.2f}<br>",
+                "<b style='font-size:14px'>%{text}</b><br>",
+                "<span style='font-size:13px'>DNA: <b>%{x:.1f}</b></span><br>",
+                "<span style='font-size:13px'>RNA: <b>%{y:.1f}</b></span><br>",
                 "<extra></extra>"
               ),
-              marker = list(size = 10, opacity = 0.7)) %>%
+              marker = list(size = 12, opacity = 0.8, line = list(color = '#ffffff', width = 1))) %>%
         layout(
-          title = list(text = "RNA Preservation Quality (ΔCq Analysis)", font = list(size = 16)),
-          xaxis = list(title = "RNAseP-DNA Cq"),
-          yaxis = list(title = "RNAseP-RNA Cq"),
-          legend = list(title = list(text = "RNA Quality")),
-          hovermode = 'closest'
+          title = list(
+            text = "<b>RNA Preservation Quality (ΔCq Analysis)</b>",
+            font = list(size = 20, color = '#2c3e50')
+          ),
+          xaxis = list(
+            title = list(text = "<b>RNAseP-DNA Cq</b>", font = list(size = 16)),
+            tickfont = list(size = 14),
+            gridcolor = '#e9ecef',
+            showgrid = TRUE
+          ),
+          yaxis = list(
+            title = list(text = "<b>RNAseP-RNA Cq</b>", font = list(size = 16)),
+            tickfont = list(size = 14),
+            gridcolor = '#e9ecef',
+            showgrid = TRUE
+          ),
+          legend = list(
+            title = list(text = "<b>RNA Quality</b>", font = list(size = 14)),
+            font = list(size = 13),
+            bgcolor = 'rgba(255,255,255,0.8)',
+            bordercolor = '#dee2e6',
+            borderwidth = 1
+          ),
+          hovermode = 'closest',
+          plot_bgcolor = '#ffffff',
+          paper_bgcolor = '#ffffff',
+          margin = list(l = 80, r = 80, t = 100, b = 80)
         )
     })
 

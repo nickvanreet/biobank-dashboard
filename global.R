@@ -32,7 +32,7 @@ config <- list(
     biobank_dir = "data/biobank",
     extractions_dir = "data/extractions",
     pcr_dir = "data/PCR",
-    mic_dir = "data/MIC"
+    mic_dir = "data/mic"
   ),
   ui = list(
     theme_primary = "#3498DB",

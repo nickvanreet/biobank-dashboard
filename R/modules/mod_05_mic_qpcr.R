@@ -157,10 +157,27 @@ parse_single_mic_file <- function(file_info, settings) {
     # Create replicates_long with proper structure
     replicates_long <- tibble()
     
+    # RIGHT BEFORE THE FOR LOOP, ADD THIS:
+    message(sprintf("\n🔍 parse_single_mic_file: Checking rep_data for %s", file_info$file_name))
+    message(sprintf("   rep_data has %d rows, %d columns", nrow(rep_data), ncol(rep_data)))
+    message(sprintf("   Column names: %s", paste(names(rep_data), collapse = ", ")))
+    
     # Process each target
-    for (target in c("177T", "18S2", "RNAseP_DNA", "RNAseP_RNA")) {
-      cq_col <- paste0("Cq_", target)
-      marker_col <- paste0("marker_", target)
+    target_mappings <- list(
+      "177T" = list(cq = "Cq_177T", marker = "marker_177T"),
+      "18S2" = list(cq = "Cq_18S2", marker = "marker_18S2"),
+      "RNAseP_DNA" = list(cq = "RNAseP_DNA_Cq", marker = "RNAseP_DNA"),  # DIFFERENT!
+      "RNAseP_RNA" = list(cq = "RNAseP_RNA_Cq", marker = "RNAseP_RNA")   # DIFFERENT!
+    )
+    
+    for (target in names(target_mappings)) {
+      cq_col <- target_mappings[[target]]$cq
+      marker_col <- target_mappings[[target]]$marker
+      
+      # ADD THIS:
+      message(sprintf("\n   [%s] Looking for columns: %s, %s", target, cq_col, marker_col))
+      message(sprintf("      %s exists? %s", cq_col, cq_col %in% names(rep_data)))
+      message(sprintf("      %s exists? %s", marker_col, marker_col %in% names(rep_data)))
       
       if (cq_col %in% names(rep_data) && marker_col %in% names(rep_data)) {
         target_data <- rep_data %>%

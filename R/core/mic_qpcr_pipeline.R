@@ -87,7 +87,6 @@ find_column <- function(df, patterns) {
 }
 
 guess_header_row <- function(mat) {
-  # row contains (Well|Name|Sample|ID) AND (Cq|Ct|Cp)
   candidates <- which(apply(mat, 1, function(r) {
     any(grepl("\\b(Well|Name|Sample|ID|Identifier|Position)\\b", r, ignore.case = TRUE)) &&
       any(grepl("\\b(Cq|Ct|Cp|Quant.*Cq|Cross.*Point)\\b", r, ignore.case = TRUE))
@@ -96,22 +95,45 @@ guess_header_row <- function(mat) {
 }
 
 read_any_result_table <- function(path, sheet) {
+  # Add diagnostic message
+  message(sprintf("\n  📖 Calling read_any_result_table('%s')", sheet))
+  
   raw <- suppressMessages(readxl::read_excel(path, sheet = sheet, col_names = FALSE, .name_repair = "minimal"))
-  if (nrow(raw) == 0) return(tibble::tibble())
-
+  if (nrow(raw) == 0) {
+    message("    ⚠️  Empty sheet, returning empty tibble")
+    return(tibble::tibble())
+  }
+  
+  message(sprintf("    Raw data: %d rows × %d cols", nrow(raw), ncol(raw)))
+  
   mat <- apply(raw, 2, as.character)
   hdr <- guess_header_row(mat)
-  if (is.na(hdr)) return(tibble::tibble())  # no recognizable table
-
+  
+  if (is.na(hdr)) {
+    message("    ✗ guess_header_row() returned NA")
+    message("    Returning empty tibble")
+    return(tibble::tibble())
+  }
+  
+  message(sprintf("    ✓ Header found at row %d", hdr))
+  
   headers <- as.character(unlist(raw[hdr, ]))
   headers <- make.names(trimws(headers), unique = TRUE)
+  message(sprintf("    Headers: %s", paste(headers[1:min(6, length(headers))], collapse = ", ")))
+  
   dat <- raw[(hdr + 1):nrow(raw), , drop = FALSE]
   names(dat) <- headers
-
+  
   dat <- tibble::as_tibble(dat)
   dat <- dat[, colSums(!is.na(dat)) > 0, drop = FALSE]
-  if (nrow(dat) == 0) return(tibble::tibble())
-
+  
+  message(sprintf("    ✓ Returning %d rows × %d cols", nrow(dat), ncol(dat)))
+  
+  if (nrow(dat) == 0) {
+    message("    ⚠️  No data rows after filtering")
+    return(tibble::tibble())
+  }
+  
   dat
 }
 
@@ -122,10 +144,43 @@ pick_cq_col <- function(df) {
                     "Cq.*Value","Ct.*Value","Cp.*Value",
                     "Quant.*Cq","Cross.*Point"))
 }
+
 pick_name_col <- function(df) {
   if ("Name" %in% names(df)) return("Name")
   find_column(df, c("^Name$","Sample.*Name","^Sample$","Identifier","ID",
                     "^Well$","Well.*Position","Position"))
+}
+
+
+# ==============================================================================
+# FLEXIBLE SHEET NAME MATCHING (handles different dash characters)
+# ==============================================================================
+
+find_sheet_flexible <- function(sheets, expected_name) {
+  # Try exact match first
+  if (expected_name %in% sheets) return(expected_name)
+  
+  # Create flexible pattern: matches any dash type (-, –, —, −, etc.)
+  flexible_pattern <- gsub("-", "[-–—−‐‑‒]", expected_name, fixed = TRUE)
+  flexible_pattern <- gsub(" ", "\\s+", flexible_pattern)
+  
+  # Try matching
+  matches <- grep(flexible_pattern, sheets, value = TRUE, ignore.case = FALSE)
+  if (length(matches) > 0) {
+    message(sprintf("✓ Found sheet '%s' for target '%s'", matches[1], expected_name))
+    return(matches[1])
+  }
+  
+  # Try case-insensitive
+  matches <- grep(flexible_pattern, sheets, value = TRUE, ignore.case = TRUE)
+  if (length(matches) > 0) {
+    message(sprintf("✓ Found sheet '%s' for target '%s' (case-insensitive)", 
+                    matches[1], expected_name))
+    return(matches[1])
+  }
+  
+  message(sprintf("⚠ Sheet not found: '%s'", expected_name))
+  return(NULL)
 }
 
 # ==============================================================================
@@ -135,13 +190,20 @@ pick_name_col <- function(df) {
 extract_cq_values <- function(micrun_file) {
   stopifnot(file.exists(micrun_file))
   sheets <- readxl::excel_sheets(micrun_file)
-
+  
+  # DIAGNOSTIC: Entry point
+  message(sprintf("\n📂 extract_cq_values() called"))
+  message(sprintf("   File: %s", basename(micrun_file)))
+  message(sprintf("   Found %d sheets: %s", length(sheets), 
+                  paste(sheets, collapse = ", ")))
+  
   # --- Samples (Well -> Name) ---
+  message("\n📋 Reading Samples sheet...")
   samples_raw <- suppressMessages(readxl::read_excel(micrun_file, sheet = "Samples"))
   well_col <- if ("Well" %in% names(samples_raw)) "Well" else find_column(samples_raw, c("^Well$","Well.*Pos"))
   name_col <- if ("Name" %in% names(samples_raw)) "Name" else find_column(samples_raw, c("^Name$","Sample.*Name"))
   type_col <- find_column(samples_raw, c("^Type$","Sample.*Type","Control.*Type"))
-
+  
   samples <- tibble::tibble(
     Well = if (!is.null(well_col)) as.character(samples_raw[[well_col]]) else NA_character_,
     Name = if (!is.null(name_col)) as.character(samples_raw[[name_col]]) else NA_character_,
@@ -160,7 +222,9 @@ extract_cq_values <- function(micrun_file) {
         TRUE ~ Type
       )
     )
-
+  
+  message(sprintf("   ✓ Loaded %d samples from Samples sheet", nrow(samples)))
+  
   # --- Targets -> RESULT sheets ---
   target_defs <- list(
     "177T"        = "Cycling 177T Result",
@@ -168,28 +232,67 @@ extract_cq_values <- function(micrun_file) {
     "RNAseP_DNA"  = "Cycling RNAseP-DNA Result",
     "RNAseP_RNA"  = "Cycling RNAseP-RNA Result"
   )
-
+  
   cq_data <- tibble::tibble()
   thresholds <- list()
-
+  
+  message("\n🎯 Processing target Result sheets...")
+  
   for (tgt in names(target_defs)) {
     result_sheet <- target_defs[[tgt]]
-    if (!(result_sheet %in% sheets)) next
-
+    
+    # DIAGNOSTIC: Start of target processing
+    message(sprintf("\n  [%s] Processing target...", tgt))
+    message(sprintf("        Looking for sheet: '%s'", result_sheet))
+    
+    # Check if sheet exists
+    if (!(result_sheet %in% sheets)) {
+      message(sprintf("        ⚠️  SKIPPED: Sheet not found in file"))
+      next
+    }
+    
+    message(sprintf("        ✓ Sheet found in file"))
+    
+    # Try to read the sheet
     df <- read_any_result_table(micrun_file, result_sheet)
-    if (!nrow(df)) next
-
+    
+    # DIAGNOSTIC: Check read result
+    message(sprintf("        Read result: %d rows × %d cols", nrow(df), ncol(df)))
+    
+    if (!nrow(df)) {
+      message(sprintf("        ⚠️  SKIPPED: read_any_result_table returned no rows"))
+      next
+    }
+    
+    # Try to find Cq column
     cq_col <- pick_cq_col(df)
+    message(sprintf("        Cq column: %s", 
+                    if(is.null(cq_col)) "✗ NOT FOUND" else paste0("✓ ", cq_col)))
+    
+    # Try to find Name column
     nm_col <- pick_name_col(df)
-    if (is.null(cq_col) || is.null(nm_col)) next
-
+    message(sprintf("        Name column: %s", 
+                    if(is.null(nm_col)) "✗ NOT FOUND" else paste0("✓ ", nm_col)))
+    
+    # Check if both columns found
+    if (is.null(cq_col) || is.null(nm_col)) {
+      message(sprintf("        ⚠️  SKIPPED: Missing required columns"))
+      message(sprintf("           Available columns: %s", paste(names(df), collapse = ", ")))
+      next
+    }
+    
+    # DIAGNOSTIC: About to extract data
+    message(sprintf("        ✅ Extracting Cq values..."))
+    
+    # Extract and transform data
     tmp <- df |>
       dplyr::transmute(Name_raw = .data[[nm_col]],
                        Cq = suppressWarnings(as.numeric(.data[[cq_col]]))) |>
       dplyr::mutate(target = tgt)
-
+    
     # If Name_raw are wells, map via Samples
     if (identical(nm_col, "Well") || all(grepl("^[A-H]\\d{1,2}$", tmp$Name_raw, perl=TRUE), na.rm=TRUE)) {
+      message(sprintf("        Mapping wells to sample names..."))
       tmp <- tmp |>
         dplyr::rename(Well = Name_raw) |>
         dplyr::left_join(samples |> dplyr::select(Well, Name), by = "Well") |>
@@ -200,10 +303,16 @@ extract_cq_values <- function(micrun_file) {
         dplyr::rename(Name = Name_raw) |>
         dplyr::select(Name, Cq, target)
     }
-
+    
+    # DIAGNOSTIC: Show what we extracted
+    n_rows <- nrow(tmp)
+    n_with_cq <- sum(!is.na(tmp$Cq))
+    message(sprintf("        ✓ Extracted %d rows (%d with Cq values)", n_rows, n_with_cq))
+    
+    # Add to accumulated data
     cq_data <- dplyr::bind_rows(cq_data, tmp)
-
-    # optional: threshold from same sheet
+    
+    # Optional: threshold from same sheet
     res_raw <- suppressMessages(readxl::read_excel(micrun_file, sheet = result_sheet, col_names = FALSE))
     res_mat <- apply(res_raw, 2, as.character)
     has_thr <- which(apply(res_mat, 1, function(r) any(grepl("Threshold|Cutoff", r, TRUE))))
@@ -211,30 +320,50 @@ extract_cq_values <- function(micrun_file) {
       row_i <- has_thr[1]
       nums <- suppressWarnings(as.numeric(res_mat[row_i, ]))
       thr  <- nums[which(!is.na(nums))[1]]
-      if (!is.na(thr)) thresholds[[tgt]] <- thr
+      if (!is.na(thr)) {
+        thresholds[[tgt]] <- thr
+        message(sprintf("        Found threshold: %.2f", thr))
+      }
     }
   }
-
+  
+  # DIAGNOSTIC: Final summary
+  message(sprintf("\n✅ extract_cq_values() complete:"))
+  message(sprintf("   Total Cq rows extracted: %d", nrow(cq_data)))
+  if (nrow(cq_data) > 0) {
+    targets_found <- unique(cq_data$target)
+    message(sprintf("   Targets with data: %s", paste(targets_found, collapse = ", ")))
+    for (t in targets_found) {
+      n <- sum(cq_data$target == t)
+      n_with_cq <- sum(cq_data$target == t & !is.na(cq_data$Cq))
+      message(sprintf("     - %s: %d rows (%d with Cq)", t, n, n_with_cq))
+    }
+  } else {
+    message("   ⚠️  WARNING: No Cq data extracted from any sheet!")
+  }
+  
   if (!nrow(cq_data)) {
     stop("No per-sample Cq rows found in RESULT sheets after header detection. ",
          "Your *Data* tabs are raw curves; per-sample calls live in *Result* tabs.")
   }
-
+  
   # Avoid many-to-many on Name -> use a distinct lookup
   samples_simple <- samples %>%
     dplyr::select(Name, Type, is_control) %>%
     dplyr::distinct()
-
+  
   out <- cq_data %>%
     dplyr::left_join(samples_simple, by = "Name") %>%
     dplyr::group_by(Name, target) %>%
     dplyr::mutate(Replicate = paste0("Rep", dplyr::row_number())) %>%
     dplyr::ungroup()
-
+  
+  message(sprintf("   Final output: %d rows with replicate info\n", nrow(out)))
+  
   list(
     cq_data = out,
     samples = samples,
-    run_settings = list(),  # fill if you need "Run Information" parsing
+    run_settings = list(),
     thresholds = thresholds
   )
 }
@@ -482,44 +611,175 @@ analyze_qpcr <- function(micrun_file,
                          rnasep_rna_cutoff = DEFAULT_CUTOFFS$RNAseP_RNA$positive,
                          cutoffs = DEFAULT_CUTOFFS,
                          verbose = TRUE) {
-
+  
   cutoffs <- sanitize_cutoffs(cutoffs)
   rnasep_rna_cutoff <- coerce_cutoff_numeric(rnasep_rna_cutoff)
-
+  
   if (verbose) cat("📂 Loading data from:", basename(micrun_file), "\n")
-
+  
+  # ===========================================================================
+  # STEP 1: Extract Cq values
+  # ===========================================================================
   extracted <- extract_cq_values(micrun_file)
-  if (nrow(extracted$cq_data) == 0) stop("No Cq data extracted; check sheet names and column headings.")
-
+  
+  if (nrow(extracted$cq_data) == 0) {
+    stop("No Cq data extracted; check sheet names and column headings.")
+  }
+  
   if (verbose) {
     cat("✓ Found", nrow(extracted$samples), "samples\n")
     cat("✓ Targets:", paste(unique(extracted$cq_data$target), collapse = ", "), "\n")
+    
+    # DIAGNOSTIC: Show extraction results by target
+    cat("\n🔍 Extraction results by target:\n")
+    target_counts <- extracted$cq_data %>%
+      group_by(target) %>%
+      summarise(
+        total_rows = n(),
+        with_cq = sum(!is.na(Cq)),
+        .groups = "drop"
+      )
+    for (i in seq_len(nrow(target_counts))) {
+      cat(sprintf("   - %s: %d rows (%d with Cq)\n",
+                  target_counts$target[i],
+                  target_counts$total_rows[i],
+                  target_counts$with_cq[i]))
+    }
   }
-
-  if (verbose) cat("🔍 Interpreting Cq values...\n")
+  
+  # ===========================================================================
+  # STEP 2: Interpret Cq values (apply cutoffs)
+  # ===========================================================================
+  if (verbose) cat("\n🔍 Interpreting Cq values...\n")
   interpreted <- apply_interpretation(extracted$cq_data, cutoffs)
-
-  if (verbose) cat("📊 Summarizing by replicate...\n")
+  
+  if (verbose) {
+    # DIAGNOSTIC: Show interpretation results
+    cat("   Interpretation complete: ", nrow(interpreted), "rows\n")
+    interp_summary <- interpreted %>%
+      group_by(target, interpretation) %>%
+      summarise(n = n(), .groups = "drop")
+    
+    for (tgt in unique(interpreted$target)) {
+      tgt_data <- interp_summary %>% filter(target == tgt)
+      cat(sprintf("   - %s:\n", tgt))
+      for (i in seq_len(nrow(tgt_data))) {
+        cat(sprintf("      %s: %d\n", 
+                    tgt_data$interpretation[i], 
+                    tgt_data$n[i]))
+      }
+    }
+  }
+  
+  # ===========================================================================
+  # STEP 3: Summarize by replicate
+  # ===========================================================================
+  if (verbose) cat("\n📊 Summarizing by replicate...\n")
   replicate_summary <- summarize_by_replicate(interpreted)
-
-  if (verbose) cat("🎯 Applying decision logic...\n")
+  
+  if (verbose) {
+    # DIAGNOSTIC: Check replicate summary
+    cat("   Replicate summary: ", nrow(replicate_summary), "rows\n")
+    
+    # Check which marker columns exist
+    marker_cols <- grep("^marker_", names(replicate_summary), value = TRUE)
+    if (length(marker_cols) > 0) {
+      cat("   Marker columns found:", paste(marker_cols, collapse = ", "), "\n")
+      
+      # Count samples with each marker
+      for (col in marker_cols) {
+        target_name <- sub("^marker_", "", col)
+        n_positive <- sum(replicate_summary[[col]] == "Positive", na.rm = TRUE)
+        n_total <- sum(!is.na(replicate_summary[[col]]))
+        cat(sprintf("   - %s: %d/%d positive\n", target_name, n_positive, n_total))
+      }
+    }
+  }
+  
+  # ===========================================================================
+  # STEP 4: Apply decision logic
+  # ===========================================================================
+  if (verbose) cat("\n🎯 Applying decision logic...\n")
   replicate_decisions <- apply_trypanozoon_decision(
     replicate_summary,
     rnasep_rna_cutoff = rnasep_rna_cutoff
   )
-
-  if (verbose) cat("📋 Creating sample summary...\n")
-  sample_summary <- summarize_by_sample(replicate_decisions)
-
+  
   if (verbose) {
-    cat("\n✅ Analysis complete!\n")
-    cat("   Samples:", nrow(sample_summary), "\n")
-    cat("   Positive:", sum(sample_summary$final_category == "positive"), "\n")
-    cat("   Negative:", sum(sample_summary$final_category == "negative"), "\n")
-    cat("   Failed/Inconclusive:",
-        sum(sample_summary$final_category %in% c("failed", "inconclusive")), "\n\n")
+    # DIAGNOSTIC: Check decision results
+    cat("   Decision results: ", nrow(replicate_decisions), "rows\n")
+    
+    if ("decision" %in% names(replicate_decisions)) {
+      decision_counts <- table(replicate_decisions$decision)
+      cat("   Decisions:\n")
+      for (dec in names(decision_counts)) {
+        cat(sprintf("      %s: %d\n", dec, decision_counts[dec]))
+      }
+    }
+    
+    if ("category" %in% names(replicate_decisions)) {
+      category_counts <- table(replicate_decisions$category)
+      cat("   Categories:\n")
+      for (cat_name in names(category_counts)) {
+        cat(sprintf("      %s: %d\n", cat_name, category_counts[cat_name]))
+      }
+    }
   }
-
+  
+  # ===========================================================================
+  # STEP 5: Create sample summary
+  # ===========================================================================
+  if (verbose) cat("\n📋 Creating sample summary...\n")
+  sample_summary <- summarize_by_sample(replicate_decisions)
+  
+  if (verbose) {
+    # DIAGNOSTIC: Final summary
+    cat("\n✅ Analysis complete!\n")
+    cat(sprintf("   Total samples: %d\n", nrow(sample_summary)))
+    
+    if ("final_category" %in% names(sample_summary)) {
+      cat("   By category:\n")
+      final_cats <- table(sample_summary$final_category)
+      for (cat_name in names(final_cats)) {
+        cat(sprintf("      %s: %d\n", cat_name, final_cats[cat_name]))
+      }
+    } else {
+      # Fallback to old column names
+      cat("   Positive:", sum(sample_summary$final_category == "positive", na.rm = TRUE), "\n")
+      cat("   Negative:", sum(sample_summary$final_category == "negative", na.rm = TRUE), "\n")
+      cat("   Failed/Inconclusive:",
+          sum(sample_summary$final_category %in% c("failed", "inconclusive"), na.rm = TRUE), "\n")
+    }
+    
+    # DIAGNOSTIC: Check if RNAseP data survived
+    cat("\n🔬 Checking RNAseP data in final summary:\n")
+    if ("rna_quality" %in% names(sample_summary)) {
+      rna_qual <- table(sample_summary$rna_quality, useNA = "ifany")
+      cat("   RNA quality distribution:\n")
+      for (qual in names(rna_qual)) {
+        cat(sprintf("      %s: %d\n", qual, rna_qual[qual]))
+      }
+    }
+    
+    if ("dna_quality" %in% names(sample_summary)) {
+      dna_qual <- table(sample_summary$dna_quality, useNA = "ifany")
+      cat("   DNA quality distribution:\n")
+      for (qual in names(dna_qual)) {
+        cat(sprintf("      %s: %d\n", qual, dna_qual[qual]))
+      }
+    }
+    
+    if ("rna_preservation" %in% names(sample_summary)) {
+      rna_pres <- table(sample_summary$rna_preservation, useNA = "ifany")
+      cat("   RNA preservation:\n")
+      for (pres in names(rna_pres)) {
+        cat(sprintf("      %s: %d\n", pres, rna_pres[pres]))
+      }
+    }
+    
+    cat("\n")
+  }
+  
   list(
     sample_summary = sample_summary,
     replicate_data = replicate_decisions,

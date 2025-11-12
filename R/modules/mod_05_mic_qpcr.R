@@ -620,7 +620,7 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
     raw_data <- reactive({
       req(input$mic_dir)
       withProgress(message = "Reading MIC exports", value = 0.2, {
-        parsed <- parse_mic_directory(input$mic_dir, settings(), cache_state())
+        parsed <- parse_mic_directory(input$mic_dir, settings(), isolate(cache_state()))
         cache_state(parsed$cache)
         parsed
       })

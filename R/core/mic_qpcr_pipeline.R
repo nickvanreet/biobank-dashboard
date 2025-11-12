@@ -201,20 +201,32 @@ extract_cq_values <- function(micrun_file) {
 # ==============================================================================
 
 apply_interpretation <- function(cq_data, cutoffs = DEFAULT_CUTOFFS) {
-  # optional robustification if some Cq appear as strings
+  if (!nrow(cq_data)) {
+    return(dplyr::mutate(cq_data, interpretation = character()))
+  }
+
+  missing_cols <- setdiff(c("target", "Cq"), names(cq_data))
+  if (length(missing_cols)) {
+    stop(sprintf("Cq data missing required columns: %s", paste(missing_cols, collapse = ", ")))
+  }
+
   cq_data %>%
     mutate(
       # handle -1 / NA / Inf as no amplification (Negative)
-      interpretation = pmap_chr(
-        list(target, Cq),
+      interpretation = purrr::map2_chr(
+        target, Cq,
         function(tgt, cq) {
           # treat invalids as Negative (no amplification)
           if (is.na(cq) || cq < 0 || is.infinite(cq)) return("Negative")
           if (!tgt %in% names(cutoffs)) return("Unknown")
           tgt_cutoffs <- cutoffs[[tgt]]
-          if (cq <= tgt_cutoffs$positive) {
+          pos_cutoff <- tgt_cutoffs$positive
+          neg_cutoff <- tgt_cutoffs$negative
+          if (is.null(pos_cutoff) || is.na(pos_cutoff)) pos_cutoff <- -Inf
+          if (is.null(neg_cutoff) || is.na(neg_cutoff)) neg_cutoff <- Inf
+          if (cq <= pos_cutoff) {
             "Positive"
-          } else if (cq >= tgt_cutoffs$negative) {
+          } else if (cq >= neg_cutoff) {
             "Negative"
           } else {
             "Indeterminate"

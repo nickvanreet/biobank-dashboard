@@ -20,16 +20,8 @@ ui <- page_navbar(
   mod_overview_demographics_ui("overview_demographics"),
   mod_transport_ui("transport"),
   mod_extractions_ui("extractions"),
-#  mod_pcr_ui("pcr"),
-#  mod_mic_pcr_ui("mic05")
-  
-  
-  # Add other modules here as they're developed:
-  # mod_transport_ui("transport"),
-  # mod_lab_results_ui("lab_results"),
-  # mod_data_export_ui("data_export"),
-  # etc.
-)
+  mod_mic_qpcr_ui("mic_qpcr")
+  )
 
 # ============================================================================
 # SERVER LOGIC
@@ -67,24 +59,19 @@ server <- function(input, output, session) {
     biobank_data = data$clean_data
   )
   
-#  mod_pcr_server(
-#    "pcr",
-#    pcr_dir = "data/PCR",
-#    biobank_df = data$clean_data,
-#    extractions_df = data$filtered_extractions,
-#    filters_reactive = NULL
-#  )
-  
-#  mod_mic_pcr_server(
-#    "mic05",
-#    default_dir = "data/MIC",
-#    filtered_biobank = data$filtered_data
-#  )
-  
-  # Add other module servers here:
-  # mod_transport_server("transport", filtered_data = data$filtered_data)
-  # mod_lab_results_server("lab_results", biobank_data = data$clean_data)
-  # etc.
+  # In the server section, add:
+  mod_mic_qpcr_server(
+    "mic_qpcr",
+    biobank_df = data$clean_data,
+    extractions_df = data$filtered_extractions,
+    filters = reactive({
+      list(
+        date_range = input$date_range,
+        province = input$filter_province,
+        zone = input$filter_zone
+      )
+    })
+  )
   
   # Session management
   session$onSessionEnded(function() {

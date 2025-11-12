@@ -64,10 +64,7 @@ source("R/modules/mod_01_data_quality.R")
 source("R/modules/mod_02_overview_demographics.R")
 source("R/modules/mod_03_transport.R")
 source("R/modules/mod_04_extractions.R")
-source("R/modules/mod_05_mic.R")
-
-# Uncomment when ready:
-# source("R/modules/mod_05_pcr.R")
+source("R/modules/mod_05_mic_qpcr.R")
 
 # ============================================================================
 # UI THEME

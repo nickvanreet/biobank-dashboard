@@ -61,13 +61,13 @@ mod_extractions_ui <- function(id) {
         card(
           card_header("État DRS Distribution"),
           card_body_fill(
-            plotly::plotlyOutput(ns("drs_state_plot"), height = "320px")
+            plotly::plotlyOutput(ns("drs_state_plot"), height = "500px")
           )
         ),
         card(
           card_header("Évaluation de l'extrait"),
           card_body_fill(
-            plotly::plotlyOutput(ns("extract_quality_plot"), height = "320px")
+            plotly::plotlyOutput(ns("extract_quality_plot"), height = "500px")
           )
         )
       ),
@@ -77,7 +77,7 @@ mod_extractions_ui <- function(id) {
         card(
           card_header("Mean DRS Volume Over Time"),
           card_body_fill(
-            plotly::plotlyOutput(ns("mean_volume_timeseries_plot"), height = "360px")
+            plotly::plotlyOutput(ns("mean_volume_timeseries_plot"), height = "550px")
           )
         )
       ),
@@ -87,7 +87,7 @@ mod_extractions_ui <- function(id) {
         card(
           card_header("Extraction Volume Over Time"),
           card_body_fill(
-            plotly::plotlyOutput(ns("volume_timeseries_plot"), height = "360px")
+            plotly::plotlyOutput(ns("volume_timeseries_plot"), height = "550px")
           )
         )
       ),
@@ -100,11 +100,11 @@ mod_extractions_ui <- function(id) {
             navset_card_tab(
               nav_panel(
                 "Positions",
-                plotly::plotlyOutput(ns("rsc_position_plot"), height = "320px")
+                plotly::plotlyOutput(ns("rsc_position_plot"), height = "500px")
               ),
               nav_panel(
                 "Runs",
-                plotly::plotlyOutput(ns("rsc_run_plot"), height = "320px")
+                plotly::plotlyOutput(ns("rsc_run_plot"), height = "500px")
               )
             )
           )

@@ -78,13 +78,13 @@ mod_transport_ui <- function(id) {
           card(
             card_header("Transport Durations by Week"),
             card_body_fill(
-              plotly::plotlyOutput(ns("transport_timeline_plot"), height = "350px")
+              plotly::plotlyOutput(ns("transport_timeline_plot"), height = "500px")
             )
           ),
           card(
             card_header("Stage Throughput"),
             card_body_fill(
-              plotly::plotlyOutput(ns("transport_funnel_plot"), height = "350px")
+              plotly::plotlyOutput(ns("transport_funnel_plot"), height = "500px")
             )
           )
         ),
@@ -94,13 +94,13 @@ mod_transport_ui <- function(id) {
           card(
             card_header("Transport Temperature Distribution"),
             card_body_fill(
-              plotly::plotlyOutput(ns("transport_temperature_plot"), height = "350px")
+              plotly::plotlyOutput(ns("transport_temperature_plot"), height = "500px")
             )
           ),
           card(
             card_header("Transport Durations by Province"),
             card_body_fill(
-              plotly::plotlyOutput(ns("transport_province_plot"), height = "350px")
+              plotly::plotlyOutput(ns("transport_province_plot"), height = "500px")
             )
           )
         ),

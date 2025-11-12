@@ -82,6 +82,7 @@ source("R/modules/mod_02_overview_demographics.R")
 source("R/modules/mod_03_transport.R")
 source("R/modules/mod_04_extractions.R")
 source("R/modules/mod_05_mic_qpcr.R")  # The rebuilt module
+source("R/modules/mod_06_drs_rnasep.R")  # DRS volume vs RNAseP analysis
 
 # ============================================================================
 # UI THEME
@@ -99,6 +100,80 @@ app_theme <- bslib::bs_theme(
   base_font = "'Source Sans Pro', 'Segoe UI', system-ui, sans-serif"
 )
 
+# Add custom CSS for scrolling and elegant UI
+app_theme <- bslib::bs_add_rules(
+  app_theme,
+  "
+  /* Enable smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Make main content area scrollable */
+  .container-fluid {
+    overflow-y: auto;
+    max-height: 100vh;
+    padding-bottom: 2rem;
+  }
+
+  /* Elegant card styling */
+  .card {
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    transition: box-shadow 0.3s ease;
+  }
+
+  .card:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.12);
+  }
+
+  /* Value box enhancements */
+  .bslib-value-box {
+    border-radius: 8px;
+    transition: transform 0.2s ease;
+  }
+
+  .bslib-value-box:hover {
+    transform: translateY(-2px);
+  }
+
+  /* Table styling enhancements */
+  .dataTables_wrapper {
+    font-family: 'Source Sans Pro', 'Segoe UI', system-ui, sans-serif;
+  }
+
+  .table {
+    font-size: 13px;
+  }
+
+  .table thead th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    border-bottom: 2px solid #dee2e6;
+  }
+
+  .table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(0,0,0,0.02);
+  }
+
+  .table-hover tbody tr:hover {
+    background-color: rgba(52, 152, 219, 0.08);
+  }
+
+  /* Plotly chart containers */
+  .plotly {
+    border-radius: 4px;
+  }
+
+  /* Card headers */
+  .card-header {
+    font-weight: 600;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+  }
+  "
+)
+
 # ============================================================================
 # APP CONSTANTS
 # ============================================================================
@@ -111,6 +186,67 @@ APP_CONSTANTS <- list(
     buttons = c('copy', 'csv', 'excel')
   )
 )
+
+# ============================================================================
+# ELEGANT TABLE STYLING HELPER
+# ============================================================================
+
+#' Create elegant styled DataTable
+#' @param data Data frame to display
+#' @param ... Additional DT::datatable arguments
+#' @export
+create_elegant_table <- function(data,
+                                 pageLength = 25,
+                                 buttons = c('copy', 'csv', 'excel'),
+                                 filter_position = "top",
+                                 striped = TRUE,
+                                 hover = TRUE,
+                                 compact = TRUE,
+                                 bordered = FALSE,
+                                 ...) {
+
+  # Build class string
+  classes <- c("table")
+  if (striped) classes <- c(classes, "table-striped")
+  if (hover) classes <- c(classes, "table-hover")
+  if (compact) classes <- c(classes, "table-sm")
+  if (bordered) classes <- c(classes, "table-bordered")
+
+  class_str <- paste(classes, collapse = " ")
+
+  # Create datatable with elegant styling
+  dt <- DT::datatable(
+    data,
+    options = list(
+      pageLength = pageLength,
+      scrollX = TRUE,
+      scrollY = "500px",
+      scrollCollapse = TRUE,
+      dom = 'Bfrtip',
+      buttons = buttons,
+      columnDefs = list(
+        list(className = 'dt-center', targets = "_all")
+      ),
+      initComplete = DT::JS(
+        "function(settings, json) {",
+        "$(this.api().table().header()).css({'background-color': '#f8f9fa', 'font-weight': 'bold'});",
+        "}"
+      )
+    ),
+    extensions = 'Buttons',
+    rownames = FALSE,
+    class = class_str,
+    filter = filter_position,
+    ...
+  ) %>%
+    DT::formatStyle(
+      columns = 1:ncol(data),
+      fontSize = '13px',
+      fontFamily = "'Source Sans Pro', 'Segoe UI', system-ui, sans-serif"
+    )
+
+  return(dt)
+}
 
 # ============================================================================
 # HELPER FUNCTIONS (if not in other files)

@@ -58,13 +58,13 @@ mod_overview_demographics_ui <- function(id) {
           card(
             card_header("Samples by Province"),
             card_body_fill(
-              plotly::plotlyOutput(ns("province_plot"), height = "350px")
+              plotly::plotlyOutput(ns("province_plot"), height = "500px")
             )
           ),
           card(
             card_header("Samples by Health Zone"),
             card_body_fill(
-              plotly::plotlyOutput(ns("zone_plot"), height = "350px")
+              plotly::plotlyOutput(ns("zone_plot"), height = "500px")
             )
           )
         ),
@@ -74,7 +74,7 @@ mod_overview_demographics_ui <- function(id) {
           full_screen = TRUE,
           card_header("Sample Collection Timeline"),
           card_body_fill(
-            plotly::plotlyOutput(ns("timeline_plot"), height = "400px")
+            plotly::plotlyOutput(ns("timeline_plot"), height = "550px")
           )
         ),
         
@@ -118,13 +118,13 @@ mod_overview_demographics_ui <- function(id) {
           card(
             card_header("Age Distribution"),
             card_body_fill(
-              plotly::plotlyOutput(ns("age_histogram"), height = "350px")
+              plotly::plotlyOutput(ns("age_histogram"), height = "500px")
             )
           ),
           card(
             card_header("Age by Sex"),
             card_body_fill(
-              plotly::plotlyOutput(ns("age_sex_box"), height = "350px")
+              plotly::plotlyOutput(ns("age_sex_box"), height = "500px")
             )
           )
         ),
@@ -135,13 +135,13 @@ mod_overview_demographics_ui <- function(id) {
           card(
             card_header("Age Groups by Sex"),
             card_body_fill(
-              plotly::plotlyOutput(ns("age_group_bar"), height = "350px")
+              plotly::plotlyOutput(ns("age_group_bar"), height = "500px")
             )
           ),
           card(
             card_header("Sex Distribution by Study Type"),
             card_body_fill(
-              plotly::plotlyOutput(ns("sex_study_bar"), height = "350px")
+              plotly::plotlyOutput(ns("sex_study_bar"), height = "500px")
             )
           )
         ),

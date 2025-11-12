@@ -20,7 +20,8 @@ ui <- page_navbar(
   mod_overview_demographics_ui("overview_demographics"),
   mod_transport_ui("transport"),
   mod_extractions_ui("extractions"),
-  mod_mic_qpcr_ui("mic_qpcr")
+  mod_mic_qpcr_ui("mic_qpcr"),
+  mod_drs_rnasep_ui("drs_rnasep")
   
   # Add other modules here as they're developed:
   # mod_transport_ui("transport"),
@@ -69,6 +70,14 @@ server <- function(input, output, session) {
     "mic_qpcr",
     biobank_df = data$clean_data,
     extractions_df = data$filtered_extractions,
+    filters = data$filters
+  )
+
+  # DRS volume vs RNAseP analysis module
+  mod_drs_rnasep_server(
+    "drs_rnasep",
+    extractions_df = data$filtered_extractions,
+    qpcr_data = NULL,  # Will be linked when qPCR data is available
     filters = data$filters
   )
   

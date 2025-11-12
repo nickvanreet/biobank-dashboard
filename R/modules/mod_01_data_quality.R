@@ -91,13 +91,13 @@ mod_data_quality_ui <- function(id) {
                            )
                          ),
                          card_body_fill(
-                           plotly::plotlyOutput(ns("quality_flags_timeline_plot"), height = "350px")
+                           plotly::plotlyOutput(ns("quality_flags_timeline_plot"), height = "500px")
                          )
                        ),
                        card(
                          card_header("Data Entry Timeline"),
                          card_body_fill(
-                           plotly::plotlyOutput(ns("entry_timeline_plot"), height = "350px")
+                           plotly::plotlyOutput(ns("entry_timeline_plot"), height = "500px")
                          )
                        )
         ),

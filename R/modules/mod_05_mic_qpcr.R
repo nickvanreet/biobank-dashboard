@@ -1010,22 +1010,22 @@ mod_mic_qpcr_ui <- function(id) {
                 col_widths = c(6, 6),
                 card(
                   card_header("177T Positive Control", class = "bg-light"),
-                  plotlyOutput(ns("lj_177t"), height = "400px")
+                  plotlyOutput(ns("lj_177t"), height = "500px")
                 ),
                 card(
                   card_header("18S2 Positive Control", class = "bg-light"),
-                  plotlyOutput(ns("lj_18s2"), height = "400px")
+                  plotlyOutput(ns("lj_18s2"), height = "500px")
                 )
               ),
               layout_columns(
                 col_widths = c(6, 6),
                 card(
                   card_header("RNAseP-DNA Positive Control", class = "bg-light"),
-                  plotlyOutput(ns("lj_rnp_dna"), height = "400px")
+                  plotlyOutput(ns("lj_rnp_dna"), height = "500px")
                 ),
                 card(
                   card_header("RNAseP-RNA Positive Control", class = "bg-light"),
-                  plotlyOutput(ns("lj_rnp_rna"), height = "400px")
+                  plotlyOutput(ns("lj_rnp_rna"), height = "500px")
                 )
               )
             )

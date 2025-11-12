@@ -216,17 +216,20 @@ apply_interpretation <- function(cq_data, cutoffs = DEFAULT_CUTOFFS) {
       interpretation = purrr::map2_chr(
         target, Cq,
         function(tgt, cq) {
+          # Coerce to numeric while being robust to formulas / language objects
+          cq_num <- suppressWarnings(as.numeric(cq))
+
           # treat invalids as Negative (no amplification)
-          if (is.na(cq) || cq < 0 || is.infinite(cq)) return("Negative")
+          if (is.na(cq_num) || cq_num < 0 || is.infinite(cq_num)) return("Negative")
           if (!tgt %in% names(cutoffs)) return("Unknown")
           tgt_cutoffs <- cutoffs[[tgt]]
           pos_cutoff <- tgt_cutoffs$positive
           neg_cutoff <- tgt_cutoffs$negative
           if (is.null(pos_cutoff) || is.na(pos_cutoff)) pos_cutoff <- -Inf
           if (is.null(neg_cutoff) || is.na(neg_cutoff)) neg_cutoff <- Inf
-          if (cq <= pos_cutoff) {
+          if (cq_num <= pos_cutoff) {
             "Positive"
-          } else if (cq >= neg_cutoff) {
+          } else if (cq_num >= neg_cutoff) {
             "Negative"
           } else {
             "Indeterminate"

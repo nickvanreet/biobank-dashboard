@@ -28,9 +28,30 @@ DEFAULT_CUTOFFS <- list(
 
 coerce_cutoff_numeric <- function(value) {
   if (is.null(value) || length(value) == 0) return(NA_real_)
+
+  # Extract a scalar from the supplied object. Some inputs arrive wrapped in
+  # lists (e.g. from YAML), as promises/language objects (from shiny inputs) or
+  # other non-atomic containers. We peel layers until we hit an atomic value so
+  # that downstream comparisons never see a language object (which would make
+  # `>=` fail with "comparison ... is not possible for language types").
+  scalar <- value
+  while (is.list(scalar) && length(scalar) > 0) {
+    scalar <- scalar[[1]]
+  }
+
+  if (length(scalar) == 0 || is.null(scalar)) {
+    return(NA_real_)
+  }
+
+  if (is.language(scalar)) {
+    # Do not attempt to evaluate promises from other environments; instead,
+    # coerce to character so that non-numeric content safely becomes NA.
+    scalar <- as.character(scalar)
+  }
+
   suppressWarnings(
     tryCatch(
-      as.numeric(value[[1]]),
+      as.numeric(scalar),
       warning = function(...) NA_real_,
       error = function(...) NA_real_
     )

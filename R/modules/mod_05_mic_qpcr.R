@@ -112,8 +112,8 @@ calc_target_call <- function(cq, target, thresholds, late_window) {
   if (is.null(thr) || is.na(cq)) return("Undetermined")
   pos_cutoff <- coerce_cutoff_numeric(thr$positive)
   neg_cutoff <- coerce_cutoff_numeric(thr$negative)
-  if (!is.na(pos_cutoff) && cq <= pos_cutoff) return("Positive")
-  if (!is.na(neg_cutoff) && cq > neg_cutoff) return("Negative")
+  if (!is.na(pos_cutoff) && is.finite(pos_cutoff) && cq <= pos_cutoff) return("Positive")
+  if (!is.na(neg_cutoff) && is.finite(neg_cutoff) && cq > neg_cutoff) return("Negative")
   if (!is.null(late_window) && length(late_window) == 2) {
     if (!is.na(late_window[1]) && !is.na(late_window[2]) && cq > late_window[1] && cq <= late_window[2]) {
       return("LatePositive")
@@ -324,17 +324,26 @@ finalise_samples <- function(target_summary, settings, delta_limit) {
 
 control_qc_status <- function(samples_df, thresholds) {
   if (!nrow(samples_df)) return(tibble())
+
+  # Normalise thresholds defensively in case the UI supplied non-numeric
+  # (language/promises) values. Using coerce_cutoff_numeric guarantees the
+  # comparisons below operate on atomic numerics or NA.
+  thr_177t_pos <- coerce_cutoff_numeric(thresholds$`177T`$positive)
+  thr_177t_neg <- coerce_cutoff_numeric(thresholds$`177T`$negative)
+  thr_18s2_pos <- coerce_cutoff_numeric(thresholds$`18S2`$positive)
+  thr_18s2_neg <- coerce_cutoff_numeric(thresholds$`18S2`$negative)
+
   samples_df %>%
     filter(ControlType %in% c("PC", "NC")) %>%
     mutate(
       ControlPass = case_when(
         ControlType == "PC" ~ (
-          (is.na(Cq_median_177T) || Cq_median_177T <= thresholds$`177T`$positive) &
-            (is.na(Cq_median_18S2) || Cq_median_18S2 <= thresholds$`18S2`$positive)
+          (is.na(Cq_median_177T) || Cq_median_177T <= thr_177t_pos) &
+            (is.na(Cq_median_18S2) || Cq_median_18S2 <= thr_18s2_pos)
         ),
         ControlType == "NC" ~ (
-          (is.na(Cq_median_177T) || Cq_median_177T > thresholds$`177T`$negative) &
-            (is.na(Cq_median_18S2) || Cq_median_18S2 > thresholds$`18S2`$negative)
+          (is.na(Cq_median_177T) || Cq_median_177T > thr_177t_neg) &
+            (is.na(Cq_median_18S2) || Cq_median_18S2 > thr_18s2_neg)
         ),
         TRUE ~ TRUE
       ),

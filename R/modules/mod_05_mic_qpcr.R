@@ -793,13 +793,6 @@ mod_mic_qpcr_ui <- function(id) {
               class = "btn-primary",
               style = "width: 140px;"
             ),
-            actionButton(
-              ns("settings"),
-              "Settings",
-              icon = icon("sliders"),
-              class = "btn-outline-secondary",
-              style = "width: 120px;"
-            ),
             downloadButton(
               ns("export_qc"),
               "Export",
@@ -970,22 +963,22 @@ mod_mic_qpcr_ui <- function(id) {
                 col_widths = c(6, 6),
                 card(
                   card_header("177T Positive Control", class = "bg-light"),
-                  plotlyOutput(ns("lj_177t"), height = "400px")
+                  plotlyOutput(ns("lj_177t"), height = "600px")
                 ),
                 card(
                   card_header("18S2 Positive Control", class = "bg-light"),
-                  plotlyOutput(ns("lj_18s2"), height = "400px")
+                  plotlyOutput(ns("lj_18s2"), height = "600px")
                 )
               ),
               layout_columns(
                 col_widths = c(6, 6),
                 card(
                   card_header("RNAseP-DNA Positive Control", class = "bg-light"),
-                  plotlyOutput(ns("lj_rnp_dna"), height = "400px")
+                  plotlyOutput(ns("lj_rnp_dna"), height = "600px")
                 ),
                 card(
                   card_header("RNAseP-RNA Positive Control", class = "bg-light"),
-                  plotlyOutput(ns("lj_rnp_rna"), height = "400px")
+                  plotlyOutput(ns("lj_rnp_rna"), height = "600px")
                 )
               )
             )
@@ -1006,7 +999,7 @@ mod_mic_qpcr_ui <- function(id) {
           card(
             card_header("Trypanozoon: 18S2 vs 177T"),
             card_body(
-              plotlyOutput(ns("scatter_tryp"), height = "550px"),
+              plotlyOutput(ns("scatter_tryp"), height = "700px"),
               class = "p-3"
             )
           ),
@@ -1014,7 +1007,7 @@ mod_mic_qpcr_ui <- function(id) {
           card(
             card_header("Sample Quality: RNAseP RNA vs DNA (ΔCq)"),
             card_body(
-              plotlyOutput(ns("scatter_rnp"), height = "550px"),
+              plotlyOutput(ns("scatter_rnp"), height = "700px"),
               class = "p-3"
             )
           )
@@ -1105,235 +1098,23 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
 
     cache_state <- reactiveVal(list())
 
-    # Settings inputs - initialize with defaults in case modal hasn't been opened yet
-    observeEvent(session$userData, once = TRUE, {
-      # Initialize threshold values if they don't exist
-      defaults <- list(
-        th_177t_pos = 35, th_177t_neg = 40,
-        th_18s2_pos = 35, th_18s2_neg = 40,
-        th_rnp_dna_pos = 32, th_rnp_dna_neg = 45,
-        th_rnp_rna_pos = 30, th_rnp_rna_neg = 45,
-        late_min = 38, late_max = 40,
-        delta_rp_limit = 8,
-        allow_review = FALSE
-      )
-
-      for (name in names(defaults)) {
-        if (is.null(input[[name]])) {
-          updateNumericInput(session, name, value = defaults[[name]])
-        }
-      }
-    })
-
+    # Settings with hardcoded defaults (no UI controls)
     settings <- reactive({
       list(
         thresholds = list(
-          `177T` = list(positive = input$th_177t_pos %||% 35, negative = input$th_177t_neg %||% 40),
-          `18S2` = list(positive = input$th_18s2_pos %||% 35, negative = input$th_18s2_neg %||% 40),
-          RNAseP_DNA = list(positive = input$th_rnp_dna_pos %||% 32, negative = input$th_rnp_dna_neg %||% 45),
-          RNAseP_RNA = list(positive = input$th_rnp_rna_pos %||% 30, negative = input$th_rnp_rna_neg %||% 45)
+          `177T` = list(positive = 35, negative = 40),
+          `18S2` = list(positive = 35, negative = 40),
+          RNAseP_DNA = list(positive = 32, negative = 45),
+          RNAseP_RNA = list(positive = 30, negative = 45)
         ),
-        late_window = c(input$late_min %||% 38, input$late_max %||% 40),
-        delta_rp_limit = input$delta_rp_limit %||% 8,
-        allow_review_controls = isTRUE(input$allow_review),
+        late_window = c(38, 40),
+        delta_rp_limit = 8,
+        allow_review_controls = FALSE,
         pc_aliases = c("PC", "POS", "POSITIVE", "CP"),
         nc_aliases = c("NC", "NEG", "NTC", "CN")
       )
     })
 
-    # =========================================================================
-    # SETTINGS MODAL
-    # =========================================================================
-
-    observeEvent(input$settings, {
-      showModal(modalDialog(
-        title = "qPCR Settings & Thresholds",
-        size = "xl",
-        easyClose = TRUE,
-
-        layout_columns(
-          col_widths = c(6, 6),
-
-          # Left column: Trypanozoon targets
-          card(
-            card_header("Trypanozoon Targets (DNA & RNA)", class = "bg-primary text-white"),
-            card_body(
-              class = "p-3",
-
-              h6("177T (DNA Target)", class = "mt-2 mb-3"),
-              layout_columns(
-                col_widths = c(6, 6),
-                numericInput(
-                  session$ns("th_177t_pos"),
-                  "Positive ≤",
-                  value = isolate(input$th_177t_pos) %||% 35,
-                  min = 0,
-                  max = 50,
-                  step = 0.5,
-                  width = "100%"
-                ),
-                numericInput(
-                  session$ns("th_177t_neg"),
-                  "Negative >",
-                  value = isolate(input$th_177t_neg) %||% 40,
-                  min = 0,
-                  max = 50,
-                  step = 0.5,
-                  width = "100%"
-                )
-              ),
-
-              h6("18S2 (RNA Target)", class = "mt-3 mb-3"),
-              layout_columns(
-                col_widths = c(6, 6),
-                numericInput(
-                  session$ns("th_18s2_pos"),
-                  "Positive ≤",
-                  value = isolate(input$th_18s2_pos) %||% 35,
-                  min = 0,
-                  max = 50,
-                  step = 0.5,
-                  width = "100%"
-                ),
-                numericInput(
-                  session$ns("th_18s2_neg"),
-                  "Negative >",
-                  value = isolate(input$th_18s2_neg) %||% 40,
-                  min = 0,
-                  max = 50,
-                  step = 0.5,
-                  width = "100%"
-                )
-              )
-            )
-          ),
-
-          # Right column: RNAseP targets
-          card(
-            card_header("RNAseP Targets (Quality Control)", class = "bg-info text-white"),
-            card_body(
-              class = "p-3",
-
-              h6("RNAseP-DNA", class = "mt-2 mb-3"),
-              layout_columns(
-                col_widths = c(6, 6),
-                numericInput(
-                  session$ns("th_rnp_dna_pos"),
-                  "Positive ≤",
-                  value = isolate(input$th_rnp_dna_pos) %||% 32,
-                  min = 0,
-                  max = 50,
-                  step = 0.5,
-                  width = "100%"
-                ),
-                numericInput(
-                  session$ns("th_rnp_dna_neg"),
-                  "Negative >",
-                  value = isolate(input$th_rnp_dna_neg) %||% 45,
-                  min = 0,
-                  max = 50,
-                  step = 0.5,
-                  width = "100%"
-                )
-              ),
-
-              h6("RNAseP-RNA", class = "mt-3 mb-3"),
-              layout_columns(
-                col_widths = c(6, 6),
-                numericInput(
-                  session$ns("th_rnp_rna_pos"),
-                  "Positive ≤",
-                  value = isolate(input$th_rnp_rna_pos) %||% 30,
-                  min = 0,
-                  max = 50,
-                  step = 0.5,
-                  width = "100%"
-                ),
-                numericInput(
-                  session$ns("th_rnp_rna_neg"),
-                  "Negative >",
-                  value = isolate(input$th_rnp_rna_neg) %||% 45,
-                  min = 0,
-                  max = 50,
-                  step = 0.5,
-                  width = "100%"
-                )
-              )
-            )
-          )
-        ),
-
-        # QC parameters at bottom
-        card(
-          card_header("Quality Control Parameters", class = "bg-warning"),
-          card_body(
-            class = "p-3",
-            layout_columns(
-              col_widths = c(4, 4, 4),
-
-              div(
-                h6("Late Positive Window"),
-                layout_columns(
-                  col_widths = c(6, 6),
-                  numericInput(
-                    session$ns("late_min"),
-                    "Min",
-                    value = isolate(input$late_min) %||% 38,
-                    min = 0,
-                    max = 50,
-                    step = 0.5,
-                    width = "100%"
-                  ),
-                  numericInput(
-                    session$ns("late_max"),
-                    "Max",
-                    value = isolate(input$late_max) %||% 40,
-                    min = 0,
-                    max = 50,
-                    step = 0.5,
-                    width = "100%"
-                  )
-                )
-              ),
-
-              div(
-                h6("RNA Preservation"),
-                numericInput(
-                  session$ns("delta_rp_limit"),
-                  "ΔCq Limit",
-                  value = isolate(input$delta_rp_limit) %||% 8,
-                  min = 0,
-                  max = 20,
-                  step = 0.5,
-                  width = "100%"
-                ),
-                p(class = "small text-muted mt-1", "Max acceptable difference between RNA and DNA")
-              ),
-
-              div(
-                h6("Control Handling"),
-                checkboxInput(
-                  session$ns("allow_review"),
-                  "Allow review despite control failures",
-                  value = isolate(input$allow_review) %||% FALSE
-                ),
-                p(class = "small text-muted mt-1", "Process samples even when controls fail")
-              )
-            )
-          )
-        ),
-
-        footer = div(
-          actionButton(session$ns("apply_settings"), "Apply Settings", class = "btn-primary"),
-          modalButton("Cancel", class = "btn-secondary")
-        )
-      ))
-    })
-
-    observeEvent(input$apply_settings, {
-      removeModal()
-      showNotification("Settings applied. Refresh data to reprocess.", type = "message")
-    })
 
     # =========================================================================
     # DATA LOADING

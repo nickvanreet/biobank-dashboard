@@ -51,6 +51,15 @@ mic_default_settings <- function() {
   )
 }
 
+mic_default_dir <- function() {
+  if (exists("config", envir = .GlobalEnv) &&
+      !is.null(config$paths$mic_dir) &&
+      nzchar(config$paths$mic_dir)) {
+    return(config$paths$mic_dir)
+  }
+  "data/mic"
+}
+
 parse_aliases <- function(x) {
   if (is.null(x) || !nzchar(x)) return(character())
   x %>% str_split(",") %>% unlist() %>% str_trim() %>% discard(~.x == "") %>% toupper()
@@ -616,7 +625,9 @@ mod_mic_qpcr_ui <- function(id) {
       card_body(
         layout_columns(
           col_widths = c(4, 4, 4), gap = "16px",
-          textInput(ns("mic_dir"), "MIC directory", value = "data/MIC", placeholder = "data/MIC"),
+          textInput(ns("mic_dir"), "MIC directory",
+                    value = mic_default_dir(),
+                    placeholder = mic_default_dir()),
           numericInput(ns("ignore_cycles"), "Ignore cycles", value = mic_default_settings()$ignore_cycles, min = 0, max = 20, step = 1),
           numericInput(ns("autofluorescence"), "Autofluorescence (override)", value = mic_default_settings()$autofluorescence, min = 0, step = 0.1)
         ),

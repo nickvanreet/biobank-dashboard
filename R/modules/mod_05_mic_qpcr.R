@@ -161,7 +161,7 @@ sample_control_type <- function(name, reported_type, pc_aliases, nc_aliases) {
 }
 
 summarise_targets <- function(replicates_long, thresholds, late_window) {
-  if (!nrow(replicates_long)) return(tibble())
+  if (!nrow(replicates_long)) return(empty_target_summary())
   replicates_long %>%
     group_by(RunID, SampleID, SampleName, ControlType, Target) %>%
     summarise(
@@ -182,8 +182,81 @@ ensure_columns <- function(df, cols, default = NA) {
   df
 }
 
+empty_target_summary <- function() {
+  tibble(
+    RunID = character(),
+    SampleID = character(),
+    SampleName = character(),
+    ControlType = character(),
+    Target = character(),
+    n = integer(),
+    Cq_median = numeric(),
+    Cq_mean = numeric(),
+    Calls = vector("list", 0),
+    TargetCall = character()
+  )
+}
+
+empty_samples_table <- function(thresholds) {
+  base <- tibble(
+    RunID = character(),
+    SampleID = character(),
+    SampleName = character(),
+    ControlType = character(),
+    TargetsPresent = character(),
+    Call_177T = character(),
+    Call_18S2 = character(),
+    Call_RNAseP_DNA = character(),
+    Call_RNAseP_RNA = character(),
+    Delta_18S2_177T = numeric(),
+    Delta_RP = numeric(),
+    Flag_SampleDecay = logical(),
+    PositiveTryp = logical(),
+    LateTryp = logical(),
+    HostOK = logical(),
+    HostRNAOK = logical(),
+    FinalCall = character(),
+    Flags = character(),
+    AnyFlag = logical()
+  )
+
+  targets <- names(thresholds)
+  for (tgt in targets) {
+    base[[paste0("Cq_median_", tgt)]] <- numeric()
+    base[[paste0("TargetCall_", tgt)]] <- character()
+  }
+
+  base
+}
+
+empty_replicates_long <- function() {
+  tibble(
+    RunID = character(),
+    SampleID = character(),
+    SampleName = character(),
+    Replicate = character(),
+    ControlType = character(),
+    Target = character(),
+    Cq = numeric(),
+    AmpStatus = character(),
+    CurveOK = character(),
+    ResultRaw = character()
+  )
+}
+
+empty_run_info <- function() {
+  tibble(
+    RunID = character(),
+    FilePath = character(),
+    FileName = character(),
+    FileMTime = as.POSIXct(character()),
+    RunDateTime = as.POSIXct(character()),
+    WellCount = integer()
+  )
+}
+
 finalise_samples <- function(target_summary, settings, delta_limit) {
-  if (!nrow(target_summary)) return(tibble())
+  if (!nrow(target_summary)) return(empty_samples_table(settings$thresholds))
   # pivot to wide
   wide <- target_summary %>%
     select(RunID, SampleID, SampleName, ControlType, Target, Cq_median, TargetCall) %>%
@@ -453,10 +526,13 @@ parse_mic_file <- function(file_row, settings) {
 parse_mic_directory <- function(path, settings, cache_state) {
   files <- scan_mic_files(path)
   if (!nrow(files)) {
+    empty_samples <- empty_samples_table(settings$thresholds)
+    empty_runs <- empty_run_info()
+    empty_reps <- empty_replicates_long()
     return(list(
-      runs = tibble(),
-      replicates = tibble(),
-      samples = tibble(),
+      runs = empty_runs,
+      replicates = empty_reps,
+      samples = empty_samples,
       cache = list(),
       files = files
     ))
@@ -482,10 +558,14 @@ parse_mic_directory <- function(path, settings, cache_state) {
     all_replicates[[length(all_replicates) + 1]] <- parsed$replicates
   }
 
+  runs_df <- if (length(all_runs)) bind_rows(all_runs) else empty_run_info()
+  samples_df <- if (length(all_samples)) bind_rows(all_samples) else empty_samples_table(settings$thresholds)
+  replicates_df <- if (length(all_replicates)) bind_rows(all_replicates) else empty_replicates_long()
+
   list(
-    runs = bind_rows(all_runs),
-    replicates = bind_rows(all_replicates),
-    samples = bind_rows(all_samples),
+    runs = runs_df,
+    replicates = replicates_df,
+    samples = samples_df,
     cache = new_cache,
     files = files
   )

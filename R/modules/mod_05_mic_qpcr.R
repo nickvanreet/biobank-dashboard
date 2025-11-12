@@ -1079,6 +1079,20 @@ mod_mic_qpcr_ui <- function(id) {
               downloadButton(ns("dl_complete"), "Full Export (All Data)", class = "btn-dark w-100 mb-3")
             )
           )
+        ),
+
+        layout_columns(
+          col_widths = c(12),
+
+          card(
+            card_header("Module Code"),
+            card_body(
+              class = "p-4",
+              h5("R Script", class = "mb-3"),
+              p("Download the complete MIC qPCR module source code", class = "text-muted mb-3"),
+              downloadButton(ns("dl_module_script"), "Download Module Script (.R)", class = "btn-outline-primary w-100")
+            )
+          )
         )
       )
     )
@@ -1974,6 +1988,18 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
           "Replicates" = pd$replicates
         )
         writexl::write_xlsx(sheets, file)
+      }
+    )
+
+    output$dl_module_script <- downloadHandler(
+      filename = function() sprintf("mod_05_mic_qpcr_%s.R", format(Sys.Date(), "%Y%m%d")),
+      content = function(file) {
+        script_path <- "R/modules/mod_05_mic_qpcr.R"
+        if (file.exists(script_path)) {
+          file.copy(script_path, file)
+        } else {
+          showNotification("Module script not found", type = "error")
+        }
       }
     )
 

@@ -1,6 +1,5 @@
-# TEMPLATE: global.R - Complete correct version
+# global.R - Updated for rebuilt MIC qPCR module
 # ============================================================================
-# This is what your global.R should contain to make mod_05_mic.R work
 
 # ============================================================================
 # CONFIGURATION & SETUP
@@ -10,7 +9,7 @@
 required_packages <- c(
   "shiny", "bslib", "tidyverse", "readxl", "writexl", "janitor",
   "DT", "plotly", "lubridate", "scales", "stringr", "stringi",
-  "purrr", "dplyr", "tidyr", "ggplot2"
+  "purrr", "dplyr", "tidyr", "ggplot2", "jsonlite", "digest", "glue"
 )
 
 for (pkg in required_packages) {
@@ -32,7 +31,7 @@ config <- list(
     biobank_dir = "data/biobank",
     extractions_dir = "data/extractions",
     pcr_dir = "data/PCR",
-    mic_dir = "data/mic"
+    mic_dir = "data/MIC"  # Note: uppercase MIC to match your directory
   ),
   ui = list(
     theme_primary = "#3498DB",
@@ -46,15 +45,32 @@ config <- list(
 )
 
 # ============================================================================
-# LOAD ALL CORE UTILITIES (CRITICAL FOR MOD_05_MIC)
+# LOAD ALL CORE UTILITIES
 # ============================================================================
 
 # Data utilities
 source("R/core/data_loader_utils.R")       # Must source BEFORE data_linking
 source("R/core/data_linking_utils.R")      # Defines normalize_barcode()
 source("R/core/extraction_data_utils.R")   # Extraction utilities
-source("R/core/mic_qpcr_pipeline.R")       # CRITICAL: Defines analyze_qpcr()
-source("R/data/data_cleaner_improved.R")
+
+# CRITICAL: Source the qPCR analysis pipeline
+# This file defines analyze_qpcr(), extract_cq_values(), and related functions
+# Make sure this file exists and is named correctly
+if (file.exists("R/core/qpcr_analysis.R")) {
+  source("R/core/qpcr_analysis.R")
+  message("✅ Loaded qpcr_analysis.R")
+} else if (file.exists("R/core/mic_qpcr_pipeline.R")) {
+  source("R/core/mic_qpcr_pipeline.R")
+  message("✅ Loaded mic_qpcr_pipeline.R")
+} else {
+  warning("⚠️  qPCR analysis file not found! MIC module will not work.")
+  warning("    Expected: R/core/qpcr_analysis.R or R/core/mic_qpcr_pipeline.R")
+}
+
+# Data cleaner
+if (file.exists("R/data/data_cleaner_improved.R")) {
+  source("R/data/data_cleaner_improved.R")
+}
 
 # ============================================================================
 # LOAD ALL MODULES
@@ -65,7 +81,7 @@ source("R/modules/mod_01_data_quality.R")
 source("R/modules/mod_02_overview_demographics.R")
 source("R/modules/mod_03_transport.R")
 source("R/modules/mod_04_extractions.R")
-source("R/modules/mod_05_mic_qpcr.R")
+source("R/modules/mod_05_mic_qpcr.R")  # The rebuilt module
 
 # ============================================================================
 # UI THEME
@@ -97,31 +113,91 @@ APP_CONSTANTS <- list(
 )
 
 # ============================================================================
+# HELPER FUNCTIONS (if not in other files)
+# ============================================================================
+
+# These might be needed by modules but not defined elsewhere
+if (!exists("normalize_id")) {
+  normalize_id <- function(x) {
+    if (is.null(x)) return(NA_character_)
+    x %>% as.character() %>% stringr::str_trim() %>% toupper()
+  }
+}
+
+if (!exists("safe_coalesce")) {
+  safe_coalesce <- function(...) {
+    args <- list(...)
+    for (arg in args) {
+      if (!is.null(arg) && length(arg) > 0 && !all(is.na(arg))) {
+        return(arg)
+      }
+    }
+    return(NA)
+  }
+}
+
+# ============================================================================
 # ENVIRONMENT VERIFICATION
 # ============================================================================
 
-# Quick check that all critical functions are available
+# Check that all critical functions are available
 critical_functions <- c(
   "normalize_barcode",
-  "analyze_qpcr",
+  "analyze_qpcr",             # From qpcr_analysis.R
+  "extract_cq_values",        # From qpcr_analysis.R
   "link_extraction_to_biobank",
   "apply_filters",
-  "mod_data_manager_ui"
+  "mod_data_manager_ui",
+  "mod_mic_qpcr_ui",          # The new module
+  "mod_mic_qpcr_server"       # The new module
 )
 
 missing_functions <- critical_functions[!sapply(critical_functions, exists)]
 
 if (length(missing_functions) > 0) {
   warning("⚠️  Missing functions in global environment:")
-  warning(paste("  -", missing_functions, collapse="\n"))
+  for (fn in missing_functions) {
+    warning(sprintf("   - %s", fn))
+  }
+  warning("\n⚠️  Some modules may not work correctly!")
+} else {
+  message("✅ All critical functions loaded successfully")
 }
 
-# Create output directory if it doesn't exist
-dir.create("outputs", showWarnings = FALSE, recursive = TRUE)
+# Create necessary directories
+dirs_to_create <- c(
+  "outputs",
+  config$paths$biobank_dir,
+  config$paths$extractions_dir,
+  config$paths$pcr_dir,
+  config$paths$mic_dir
+)
 
-message("✅ Global configuration loaded successfully")
-message(sprintf("   Config paths: biobank=%s, extractions=%s, pcr=%s, mic=%s",
-                config$paths$biobank_dir,
-                config$paths$extractions_dir,
-                config$paths$pcr_dir,
-                config$paths$mic_dir))
+for (dir in dirs_to_create) {
+  dir.create(dir, showWarnings = FALSE, recursive = TRUE)
+}
+
+# ============================================================================
+# STARTUP MESSAGE
+# ============================================================================
+
+message("╔═══════════════════════════════════════════════════════════════╗")
+message("║  Mbuji-Mayi Biobank Dashboard - Global Configuration         ║")
+message("╚═══════════════════════════════════════════════════════════════╝")
+message("")
+message(sprintf("📁 Biobank directory:    %s", config$paths$biobank_dir))
+message(sprintf("📁 Extractions directory: %s", config$paths$extractions_dir))
+message(sprintf("📁 PCR directory:        %s", config$paths$pcr_dir))
+message(sprintf("📁 MIC directory:        %s", config$paths$mic_dir))
+message("")
+message(sprintf("✅ %d packages loaded", length(required_packages)))
+message(sprintf("✅ %d critical functions verified", 
+                length(critical_functions) - length(missing_functions)))
+message("")
+
+if (length(missing_functions) > 0) {
+  message("⚠️  WARNING: Some functions are missing. Check the output above.")
+} else {
+  message("🚀 Ready to launch application!")
+}
+message("")

@@ -20,13 +20,12 @@ ui <- page_navbar(
   mod_overview_demographics_ui("overview_demographics"),
   mod_transport_ui("transport"),
   mod_extractions_ui("extractions"),
-  mod_mic_qpcr_ui("mic_qpcr")
+  mod_mic_qpcr_ui("mic")
   )
 
 # ============================================================================
 # SERVER LOGIC
 # ============================================================================
-
 server <- function(input, output, session) {
   
   # Core data management module - returns reactive data
@@ -45,13 +44,13 @@ server <- function(input, output, session) {
     "overview_demographics",
     filtered_data = data$filtered_data
   )
-
+  
   # Pass filtered data to transport module so visuals respect dashboard filters
   mod_transport_server(
     "transport",
     filtered_data = data$filtered_data
   )
-
+  
   # Extraction quality module (uses shared data manager reactives)
   mod_extractions_server(
     "extractions",
@@ -59,23 +58,16 @@ server <- function(input, output, session) {
     biobank_data = data$clean_data
   )
   
-  # In the server section, add:
+  # MIC qPCR module - FIXED
   mod_mic_qpcr_server(
-    "mic_qpcr",
-    biobank_df = data$clean_data,
-    extractions_df = data$filtered_extractions,
-    filters = reactive({
-      list(
-        date_range = input$date_range,
-        province = input$filter_province,
-        zone = input$filter_zone
-      )
-    })
+    "mic",
+    biobank_df = data$clean_data,              # ← Biobank data from data manager
+    extractions_df = data$filtered_extractions, # ← Extractions data from data manager
+    filters = reactive(NULL)                      # ← Filters from data manager
   )
   
   # Session management
   session$onSessionEnded(function() {
-    # Clean up temporary files or connections if needed
     message("Session ended")
   })
 }

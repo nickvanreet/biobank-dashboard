@@ -74,7 +74,17 @@ apply_global_filters <- function(df, filters) {
   f <- filters
 
   if (!is.null(f$date_range) && length(f$date_range) == 2 && "SampleDate" %in% names(df)) {
-    df <- df %>% filter(is.na(SampleDate) | (SampleDate >= f$date_range[1] & SampleDate <= f$date_range[2]))
+    date_range <- tryCatch(
+      suppressWarnings(as.Date(f$date_range)),
+      warning = function(w) rep(NA, length(f$date_range)),
+      error = function(e) rep(NA, length(f$date_range))
+    )
+
+    if (!any(is.na(date_range))) {
+      df <- df %>%
+        mutate(SampleDate = suppressWarnings(as.Date(SampleDate))) %>%
+        filter(is.na(SampleDate) | (SampleDate >= date_range[1] & SampleDate <= date_range[2]))
+    }
   }
 
   if (!is.null(f$province) && !identical(f$province, "all") && "Province" %in% names(df)) {

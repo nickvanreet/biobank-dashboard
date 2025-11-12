@@ -54,6 +54,7 @@ source("R/core/data_loader_utils.R")       # Must source BEFORE data_linking
 source("R/core/data_linking_utils.R")      # Defines normalize_barcode()
 source("R/core/extraction_data_utils.R")   # Extraction utilities
 source("R/core/mic_qpcr_pipeline.R")       # CRITICAL: Defines analyze_qpcr()
+source("R/data/data_cleaner_improved.R")
 
 # ============================================================================
 # LOAD ALL MODULES

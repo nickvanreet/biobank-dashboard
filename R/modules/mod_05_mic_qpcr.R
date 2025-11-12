@@ -674,10 +674,13 @@ mod_mic_qpcr_ui <- function(id) {
                                  downloadButton(ns("download_delta"), "ΔCq summary", class = "btn-secondary w-100 mb-2"),
                                  downloadButton(ns("download_flags"), "Flagged list", class = "btn-warning w-100 mb-2"),
                                  downloadButton(ns("download_lj"), "L-J statistics", class = "btn-info w-100")
-                               )))
-    )
-  )
-}
+                               )
+                               )
+                )
+      )
+    )   # ← closes navset_card_tab
+  )     # ← closes nav_panel()
+}  
 
 # =============================================================================
 # SERVER

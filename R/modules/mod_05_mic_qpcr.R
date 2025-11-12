@@ -35,12 +35,12 @@ suppressPackageStartupMessages({
 
 mic_default_settings <- function() {
   list(
-    thresholds = list(
+    thresholds = sanitize_cutoffs(list(
       `177T` = list(positive = 35, negative = 40),
       `18S2` = list(positive = 35, negative = 40),
       RNAseP_DNA = list(positive = 32, negative = 45),
       RNAseP_RNA = list(positive = 30, negative = 45)
-    ),
+    )),
     late_window = c(38, 40),
     ignore_cycles = 0L,
     autofluorescence = NA_real_,
@@ -110,8 +110,10 @@ safe_median <- function(x) {
 calc_target_call <- function(cq, target, thresholds, late_window) {
   thr <- thresholds[[target]]
   if (is.null(thr) || is.na(cq)) return("Undetermined")
-  if (!is.na(thr$positive) && cq <= thr$positive) return("Positive")
-  if (!is.na(thr$negative) && cq > thr$negative) return("Negative")
+  pos_cutoff <- coerce_cutoff_numeric(thr$positive)
+  neg_cutoff <- coerce_cutoff_numeric(thr$negative)
+  if (!is.na(pos_cutoff) && cq <= pos_cutoff) return("Positive")
+  if (!is.na(neg_cutoff) && cq > neg_cutoff) return("Negative")
   if (!is.null(late_window) && length(late_window) == 2) {
     if (!is.na(late_window[1]) && !is.na(late_window[2]) && cq > late_window[1] && cq <= late_window[2]) {
       return("LatePositive")
@@ -692,12 +694,12 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
 
     settings <- reactive({
       list(
-        thresholds = list(
+        thresholds = sanitize_cutoffs(list(
           `177T` = list(positive = input$th_177t_pos, negative = input$th_177t_neg),
           `18S2` = list(positive = input$th_18s2_pos, negative = input$th_18s2_neg),
           RNAseP_DNA = list(positive = input$th_rnp_dna_pos, negative = input$th_rnp_dna_neg),
           RNAseP_RNA = list(positive = input$th_rnp_rna_pos, negative = input$th_rnp_rna_neg)
-        ),
+        )),
         late_window = c(input$late_min, input$late_max),
         ignore_cycles = input$ignore_cycles,
         autofluorescence = input$autofluorescence,

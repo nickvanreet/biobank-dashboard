@@ -26,6 +26,29 @@ DEFAULT_CUTOFFS <- list(
   "RNAseP_RNA" = list(positive = 30, negative = 999)
 )
 
+coerce_cutoff_numeric <- function(value) {
+  if (is.null(value) || length(value) == 0) return(NA_real_)
+  suppressWarnings(
+    tryCatch(
+      as.numeric(value[[1]]),
+      warning = function(...) NA_real_,
+      error = function(...) NA_real_
+    )
+  )
+}
+
+sanitize_cutoffs <- function(cutoffs) {
+  if (!is.list(cutoffs) || !length(cutoffs)) return(list())
+  out <- lapply(cutoffs, function(th) {
+    list(
+      positive = coerce_cutoff_numeric(th$positive),
+      negative = coerce_cutoff_numeric(th$negative)
+    )
+  })
+  names(out) <- names(cutoffs)
+  out
+}
+
 # thresholds for RNA preservation ΔCq
 PRESERVATION_DELTA_GOOD <- 5   # ≤5 => Good
 PRESERVATION_DELTA_WARN <- 8   # >5 & ≤8 => Moderate ; >8 => Poor
@@ -210,6 +233,8 @@ apply_interpretation <- function(cq_data, cutoffs = DEFAULT_CUTOFFS) {
     stop(sprintf("Cq data missing required columns: %s", paste(missing_cols, collapse = ", ")))
   }
 
+  cutoffs <- sanitize_cutoffs(cutoffs)
+
   cq_data %>%
     mutate(
       # handle -1 / NA / Inf as no amplification (Negative)
@@ -223,8 +248,8 @@ apply_interpretation <- function(cq_data, cutoffs = DEFAULT_CUTOFFS) {
           if (is.na(cq_num) || cq_num < 0 || is.infinite(cq_num)) return("Negative")
           if (!tgt %in% names(cutoffs)) return("Unknown")
           tgt_cutoffs <- cutoffs[[tgt]]
-          pos_cutoff <- tgt_cutoffs$positive
-          neg_cutoff <- tgt_cutoffs$negative
+          pos_cutoff <- coerce_cutoff_numeric(tgt_cutoffs$positive)
+          neg_cutoff <- coerce_cutoff_numeric(tgt_cutoffs$negative)
           if (is.null(pos_cutoff) || is.na(pos_cutoff)) pos_cutoff <- -Inf
           if (is.null(neg_cutoff) || is.na(neg_cutoff)) neg_cutoff <- Inf
           if (cq_num <= pos_cutoff) {
@@ -436,6 +461,9 @@ analyze_qpcr <- function(micrun_file,
                          rnasep_rna_cutoff = DEFAULT_CUTOFFS$RNAseP_RNA$positive,
                          cutoffs = DEFAULT_CUTOFFS,
                          verbose = TRUE) {
+
+  cutoffs <- sanitize_cutoffs(cutoffs)
+  rnasep_rna_cutoff <- coerce_cutoff_numeric(rnasep_rna_cutoff)
 
   if (verbose) cat("📂 Loading data from:", basename(micrun_file), "\n")
 

@@ -77,7 +77,7 @@ server <- function(input, output, session) {
   mod_drs_rnasep_server(
     "drs_rnasep",
     extractions_df = data$filtered_extractions,
-    qpcr_data = NULL,  # Will be linked when qPCR data is available
+    qpcr_data = reactive(NULL),  # Will be linked when qPCR data is available
     filters = data$filters
   )
   

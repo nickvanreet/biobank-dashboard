@@ -4,8 +4,45 @@
 
 mod_mic_overview_ui <- function(id) {
   ns <- NS(id)
-  
+
+  # Note: ns() is already applied by the parent coordinator module
+  # So we need to get the parent namespace
+  parent_ns <- function(x) paste0(gsub("-overview$", "", id), "-", x)
+
   tagList(
+    # Action bar for MIC controls
+    card(
+      class = "mb-3",
+      card_body(
+        class = "py-2",
+        layout_columns(
+          col_widths = c(8, 4),
+          textInput(
+            parent_ns("mic_dir"),
+            NULL,
+            value = "data/MIC",
+            placeholder = "Path to MIC Excel files",
+            width = "100%"
+          ),
+          div(
+            class = "d-flex gap-2 align-items-end",
+            actionButton(
+              parent_ns("refresh"),
+              "Refresh",
+              icon = icon("sync"),
+              class = "btn-primary"
+            ),
+            actionButton(
+              parent_ns("settings"),
+              "Settings",
+              icon = icon("sliders"),
+              class = "btn-outline-secondary"
+            )
+          )
+        )
+      )
+    ),
+
     # KPI Dashboard - 3 rows with all requested metrics
     layout_column_wrap(
       width = 1/4,

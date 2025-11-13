@@ -47,6 +47,7 @@ mod_mic_overview_ui <- function(id) {
     layout_column_wrap(
       width = 1/4,
       heights_equal = "row",
+      gap = "12px",
 
       value_box(
         title = "Total Runs",
@@ -80,6 +81,7 @@ mod_mic_overview_ui <- function(id) {
     layout_column_wrap(
       width = 1/4,
       heights_equal = "row",
+      gap = "12px",
 
       value_box(
         title = "Indeterminate",
@@ -113,6 +115,7 @@ mod_mic_overview_ui <- function(id) {
     layout_column_wrap(
       width = 1/4,
       heights_equal = "row",
+      gap = "12px",
 
       value_box(
         title = "Extractions Linked",

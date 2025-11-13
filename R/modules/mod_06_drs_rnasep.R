@@ -284,9 +284,9 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
       plotly::plot_ly(plot_data, x = ~extraction_date, y = ~volume_ul, type = "scatter",
                       mode = "markers", marker = list(size = 8, opacity = 0.6),
                       text = ~paste0(
-                        "Date: ", extraction_date, "<br>",
+                        "Date: ", as.character(extraction_date), "<br>",
                         "Volume: ", round(volume_ul, 1), " μL<br>",
-                        "Sample ID: ", sample_id
+                        "Sample ID: ", as.character(sample_id)
                       ),
                       hoverinfo = "text") %>%
         plotly::layout(
@@ -328,7 +328,7 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
                       text = ~paste0(
                         "Volume: ", round(volume_ul, 1), " μL<br>",
                         "RNAseP DNA Cq: ", round(rnasep_dna_cq, 2), "<br>",
-                        "Sample ID: ", sample_id
+                        "Sample ID: ", as.character(sample_id)
                       ),
                       hoverinfo = "text") %>%
         plotly::layout(
@@ -370,7 +370,7 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
                       text = ~paste0(
                         "Volume: ", round(volume_ul, 1), " μL<br>",
                         "RNAseP RNA Cq: ", round(rnasep_rna_cq, 2), "<br>",
-                        "Sample ID: ", sample_id
+                        "Sample ID: ", as.character(sample_id)
                       ),
                       hoverinfo = "text") %>%
         plotly::layout(
@@ -420,8 +420,8 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
                         "RNAseP DNA Cq: ", round(rnasep_dna_cq, 2), "<br>",
                         "RNAseP RNA Cq: ", round(rnasep_rna_cq, 2), "<br>",
                         "Volume: ", round(volume_ul, 1), " μL<br>",
-                        "Category: ", volume_category, "<br>",
-                        "Sample ID: ", sample_id
+                        "Category: ", as.character(volume_category), "<br>",
+                        "Sample ID: ", as.character(sample_id)
                       ),
                       hoverinfo = "text") %>%
         plotly::layout(
@@ -460,6 +460,7 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
           .groups = "drop"
         ) %>%
         mutate(
+          volume_category = as.character(volume_category),  # Convert factor to character
           mean_volume = round(mean_volume, 1),
           sd_volume = round(sd_volume, 1),
           mean_rnasep_dna = round(mean_rnasep_dna, 2),
@@ -521,9 +522,17 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
       detail_data <- data %>%
         select(any_of(detail_cols)) %>%
         filter(!is.na(drs_volume_ml)) %>%
-        mutate(drs_volume_ml = drs_volume_ml * 1000)  # Convert to μL for display
+        mutate(
+          drs_volume_ml = drs_volume_ml * 1000,  # Convert to μL for display
+          # Ensure all complex types are converted to simple types
+          volume_category = if ("volume_category" %in% names(.)) as.character(volume_category) else NULL,
+          extraction_date = if ("extraction_date" %in% names(.)) as.character(extraction_date) else NULL,
+          sample_id = if ("sample_id" %in% names(.)) as.character(sample_id) else NULL
+        ) %>%
+        select(-any_of(c("NULL")))  # Remove NULL columns
 
-      DT::datatable(
+      # Build the data table
+      dt <- DT::datatable(
         detail_data,
         options = list(
           pageLength = 25,
@@ -535,11 +544,15 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
         rownames = FALSE,
         class = "table table-striped table-hover table-sm",
         filter = "top"
-      ) %>%
-        DT::formatRound(
-          columns = c("drs_volume_ml", "rnasep_dna_cq", "rnasep_rna_cq"),
-          digits = 2
-        ) %>%
+      )
+
+      # Format numeric columns only if they exist
+      numeric_cols <- intersect(c("drs_volume_ml", "rnasep_dna_cq", "rnasep_rna_cq"), names(detail_data))
+      if (length(numeric_cols) > 0) {
+        dt <- dt %>% DT::formatRound(columns = numeric_cols, digits = 2)
+      }
+
+      dt %>%
         DT::formatStyle(
           columns = 1:ncol(detail_data),
           fontSize = '13px'

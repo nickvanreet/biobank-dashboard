@@ -40,7 +40,8 @@ mod_mic_qpcr_coordinator_ui <- function(id) {
   )
 
   # Return separate nav panels (not nested tabs)
-  tagList(
+  # NOTE: Return as a plain list (not tagList) so !!! splicing works in page_navbar
+  list(
     # Module 1: Overview
     nav_panel(
       title = "MIC Overview",

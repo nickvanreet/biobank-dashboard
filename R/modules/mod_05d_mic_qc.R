@@ -13,25 +13,23 @@ mod_mic_qc_ui <- function(id) {
       card_body(
         class = "p-3",
         layout_columns(
-          col_widths = c(6, 6),
+          col_widths = c(12),
+          gap = "16px",
           card(
             card_header("177T Positive Control", class = "bg-light"),
-            plotlyOutput(ns("lj_177t"), height = "400px")
+            plotlyOutput(ns("lj_177t"), height = "500px")
           ),
           card(
             card_header("18S2 Positive Control", class = "bg-light"),
-            plotlyOutput(ns("lj_18s2"), height = "400px")
-          )
-        ),
-        layout_columns(
-          col_widths = c(6, 6),
+            plotlyOutput(ns("lj_18s2"), height = "500px")
+          ),
           card(
             card_header("RNAseP-DNA Positive Control", class = "bg-light"),
-            plotlyOutput(ns("lj_rnp_dna"), height = "400px")
+            plotlyOutput(ns("lj_rnp_dna"), height = "500px")
           ),
           card(
             card_header("RNAseP-RNA Positive Control", class = "bg-light"),
-            plotlyOutput(ns("lj_rnp_rna"), height = "400px")
+            plotlyOutput(ns("lj_rnp_rna"), height = "500px")
           )
         )
       )
@@ -101,11 +99,11 @@ mod_mic_qc_server <- function(id, processed_data) {
                                        font = list(size = 14))))
         }
         
-        plot_ly(lj$data, x = ~RunID, y = ~Cq_mean, 
+        plot_ly(lj$data, x = ~RunID, y = ~Cq_mean,
                 type = 'scatter', mode = 'markers+lines',
-                name = 'Run Mean', 
-                marker = list(size = 10, color = '#2c3e50'),
-                line = list(width = 2, color = '#2c3e50'),
+                name = 'Run Mean',
+                marker = list(size = 12, color = '#2c3e50'),
+                line = list(width = 3, color = '#2c3e50'),
                 hovertemplate = paste0(
                   "<b>Run: %{x}</b><br>",
                   "Mean Cq: %{y:.2f}<br>",
@@ -129,14 +127,14 @@ mod_mic_qc_server <- function(id, processed_data) {
           add_lines(y = ~plus3, name = '+3 SD', 
                     line = list(color = '#e74c3c', dash = 'dashdot', width = 2),
                     hoverinfo = 'skip') %>%
-          add_lines(y = ~minus3, name = '-3 SD', 
+          add_lines(y = ~minus3, name = '-3 SD',
                     line = list(color = '#e74c3c', dash = 'dashdot', width = 2),
                     hoverinfo = 'skip') %>%
           layout(
-            xaxis = list(title = "Run ID", tickangle = -45),
-            yaxis = list(title = "Cq Value"),
-            legend = list(orientation = 'h', y = -0.3, x = 0.1),
-            margin = list(b = 100),
+            xaxis = list(title = "Run ID", tickangle = -45, automargin = TRUE),
+            yaxis = list(title = "Cq Value", automargin = TRUE),
+            legend = list(orientation = 'h', y = -0.25, x = 0),
+            margin = list(t = 40, r = 40, b = 120, l = 60),
             hovermode = 'closest'
           )
       })

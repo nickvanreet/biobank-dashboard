@@ -11,13 +11,33 @@ source("global.R")
 # Build UI with dynamic MIC panels
 mic_panels <- mod_mic_qpcr_ui("mic_qpcr")  # Returns list of nav_panels
 
+# Create elegant header
+app_header <- tags$div(
+  style = "display: flex; align-items: center; gap: 12px;",
+  tags$span(
+    icon("dna"),
+    style = "font-size: 1.5rem; color: #4F46E5;"
+  ),
+  tags$span(
+    config$app$title,
+    style = "font-weight: 600; font-size: 1.25rem; letter-spacing: -0.02em;"
+  ),
+  tags$span(
+    "Analytics Platform",
+    style = "font-size: 0.875rem; color: #64748b; font-weight: 500; margin-left: 8px;"
+  )
+)
+
 ui <- do.call(
   page_navbar,
   c(
     list(
-      title = config$app$title,
+      title = app_header,
       theme = app_theme,
-      sidebar = mod_data_manager_ui("data_manager")
+      sidebar = mod_data_manager_ui("data_manager"),
+      fillable = TRUE,
+      bg = "#ffffff",
+      position = "fixed-top"
     ),
     # Navigation panels
     list(

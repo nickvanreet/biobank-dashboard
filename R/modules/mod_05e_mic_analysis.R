@@ -186,12 +186,26 @@ mod_mic_analysis_server <- function(id, filtered_base) {
       
       plot_ly(df, x = ~Delta_RP, type = 'histogram',
               marker = list(color = '#e74c3c', line = list(color = 'white', width = 1))) %>%
-        add_vline(x = 5, line = list(color = 'green', dash = 'dash', width = 2)) %>%
-        add_vline(x = 8, line = list(color = 'orange', dash = 'dash', width = 2)) %>%
         layout(
           xaxis = list(title = "ΔCq (RNA - DNA)"),
           yaxis = list(title = "Count"),
           bargap = 0.1,
+          shapes = list(
+            list(
+              type = "line",
+              x0 = 5, x1 = 5,
+              y0 = 0, y1 = 1,
+              yref = "paper",
+              line = list(color = 'green', dash = 'dash', width = 2)
+            ),
+            list(
+              type = "line",
+              x0 = 8, x1 = 8,
+              y0 = 0, y1 = 1,
+              yref = "paper",
+              line = list(color = 'orange', dash = 'dash', width = 2)
+            )
+          ),
           annotations = list(
             list(x = 5, y = 0, text = "Good", showarrow = FALSE, yshift = 10),
             list(x = 8, y = 0, text = "Moderate", showarrow = FALSE, yshift = 10)

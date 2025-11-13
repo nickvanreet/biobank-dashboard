@@ -15,6 +15,13 @@ suppressPackageStartupMessages({
   library(purrr)
 })
 
+mic_log <- function(..., .sep = "", .appendLF = TRUE) {
+  if (isTRUE(getOption("mic.verbose", FALSE))) {
+    base::message(..., sep = .sep, appendLF = .appendLF)
+  }
+  invisible(NULL)
+}
+
 # ==============================================================================
 # CONFIGURATION
 # ==============================================================================
@@ -96,30 +103,30 @@ guess_header_row <- function(mat) {
 
 read_any_result_table <- function(path, sheet) {
   # Add diagnostic message
-  message(sprintf("\n  📖 Calling read_any_result_table('%s')", sheet))
+  mic_log(sprintf("\n  📖 Calling read_any_result_table('%s')", sheet))
   
   raw <- suppressMessages(readxl::read_excel(path, sheet = sheet, col_names = FALSE, .name_repair = "minimal"))
   if (nrow(raw) == 0) {
-    message("    ⚠️  Empty sheet, returning empty tibble")
+    mic_log("    ⚠️  Empty sheet, returning empty tibble")
     return(tibble::tibble())
   }
   
-  message(sprintf("    Raw data: %d rows × %d cols", nrow(raw), ncol(raw)))
+  mic_log(sprintf("    Raw data: %d rows × %d cols", nrow(raw), ncol(raw)))
   
   mat <- apply(raw, 2, as.character)
   hdr <- guess_header_row(mat)
   
   if (is.na(hdr)) {
-    message("    ✗ guess_header_row() returned NA")
-    message("    Returning empty tibble")
+    mic_log("    ✗ guess_header_row() returned NA")
+    mic_log("    Returning empty tibble")
     return(tibble::tibble())
   }
   
-  message(sprintf("    ✓ Header found at row %d", hdr))
+  mic_log(sprintf("    ✓ Header found at row %d", hdr))
   
   headers <- as.character(unlist(raw[hdr, ]))
   headers <- make.names(trimws(headers), unique = TRUE)
-  message(sprintf("    Headers: %s", paste(headers[1:min(6, length(headers))], collapse = ", ")))
+  mic_log(sprintf("    Headers: %s", paste(headers[1:min(6, length(headers))], collapse = ", ")))
   
   dat <- raw[(hdr + 1):nrow(raw), , drop = FALSE]
   names(dat) <- headers
@@ -127,10 +134,10 @@ read_any_result_table <- function(path, sheet) {
   dat <- tibble::as_tibble(dat)
   dat <- dat[, colSums(!is.na(dat)) > 0, drop = FALSE]
   
-  message(sprintf("    ✓ Returning %d rows × %d cols", nrow(dat), ncol(dat)))
+  mic_log(sprintf("    ✓ Returning %d rows × %d cols", nrow(dat), ncol(dat)))
   
   if (nrow(dat) == 0) {
-    message("    ⚠️  No data rows after filtering")
+    mic_log("    ⚠️  No data rows after filtering")
     return(tibble::tibble())
   }
   
@@ -167,19 +174,19 @@ find_sheet_flexible <- function(sheets, expected_name) {
   # Try matching
   matches <- grep(flexible_pattern, sheets, value = TRUE, ignore.case = FALSE)
   if (length(matches) > 0) {
-    message(sprintf("✓ Found sheet '%s' for target '%s'", matches[1], expected_name))
+    mic_log(sprintf("✓ Found sheet '%s' for target '%s'", matches[1], expected_name))
     return(matches[1])
   }
   
   # Try case-insensitive
   matches <- grep(flexible_pattern, sheets, value = TRUE, ignore.case = TRUE)
   if (length(matches) > 0) {
-    message(sprintf("✓ Found sheet '%s' for target '%s' (case-insensitive)", 
+    mic_log(sprintf("✓ Found sheet '%s' for target '%s' (case-insensitive)", 
                     matches[1], expected_name))
     return(matches[1])
   }
   
-  message(sprintf("⚠ Sheet not found: '%s'", expected_name))
+  mic_log(sprintf("⚠ Sheet not found: '%s'", expected_name))
   return(NULL)
 }
 
@@ -192,13 +199,13 @@ extract_cq_values <- function(micrun_file) {
   sheets <- readxl::excel_sheets(micrun_file)
   
   # DIAGNOSTIC: Entry point
-  message(sprintf("\n📂 extract_cq_values() called"))
-  message(sprintf("   File: %s", basename(micrun_file)))
-  message(sprintf("   Found %d sheets: %s", length(sheets), 
+  mic_log(sprintf("\n📂 extract_cq_values() called"))
+  mic_log(sprintf("   File: %s", basename(micrun_file)))
+  mic_log(sprintf("   Found %d sheets: %s", length(sheets), 
                   paste(sheets, collapse = ", ")))
   
   # --- Samples (Well -> Name) ---
-  message("\n📋 Reading Samples sheet...")
+  mic_log("\n📋 Reading Samples sheet...")
   samples_raw <- suppressMessages(readxl::read_excel(micrun_file, sheet = "Samples"))
   well_col <- if ("Well" %in% names(samples_raw)) "Well" else find_column(samples_raw, c("^Well$","Well.*Pos"))
   name_col <- if ("Name" %in% names(samples_raw)) "Name" else find_column(samples_raw, c("^Name$","Sample.*Name"))
@@ -223,7 +230,7 @@ extract_cq_values <- function(micrun_file) {
       )
     )
   
-  message(sprintf("   ✓ Loaded %d samples from Samples sheet", nrow(samples)))
+  mic_log(sprintf("   ✓ Loaded %d samples from Samples sheet", nrow(samples)))
   
   # --- Targets -> RESULT sheets ---
   target_defs <- list(
@@ -236,53 +243,53 @@ extract_cq_values <- function(micrun_file) {
   cq_data <- tibble::tibble()
   thresholds <- list()
   
-  message("\n🎯 Processing target Result sheets...")
+  mic_log("\n🎯 Processing target Result sheets...")
   
   for (tgt in names(target_defs)) {
     result_sheet <- target_defs[[tgt]]
     
     # DIAGNOSTIC: Start of target processing
-    message(sprintf("\n  [%s] Processing target...", tgt))
-    message(sprintf("        Looking for sheet: '%s'", result_sheet))
+    mic_log(sprintf("\n  [%s] Processing target...", tgt))
+    mic_log(sprintf("        Looking for sheet: '%s'", result_sheet))
     
     # Check if sheet exists
     if (!(result_sheet %in% sheets)) {
-      message(sprintf("        ⚠️  SKIPPED: Sheet not found in file"))
+      mic_log(sprintf("        ⚠️  SKIPPED: Sheet not found in file"))
       next
     }
     
-    message(sprintf("        ✓ Sheet found in file"))
+    mic_log(sprintf("        ✓ Sheet found in file"))
     
     # Try to read the sheet
     df <- read_any_result_table(micrun_file, result_sheet)
     
     # DIAGNOSTIC: Check read result
-    message(sprintf("        Read result: %d rows × %d cols", nrow(df), ncol(df)))
+    mic_log(sprintf("        Read result: %d rows × %d cols", nrow(df), ncol(df)))
     
     if (!nrow(df)) {
-      message(sprintf("        ⚠️  SKIPPED: read_any_result_table returned no rows"))
+      mic_log(sprintf("        ⚠️  SKIPPED: read_any_result_table returned no rows"))
       next
     }
     
     # Try to find Cq column
     cq_col <- pick_cq_col(df)
-    message(sprintf("        Cq column: %s", 
+    mic_log(sprintf("        Cq column: %s", 
                     if(is.null(cq_col)) "✗ NOT FOUND" else paste0("✓ ", cq_col)))
     
     # Try to find Name column
     nm_col <- pick_name_col(df)
-    message(sprintf("        Name column: %s", 
+    mic_log(sprintf("        Name column: %s", 
                     if(is.null(nm_col)) "✗ NOT FOUND" else paste0("✓ ", nm_col)))
     
     # Check if both columns found
     if (is.null(cq_col) || is.null(nm_col)) {
-      message(sprintf("        ⚠️  SKIPPED: Missing required columns"))
-      message(sprintf("           Available columns: %s", paste(names(df), collapse = ", ")))
+      mic_log(sprintf("        ⚠️  SKIPPED: Missing required columns"))
+      mic_log(sprintf("           Available columns: %s", paste(names(df), collapse = ", ")))
       next
     }
     
     # DIAGNOSTIC: About to extract data
-    message(sprintf("        ✅ Extracting Cq values..."))
+    mic_log(sprintf("        ✅ Extracting Cq values..."))
     
     # Extract and transform data
     tmp <- df |>
@@ -292,7 +299,7 @@ extract_cq_values <- function(micrun_file) {
     
     # If Name_raw are wells, map via Samples
     if (identical(nm_col, "Well") || all(grepl("^[A-H]\\d{1,2}$", tmp$Name_raw, perl=TRUE), na.rm=TRUE)) {
-      message(sprintf("        Mapping wells to sample names..."))
+      mic_log(sprintf("        Mapping wells to sample names..."))
       tmp <- tmp |>
         dplyr::rename(Well = Name_raw) |>
         dplyr::left_join(samples |> dplyr::select(Well, Name), by = "Well") |>
@@ -307,7 +314,7 @@ extract_cq_values <- function(micrun_file) {
     # DIAGNOSTIC: Show what we extracted
     n_rows <- nrow(tmp)
     n_with_cq <- sum(!is.na(tmp$Cq))
-    message(sprintf("        ✓ Extracted %d rows (%d with Cq values)", n_rows, n_with_cq))
+    mic_log(sprintf("        ✓ Extracted %d rows (%d with Cq values)", n_rows, n_with_cq))
     
     # Add to accumulated data
     cq_data <- dplyr::bind_rows(cq_data, tmp)
@@ -322,24 +329,24 @@ extract_cq_values <- function(micrun_file) {
       thr  <- nums[which(!is.na(nums))[1]]
       if (!is.na(thr)) {
         thresholds[[tgt]] <- thr
-        message(sprintf("        Found threshold: %.2f", thr))
+        mic_log(sprintf("        Found threshold: %.2f", thr))
       }
     }
   }
   
   # DIAGNOSTIC: Final summary
-  message(sprintf("\n✅ extract_cq_values() complete:"))
-  message(sprintf("   Total Cq rows extracted: %d", nrow(cq_data)))
+  mic_log(sprintf("\n✅ extract_cq_values() complete:"))
+  mic_log(sprintf("   Total Cq rows extracted: %d", nrow(cq_data)))
   if (nrow(cq_data) > 0) {
     targets_found <- unique(cq_data$target)
-    message(sprintf("   Targets with data: %s", paste(targets_found, collapse = ", ")))
+    mic_log(sprintf("   Targets with data: %s", paste(targets_found, collapse = ", ")))
     for (t in targets_found) {
       n <- sum(cq_data$target == t)
       n_with_cq <- sum(cq_data$target == t & !is.na(cq_data$Cq))
-      message(sprintf("     - %s: %d rows (%d with Cq)", t, n, n_with_cq))
+      mic_log(sprintf("     - %s: %d rows (%d with Cq)", t, n, n_with_cq))
     }
   } else {
-    message("   ⚠️  WARNING: No Cq data extracted from any sheet!")
+    mic_log("   ⚠️  WARNING: No Cq data extracted from any sheet!")
   }
   
   if (!nrow(cq_data)) {
@@ -358,7 +365,7 @@ extract_cq_values <- function(micrun_file) {
     dplyr::mutate(Replicate = paste0("Rep", dplyr::row_number())) %>%
     dplyr::ungroup()
   
-  message(sprintf("   Final output: %d rows with replicate info\n", nrow(out)))
+  mic_log(sprintf("   Final output: %d rows with replicate info\n", nrow(out)))
   
   list(
     cq_data = out,

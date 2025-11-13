@@ -60,7 +60,7 @@ server <- function(input, output, session) {
   )
   
   # MIC qPCR module - FIXED
-  mod_mic_qpcr_server(
+  mic_data <- mod_mic_qpcr_server(
     "mic",
     biobank_df = data$clean_data,              # ← Biobank data from data manager
     extractions_df = data$filtered_extractions, # ← Extractions data from data manager
@@ -71,7 +71,7 @@ server <- function(input, output, session) {
   mod_drs_rnasep_server(
     "drs_rnasep",
     extractions_df = data$filtered_extractions, # ← Extractions data from data manager
-    qpcr_data = reactive(NULL),                 # ← qPCR data (not available yet)
+    qpcr_data = mic_data$qpcr_samples,          # ← qPCR data from MIC module
     filters = data$filters                      # ← Filters from data manager
   )
 

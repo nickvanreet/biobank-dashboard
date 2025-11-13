@@ -85,6 +85,20 @@ source("R/modules/mod_05_mic_qpcr.R")  # The rebuilt module
 source("R/modules/mod_06_drs_rnasep.R")  # DRS volume vs RNAseP analysis
 
 # ============================================================================
+# SOURCE MODULES - ADD THIS SECTION HERE
+# ============================================================================
+source("R/modules/mod_05a_mic_coordinator.R")
+source("R/modules/mod_05b_mic_overview.R")
+source("R/modules/mod_05c_mic_samples.R")
+source("R/modules/mod_05d_mic_qc.R")
+source("R/modules/mod_05e_mic_analysis.R")
+source("R/modules/mod_05f_mic_export.R")
+source("R/modules/mod_05g_mic_settings.R")
+cat("✓ MIC modules loaded\n")
+# ============================================================================
+
+
+# ============================================================================
 # UI THEME
 # ============================================================================
 

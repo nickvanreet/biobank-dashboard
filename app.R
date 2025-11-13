@@ -8,26 +8,31 @@ source("global.R")
 # USER INTERFACE
 # ============================================================================
 
-ui <- page_navbar(
-  title = config$app$title,
-  theme = app_theme,
-  
-  # Sidebar with data loading and filters
-  sidebar = mod_data_manager_ui("data_manager"),
-  
-  # Navigation panels
-  mod_data_quality_ui("data_quality"),
-  mod_overview_demographics_ui("overview_demographics"),
-  mod_transport_ui("transport"),
-  mod_extractions_ui("extractions"),
-  mod_mic_qpcr_ui("mic_qpcr"),  # Returns a single nav_menu with sub-panels
-  mod_drs_rnasep_ui("drs_rnasep")
-  
-  # Add other modules here as they're developed:
-  # mod_transport_ui("transport"),
-  # mod_lab_results_ui("lab_results"),
-  # mod_data_export_ui("data_export"),
-  # etc.
+# Build UI with dynamic MIC panels
+mic_panels <- mod_mic_qpcr_ui("mic_qpcr")  # Returns list of nav_panels
+
+ui <- do.call(
+  page_navbar,
+  c(
+    list(
+      title = config$app$title,
+      theme = app_theme,
+      sidebar = mod_data_manager_ui("data_manager")
+    ),
+    # Navigation panels
+    list(
+      mod_data_quality_ui("data_quality"),
+      mod_overview_demographics_ui("overview_demographics"),
+      mod_transport_ui("transport"),
+      mod_extractions_ui("extractions")
+    ),
+    # Add MIC panels dynamically
+    mic_panels,
+    # Remaining panels
+    list(
+      mod_drs_rnasep_ui("drs_rnasep")
+    )
+  )
 )
 
 # ============================================================================

@@ -179,7 +179,12 @@ app_theme <- bslib::bs_add_rules(
   /* ========================================== */
 
   .bslib-value-box {
-    border-radius: 16px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1.5rem;
+    border-radius: 20px;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow:
       0 2px 8px rgba(15, 23, 42, 0.06),
@@ -189,11 +194,10 @@ app_theme <- bslib::bs_add_rules(
       rgba(248, 250, 252, 0.98) 100%);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(226, 232, 240, 0.6);
-    position: relative;
     overflow: hidden;
+    color: #0f172a;
   }
 
-  /* Elegant hover effect */
   .bslib-value-box:hover {
     transform: translateY(-6px) scale(1.02);
     box-shadow:
@@ -202,54 +206,87 @@ app_theme <- bslib::bs_add_rules(
     border-color: rgba(79, 70, 229, 0.3);
   }
 
-  /* Subtle gradient overlay on hover */
   .bslib-value-box::before {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(90deg,
-      rgba(79, 70, 229, 0) 0%,
-      rgba(79, 70, 229, 0.6) 50%,
-      rgba(79, 70, 229, 0) 100%);
+    inset: 0;
+    background: radial-gradient(circle at top right, rgba(79, 70, 229, 0.12), transparent 55%);
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.35s ease;
+    pointer-events: none;
   }
 
   .bslib-value-box:hover::before {
     opacity: 1;
   }
 
-  /* Refined typography */
   .bslib-value-box .value-box-title {
     color: #64748b;
     font-weight: 600;
     font-size: 0.875rem;
     letter-spacing: 0.03em;
     text-transform: uppercase;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
   }
 
-  .bslib-value-box .value-box-value {
+  .bslib-value-box .value-box-subtitle {
+    color: #64748b;
+    font-size: 0.875rem;
+  }
+
+  .bslib-value-box .value-box-value,
+  .bslib-value-box .value-box-value .shiny-text-output {
     color: #0f172a;
     font-weight: 700;
-    font-size: 2rem;
+    font-size: 2.35rem;
     letter-spacing: -0.02em;
+    margin: 0;
+    line-height: 1.2;
   }
 
-  /* Full color KPI backgrounds */
+  .bslib-value-box .value-box-value .shiny-text-output {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.25rem;
+  }
+
+  .bslib-value-box .value-box-showcase {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: rgba(79, 70, 229, 0.08);
+    color: inherit;
+    font-size: 2rem;
+    transition: background 0.3s ease, transform 0.3s ease;
+  }
+
+  .bslib-value-box:hover .value-box-showcase {
+    transform: scale(1.05);
+  }
+
+  .bslib-value-box .value-box-showcase svg,
+  .bslib-value-box .value-box-showcase i,
+  .bslib-value-box .value-box-showcase .fa,
+  .bslib-value-box .value-box-showcase .bi {
+    font-size: 1.75rem;
+  }
+
+  .bslib-value-box[data-theme] {
+    border: none;
+    color: #ffffff;
+  }
+
   .bslib-value-box[data-theme='primary'],
   .bslib-value-box.bg-primary {
     background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);
-    color: white;
-    border: none;
   }
 
   .bslib-value-box[data-theme='primary'] .value-box-title,
   .bslib-value-box.bg-primary .value-box-title {
-    color: rgba(255, 255, 255, 0.9);
+    color: rgba(255, 255, 255, 0.85);
   }
 
   .bslib-value-box[data-theme='primary'] .value-box-value,
@@ -342,14 +379,50 @@ app_theme <- bslib::bs_add_rules(
     color: white;
   }
 
-  /* Icon styling for value boxes */
-  .bslib-value-box .value-box-showcase {
-    color: rgba(255, 255, 255, 0.95);
-    font-size: 2.5rem;
+  .bslib-value-box[data-theme] .value-box-showcase {
+    background: rgba(255, 255, 255, 0.16);
+    color: #ffffff;
+  }
+
+  .bslib-value-box[data-theme] .value-box-title,
+  .bslib-value-box[data-theme] .value-box-subtitle,
+  .bslib-value-box[data-theme] .value-box-value,
+  .bslib-value-box[data-theme] .value-box-value .shiny-text-output,
+  .bslib-value-box[data-theme] .value-box-subtitle .shiny-text-output {
+    color: rgba(255, 255, 255, 0.95) !important;
+  }
+
+  .bslib-value-box[data-theme] .value-box-value,
+  .bslib-value-box[data-theme] .value-box-value .shiny-text-output {
+    color: #ffffff !important;
+  }
+
+  .bslib-value-box[data-theme] .value-box-value *,
+  .bslib-value-box[data-theme] .value-box-subtitle * {
+    color: inherit !important;
   }
 
   .bslib-value-box .bslib-value-box-icon {
-    color: rgba(255, 255, 255, 0.95);
+    color: inherit;
+  }
+
+  @media (max-width: 992px) {
+    .bslib-value-box {
+      padding: 1.25rem;
+      gap: 0.75rem;
+    }
+
+    .bslib-value-box .value-box-value,
+    .bslib-value-box .value-box-value .shiny-text-output {
+      font-size: 1.85rem;
+    }
+
+    .bslib-value-box .value-box-showcase {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      font-size: 1.5rem;
+    }
   }
 
   /* ========================================== */

@@ -8,8 +8,8 @@ source("global.R")
 # USER INTERFACE
 # ============================================================================
 
-# Build UI with dynamic MIC panels
-mic_panels <- mod_mic_qpcr_ui("mic_qpcr")  # Returns list of nav_panels
+# Extract MIC panels separately (returns list of nav_panels)
+mic_panels <- mod_mic_qpcr_coordinator_ui("mic")
 
 ui <- do.call(
   page_navbar,
@@ -71,8 +71,8 @@ server <- function(input, output, session) {
     biobank_data = data$clean_data
   )
   
-  mic_data <- mod_mic_qpcr_server(
-    "mic_qpcr",
+  mic_data <- mod_mic_qpcr_coordinator_server(
+    "mic",
     biobank_df = data$clean_data,
     extractions_df = data$filtered_extractions,
     filters = data$filters

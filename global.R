@@ -94,6 +94,12 @@ source("R/modules/mod_05d_mic_qc.R")
 source("R/modules/mod_05e_mic_analysis.R")
 source("R/modules/mod_05f_mic_export.R")
 source("R/modules/mod_05g_mic_settings.R")
+
+# Reassign mod_mic_qpcr_ui to use the coordinator (returns list of nav_panels)
+# This must be done AFTER mod_05a_mic_coordinator.R is loaded
+mod_mic_qpcr_ui <- mod_mic_qpcr_coordinator_ui
+mod_mic_qpcr_server <- mod_mic_qpcr_coordinator_server
+
 cat("✓ MIC modules loaded\n")
 # ============================================================================
 

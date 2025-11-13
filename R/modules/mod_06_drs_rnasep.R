@@ -513,7 +513,6 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
         ),
         options = list(
           pageLength = 10,
-          scrollX = TRUE,
           dom = 'tp',
           ordering = FALSE
         ),
@@ -570,7 +569,6 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
         detail_data,
         options = list(
           pageLength = 25,
-          scrollX = TRUE,
           dom = 'Bfrtip',
           buttons = c('copy', 'csv', 'excel')
         ),

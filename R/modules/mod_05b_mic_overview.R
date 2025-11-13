@@ -84,6 +84,74 @@ mod_mic_overview_ui <- function(id) {
       gap = "12px",
 
       value_box(
+        title = "177T DNA Positive Samples",
+        value = textOutput(ns("kpi_dna_positive")),
+        showcase = icon("dna"),
+        theme = "success"
+      ),
+
+      value_box(
+        title = "18S2 RNA Positive Samples",
+        value = textOutput(ns("kpi_rna_positive")),
+        showcase = icon("dna"),
+        theme = "success"
+      ),
+
+      value_box(
+        title = "TNA Positive Samples",
+        value = textOutput(ns("kpi_tna_positive")),
+        showcase = icon("vials"),
+        theme = "success"
+      ),
+
+      value_box(
+        title = "TNA Positive Wells",
+        value = textOutput(ns("kpi_tna_positive_wells")),
+        showcase = icon("flask"),
+        theme = "info"
+      )
+    ),
+
+    layout_column_wrap(
+      width = 1/4,
+      heights_equal = "row",
+      gap = "12px",
+
+      value_box(
+        title = "177T DNA Suspect Samples",
+        value = textOutput(ns("kpi_dna_suspect")),
+        showcase = icon("triangle-exclamation"),
+        theme = "warning"
+      ),
+
+      value_box(
+        title = "18S2 RNA Suspect Samples",
+        value = textOutput(ns("kpi_rna_suspect")),
+        showcase = icon("triangle-exclamation"),
+        theme = "warning"
+      ),
+
+      value_box(
+        title = "TNA Suspect Samples",
+        value = textOutput(ns("kpi_tna_suspect")),
+        showcase = icon("triangle-exclamation"),
+        theme = "warning"
+      ),
+
+      value_box(
+        title = "TNA Suspect Wells",
+        value = textOutput(ns("kpi_tna_suspect_wells")),
+        showcase = icon("flask-vial"),
+        theme = "warning"
+      )
+    ),
+
+    layout_column_wrap(
+      width = 1/4,
+      heights_equal = "row",
+      gap = "12px",
+
+      value_box(
         title = "Indeterminate",
         value = textOutput(ns("kpi_incomplete")),
         showcase = icon("exclamation-triangle"),
@@ -173,7 +241,65 @@ mod_mic_overview_server <- function(id, processed_data, filtered_base) {
       if (!nrow(df) || !"ControlType" %in% names(df)) return("0")
       df %>% filter(ControlType == "Sample") %>% nrow() %>% scales::comma()
     })
-    
+
+    output$kpi_dna_positive <- renderText({
+      df <- filtered_base()
+      if (!nrow(df) || !all(c("ControlType", "Sample_DNA_Positive") %in% names(df))) return("0")
+      df %>% filter(ControlType == "Sample", Sample_DNA_Positive) %>%
+        nrow() %>% scales::comma()
+    })
+
+    output$kpi_rna_positive <- renderText({
+      df <- filtered_base()
+      if (!nrow(df) || !all(c("ControlType", "Sample_RNA_Positive") %in% names(df))) return("0")
+      df %>% filter(ControlType == "Sample", Sample_RNA_Positive) %>%
+        nrow() %>% scales::comma()
+    })
+
+    output$kpi_tna_positive <- renderText({
+      df <- filtered_base()
+      if (!nrow(df) || !all(c("ControlType", "Sample_TNA_Positive") %in% names(df))) return("0")
+      df %>% filter(ControlType == "Sample", Sample_TNA_Positive) %>%
+        nrow() %>% scales::comma()
+    })
+
+    output$kpi_tna_positive_wells <- renderText({
+      df <- filtered_base()
+      if (!nrow(df) || !all(c("ControlType", "Wells_TNA_Positive") %in% names(df))) return("0")
+      df %>% filter(ControlType == "Sample") %>%
+        summarise(total = sum(Wells_TNA_Positive, na.rm = TRUE)) %>%
+        pull(total) %>% scales::comma()
+    })
+
+    output$kpi_dna_suspect <- renderText({
+      df <- filtered_base()
+      if (!nrow(df) || !all(c("ControlType", "Sample_DNA_Suspect") %in% names(df))) return("0")
+      df %>% filter(ControlType == "Sample", Sample_DNA_Suspect) %>%
+        nrow() %>% scales::comma()
+    })
+
+    output$kpi_rna_suspect <- renderText({
+      df <- filtered_base()
+      if (!nrow(df) || !all(c("ControlType", "Sample_RNA_Suspect") %in% names(df))) return("0")
+      df %>% filter(ControlType == "Sample", Sample_RNA_Suspect) %>%
+        nrow() %>% scales::comma()
+    })
+
+    output$kpi_tna_suspect <- renderText({
+      df <- filtered_base()
+      if (!nrow(df) || !all(c("ControlType", "Sample_TNA_Suspect") %in% names(df))) return("0")
+      df %>% filter(ControlType == "Sample", Sample_TNA_Suspect) %>%
+        nrow() %>% scales::comma()
+    })
+
+    output$kpi_tna_suspect_wells <- renderText({
+      df <- filtered_base()
+      if (!nrow(df) || !all(c("ControlType", "Wells_TNA_Suspect") %in% names(df))) return("0")
+      df %>% filter(ControlType == "Sample") %>%
+        summarise(total = sum(Wells_TNA_Suspect, na.rm = TRUE)) %>%
+        pull(total) %>% scales::comma()
+    })
+
     output$kpi_positives <- renderText({
       df <- filtered_base()
       if (!nrow(df) || !"ControlType" %in% names(df)) return("0")

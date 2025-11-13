@@ -1087,25 +1087,23 @@ mod_mic_qpcr_ui <- function(id) {
         card_body(
           class = "p-3",
           layout_columns(
-            col_widths = c(6, 6),
+            col_widths = c(12),
+            gap = "16px",
             card(
               card_header("177T Positive Control", class = "bg-light"),
-              plotlyOutput(ns("lj_177t"), height = "400px")
+              plotlyOutput(ns("lj_177t"), width = "800px", height = "600px")
             ),
             card(
               card_header("18S2 Positive Control", class = "bg-light"),
-              plotlyOutput(ns("lj_18s2"), height = "400px")
-            )
-          ),
-          layout_columns(
-            col_widths = c(6, 6),
+              plotlyOutput(ns("lj_18s2"), width = "800px", height = "600px")
+            ),
             card(
               card_header("RNAseP-DNA Positive Control", class = "bg-light"),
-              plotlyOutput(ns("lj_rnp_dna"), height = "400px")
+              plotlyOutput(ns("lj_rnp_dna"), width = "800px", height = "600px")
             ),
             card(
               card_header("RNAseP-RNA Positive Control", class = "bg-light"),
-              plotlyOutput(ns("lj_rnp_rna"), height = "400px")
+              plotlyOutput(ns("lj_rnp_rna"), width = "800px", height = "600px")
             )
           )
         )
@@ -1955,8 +1953,8 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
         plot_ly(lj$data, x = ~RunID, y = ~Cq_mean,
                 type = 'scatter', mode = 'markers+lines',
                 name = 'Run Mean',
-                marker = list(size = 10, color = '#2c3e50'),
-                line = list(width = 2, color = '#2c3e50')) %>%
+                marker = list(size = 12, color = '#2c3e50'),
+                line = list(width = 3, color = '#2c3e50')) %>%
           add_lines(y = ~Mean, name = 'Mean',
                     line = list(color = 'black', width = 2)) %>%
           add_lines(y = ~plus1, name = '+1 SD',
@@ -1972,10 +1970,10 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
           add_lines(y = ~minus3, name = '-3 SD',
                     line = list(color = '#e74c3c', dash = 'dashdot', width = 2)) %>%
           layout(
-            xaxis = list(title = "Run ID", tickangle = -45),
-            yaxis = list(title = "Cq Value"),
-            legend = list(orientation = 'h', y = -0.3, x = 0.1),
-            margin = list(b = 100)
+            xaxis = list(title = "Run ID", tickangle = -45, automargin = TRUE),
+            yaxis = list(title = "Cq Value", automargin = TRUE),
+            legend = list(orientation = 'h', y = -0.25, x = 0),
+            margin = list(t = 40, r = 40, b = 120, l = 60)
           )
       })
     }

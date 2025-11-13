@@ -110,8 +110,8 @@ cat("✓ MIC modules loaded\n")
 
 app_theme <- bslib::bs_theme(
   version = 5,
-  primary = "#2563EB",   # Vibrant cobalt blue for primary actions
-  secondary = "#64748B", # Muted slate for secondary accents
+  bootswatch = "flatly",
+  primary = "#2563EB",   # Lighter cobalt blue for primary actions
   success = "#16A34A",   # Functional green for success KPI states
   danger = "#DC2626",    # Accessible red for alerts and errors
   warning = "#F59E0B",   # Warm amber for warning KPI states
@@ -156,76 +156,40 @@ app_theme <- bslib::bs_add_rules(
 
   /* Value box enhancements */
   .bslib-value-box {
-    border-radius: 14px;
+    border-radius: 12px;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
-    box-shadow: 0 16px 24px rgba(15, 23, 42, 0.12);
-    border: none;
-    color: #ffffff;
+    box-shadow: 0 12px 20px rgba(15, 23, 42, 0.08);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(241, 245, 249, 0.96));
+    border: 1px solid rgba(226, 232, 240, 0.8);
   }
 
   .bslib-value-box:hover {
     transform: translateY(-4px);
-    box-shadow: 0 24px 32px rgba(15, 23, 42, 0.18);
+    box-shadow: 0 20px 28px rgba(15, 23, 42, 0.12);
   }
 
   .bslib-value-box .value-box-title {
-    color: inherit;
+    color: #64748b;
     font-weight: 600;
     letter-spacing: 0.02em;
   }
 
   .bslib-value-box .value-box-value {
-    color: inherit;
+    color: #0f172a;
     font-weight: 700;
   }
 
-  .bslib-value-box .value-box-showcase {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(255, 255, 255, 0.16);
-    border-radius: 50%;
-    width: 3.5rem;
-    height: 3.5rem;
-    margin-right: 1rem;
-  }
-
-  .bslib-value-box .value-box-showcase > * {
-    font-size: 2rem;
-    color: rgba(255, 255, 255, 0.95);
-  }
-
+  /* Use functional accent rings to highlight KPI state */
   .bslib-value-box[data-theme='primary'],
-  .bslib-value-box.bg-primary {
-    background: linear-gradient(135deg, #2563EB, #1D4ED8);
-  }
-
+  .bslib-value-box.bg-primary { border-left: 6px solid #2563EB; }
   .bslib-value-box[data-theme='success'],
-  .bslib-value-box.bg-success {
-    background: linear-gradient(135deg, #16A34A, #15803D);
-  }
-
+  .bslib-value-box.bg-success { border-left: 6px solid #16A34A; }
   .bslib-value-box[data-theme='danger'],
-  .bslib-value-box.bg-danger {
-    background: linear-gradient(135deg, #DC2626, #B91C1C);
-  }
-
+  .bslib-value-box.bg-danger { border-left: 6px solid #DC2626; }
   .bslib-value-box[data-theme='warning'],
-  .bslib-value-box.bg-warning {
-    background: linear-gradient(135deg, #F59E0B, #D97706);
-    color: #1F2937;
-  }
-
-  .bslib-value-box[data-theme='warning'] .value-box-title,
-  .bslib-value-box[data-theme='warning'] .value-box-value,
-  .bslib-value-box[data-theme='warning'] .value-box-showcase > * {
-    color: #1F2937;
-  }
-
+  .bslib-value-box.bg-warning { border-left: 6px solid #F59E0B; }
   .bslib-value-box[data-theme='info'],
-  .bslib-value-box.bg-info {
-    background: linear-gradient(135deg, #0EA5E9, #0284C7);
-  }
+  .bslib-value-box.bg-info { border-left: 6px solid #0EA5E9; }
 
   /* Table styling enhancements */
   .dataTables_wrapper {

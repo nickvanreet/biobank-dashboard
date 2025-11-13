@@ -17,19 +17,19 @@ mod_mic_qc_ui <- function(id) {
           gap = "16px",
           card(
             card_header("177T Positive Control", class = "bg-light"),
-            plotlyOutput(ns("lj_177t"), height = "500px")
+            plotlyOutput(ns("lj_177t"), height = "800px", width = "100%")
           ),
           card(
             card_header("18S2 Positive Control", class = "bg-light"),
-            plotlyOutput(ns("lj_18s2"), height = "500px")
+            plotlyOutput(ns("lj_18s2"), height = "800px", width = "100%")
           ),
           card(
             card_header("RNAseP-DNA Positive Control", class = "bg-light"),
-            plotlyOutput(ns("lj_rnp_dna"), height = "500px")
+            plotlyOutput(ns("lj_rnp_dna"), height = "800px", width = "100%")
           ),
           card(
             card_header("RNAseP-RNA Positive Control", class = "bg-light"),
-            plotlyOutput(ns("lj_rnp_rna"), height = "500px")
+            plotlyOutput(ns("lj_rnp_rna"), height = "800px", width = "100%")
           )
         )
       )

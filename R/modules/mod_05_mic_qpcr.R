@@ -1861,7 +1861,6 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
         display_runs %>% select(all_of(available_cols)),
         options = list(
           pageLength = 15,
-          scrollX = TRUE,
           dom = 'Blfrtip',
           buttons = c('copy', 'csv', 'excel'),
           lengthMenu = list(c(10, 15, 25, 50, -1), c('10', '15', '25', '50', 'All')),
@@ -1937,7 +1936,6 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
         df %>% select(all_of(available_cols)),
         options = list(
           pageLength = 25,
-          scrollX = TRUE,
           dom = 'Blfrtip',
           buttons = c('copy', 'csv', 'excel'),
           lengthMenu = list(c(10, 25, 50, 100, -1), c('10', '25', '50', '100', 'All')),
@@ -2035,7 +2033,6 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
         df %>% select(all_of(available_cols)),
         options = list(
           pageLength = 25,
-          scrollX = TRUE,
           dom = 'Blfrtip',
           buttons = c('copy', 'csv', 'excel')
         ),

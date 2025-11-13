@@ -730,7 +730,6 @@ mod_overview_demographics_server <- function(id, filtered_data) {
         summary_data,
         options = list(
           pageLength = 15,
-          scrollX = TRUE,
           dom = 'frtip'
         ),
         class = "table-sm"

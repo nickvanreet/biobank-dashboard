@@ -138,6 +138,20 @@ app_theme <- bslib::bs_add_rules(
   .table {
     font-size: 14px;
   }
+
+  .bslib-sidebar-layout {
+    min-height: 100vh;
+  }
+
+  .bslib-sidebar-layout > .bslib-sidebar {
+    overflow-y: auto;
+    max-height: 100vh;
+  }
+
+  .bslib-sidebar-layout > .bslib-main,
+  .bslib-nav-content {
+    overflow: visible !important;
+  }
   "
 )
 
@@ -148,7 +162,6 @@ app_theme <- bslib::bs_add_rules(
 APP_CONSTANTS <- list(
   DT_OPTIONS = list(
     pageLength = 20,
-    scrollX = TRUE,
     dom = 'Bfrtip',
     buttons = c('copy', 'csv', 'excel')
   )
@@ -186,9 +199,6 @@ create_elegant_table <- function(data,
     data,
     options = list(
       pageLength = pageLength,
-      scrollX = TRUE,
-      scrollY = "500px",
-      scrollCollapse = TRUE,
       dom = 'Bfrtip',
       buttons = buttons,
       columnDefs = list(

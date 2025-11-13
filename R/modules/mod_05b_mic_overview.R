@@ -219,7 +219,7 @@ mod_mic_overview_ui <- function(id) {
       full_screen = TRUE,
       card_header("Run Metadata"),
       card_body(
-        DTOutput(ns("tbl_runs"), height = "500px"),
+        DTOutput(ns("tbl_runs")),
         class = "p-3"
       )
     )

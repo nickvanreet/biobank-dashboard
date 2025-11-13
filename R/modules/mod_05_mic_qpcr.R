@@ -756,355 +756,305 @@ apply_global_filters <- function(df, filters) {
 }
 
 # =============================================================================
-# REDESIGNED UI - IMPROVED UX & FUNCTIONALITY
+# REDESIGNED UI - RETURNS LIST OF 5 SEPARATE NAV_PANELS
 # =============================================================================
 
 mod_mic_qpcr_ui <- function(id) {
   ns <- NS(id)
 
-  nav_panel(
-    title = "MIC qPCR",
-    icon = icon("dna"),
-
-    # ===========================================================================
-    # TOP ACTION BAR
-    # ===========================================================================
-    card(
-      class = "mb-3",
-      card_body(
-        class = "py-2",
-        layout_columns(
-          col_widths = c(8, 4),
-          div(
-            textInput(
-              ns("mic_dir"),
-              NULL,
-              value = "data/MIC",
-              placeholder = "Path to MIC Excel files",
-              width = "100%"
-            )
-          ),
-          div(
-            class = "d-flex gap-2 align-items-end",
-            actionButton(
-              ns("refresh"),
-              "Refresh Data",
-              icon = icon("sync"),
-              class = "btn-primary",
-              style = "width: 140px;"
-            ),
-            actionButton(
-              ns("settings"),
-              "Settings",
-              icon = icon("sliders"),
-              class = "btn-outline-secondary",
-              style = "width: 120px;"
-            ),
-            downloadButton(
-              ns("export_qc"),
-              "Export",
-              class = "btn-success",
-              style = "width: 120px;"
-            )
+  # ===========================================================================
+  # SHARED ACTION BAR (appears on all panels)
+  # ===========================================================================
+  action_bar <- card(
+    class = "mb-3",
+    card_body(
+      class = "py-2",
+      layout_columns(
+        col_widths = c(8, 4),
+        div(
+          textInput(
+            ns("mic_dir"),
+            NULL,
+            value = "data/MIC",
+            placeholder = "Path to MIC Excel files",
+            width = "100%"
           )
+        ),
+        div(
+          class = "d-flex gap-2 align-items-end",
+          actionButton(
+            ns("refresh"),
+            "Refresh Data",
+            icon = icon("sync"),
+            class = "btn-primary",
+            style = "width: 140px;"
+          ),
+          actionButton(
+            ns("settings"),
+            "Settings",
+            icon = icon("sliders"),
+            class = "btn-outline-secondary",
+            style = "width: 120px;"
+          )
+        )
+      )
+    )
+  )
+
+  # ===========================================================================
+  # RETURN LIST OF NAV_PANELS (NOT A SINGLE NAV_PANEL!)
+  # ===========================================================================
+  list(
+
+    # =========================================================================
+    # PANEL 1: MIC OVERVIEW (KPIs Only)
+    # =========================================================================
+    nav_panel(
+      title = "MIC Overview",
+      icon = icon("dna"),
+
+      action_bar,
+
+      # Row 1: Overview metrics
+      layout_column_wrap(
+        width = 1/5,
+        heights_equal = "row",
+
+        value_box(
+          title = "Total Runs",
+          value = textOutput(ns("kpi_runs")),
+          showcase = icon("folder-open"),
+          theme = "primary"
+        ),
+
+        value_box(
+          title = "Total Samples",
+          value = textOutput(ns("kpi_samples")),
+          showcase = icon("vial"),
+          theme = "info"
+        ),
+
+        value_box(
+          title = "Positives",
+          value = textOutput(ns("kpi_positives")),
+          showcase = icon("check-circle"),
+          theme = "success"
+        ),
+
+        value_box(
+          title = "Late Positives",
+          value = textOutput(ns("kpi_late_positives")),
+          showcase = icon("clock"),
+          theme = "warning"
+        ),
+
+        value_box(
+          title = "Incomplete Targets",
+          value = textOutput(ns("kpi_incomplete")),
+          showcase = icon("exclamation-triangle"),
+          theme = "danger"
+        )
+      ),
+
+      # Row 2: Data quality metrics
+      layout_column_wrap(
+        width = 1/5,
+        heights_equal = "row",
+
+        value_box(
+          title = "Prevalence",
+          value = textOutput(ns("kpi_prevalence")),
+          showcase = icon("percent"),
+          theme = "success"
+        ),
+
+        value_box(
+          title = "QC Issues",
+          value = textOutput(ns("kpi_flagged")),
+          showcase = icon("flag"),
+          theme = "warning"
+        ),
+
+        value_box(
+          title = "Biobank Linked",
+          value = textOutput(ns("kpi_biobank")),
+          showcase = icon("link"),
+          theme = "secondary"
+        ),
+
+        value_box(
+          title = "Extractions Linked",
+          value = textOutput(ns("kpi_extractions")),
+          showcase = icon("flask"),
+          theme = "secondary"
+        ),
+
+        value_box(
+          title = "Valid Runs",
+          value = textOutput(ns("kpi_valid_runs")),
+          showcase = icon("check-square"),
+          theme = "success"
+        )
+      ),
+
+      # Row 3: RNA/DNA Quality (separate row as requested)
+      layout_column_wrap(
+        width = 1/2,
+        heights_equal = "row",
+
+        value_box(
+          title = "RNA Quality (indicator - needs fix)",
+          value = textOutput(ns("kpi_rna_good")),
+          showcase = icon("star"),
+          theme = "info"
+        ),
+
+        value_box(
+          title = "DNA Quality (indicator - needs fix)",
+          value = textOutput(ns("kpi_dna_good")),
+          showcase = icon("star"),
+          theme = "info"
         )
       )
     ),
 
-    # ===========================================================================
-    # KPI DASHBOARD - 2 ROWS (10 metrics)
-    # ===========================================================================
+    # =========================================================================
+    # PANEL 2: MIC - SAMPLES
+    # =========================================================================
+    nav_panel(
+      title = "MIC - Samples",
+      icon = icon("vials"),
 
-    # Row 1: Overview metrics
-    layout_column_wrap(
-      width = 1/5,
-      heights_equal = "row",
+      # Note: Filters from sidebar apply automatically, no filters table here
 
-      value_box(
-        title = "Total Runs",
-        value = textOutput(ns("kpi_runs")),
-        showcase = icon("folder-open"),
-        theme = "primary"
-      ),
-
-      value_box(
-        title = "Total Samples",
-        value = textOutput(ns("kpi_samples")),
-        showcase = icon("vial"),
-        theme = "info"
-      ),
-
-      value_box(
-        title = "Positives",
-        value = textOutput(ns("kpi_positives")),
-        showcase = icon("check-circle"),
-        theme = "success"
-      ),
-
-      value_box(
-        title = "Prevalence",
-        value = textOutput(ns("kpi_prevalence")),
-        showcase = icon("percent"),
-        theme = "success"
-      ),
-
-      value_box(
-        title = "QC Issues",
-        value = textOutput(ns("kpi_flagged")),
-        showcase = icon("flag"),
-        theme = "warning"
+      card(
+        full_screen = TRUE,
+        card_header(
+          class = "d-flex justify-content-between align-items-center",
+          span("Sample Results"),
+          downloadButton(ns("dl_samples_filtered"), "Download", class = "btn-sm btn-outline-primary")
+        ),
+        card_body(
+          DTOutput(ns("tbl_samples")),
+          class = "p-3"
+        )
       )
     ),
 
-    # Row 2: Data quality metrics
-    layout_column_wrap(
-      width = 1/5,
-      heights_equal = "row",
+    # =========================================================================
+    # PANEL 3: MIC - QC & CONTROLS
+    # =========================================================================
+    nav_panel(
+      title = "MIC - QC & Controls",
+      icon = icon("chart-line"),
 
-      value_box(
-        title = "Biobank Linked",
-        value = textOutput(ns("kpi_biobank")),
-        showcase = icon("link"),
-        theme = "secondary"
+      # Levey-Jennings plots FIRST
+      card(
+        card_header("Levey-Jennings Control Charts"),
+        card_body(
+          class = "p-3",
+          layout_columns(
+            col_widths = c(6, 6),
+            card(
+              card_header("177T Positive Control", class = "bg-light"),
+              plotlyOutput(ns("lj_177t"), height = "400px")
+            ),
+            card(
+              card_header("18S2 Positive Control", class = "bg-light"),
+              plotlyOutput(ns("lj_18s2"), height = "400px")
+            )
+          ),
+          layout_columns(
+            col_widths = c(6, 6),
+            card(
+              card_header("RNAseP-DNA Positive Control", class = "bg-light"),
+              plotlyOutput(ns("lj_rnp_dna"), height = "400px")
+            ),
+            card(
+              card_header("RNAseP-RNA Positive Control", class = "bg-light"),
+              plotlyOutput(ns("lj_rnp_rna"), height = "400px")
+            )
+          )
+        )
       ),
 
-      value_box(
-        title = "Extractions Linked",
-        value = textOutput(ns("kpi_extractions")),
-        showcase = icon("flask"),
-        theme = "secondary"
-      ),
-
-      value_box(
-        title = "DNA Quality Good",
-        value = textOutput(ns("kpi_dna_good")),
-        showcase = icon("star"),
-        theme = "info"
-      ),
-
-      value_box(
-        title = "RNA Quality Good",
-        value = textOutput(ns("kpi_rna_good")),
-        showcase = icon("star"),
-        theme = "info"
-      ),
-
-      value_box(
-        title = "Valid Runs",
-        value = textOutput(ns("kpi_valid_runs")),
-        showcase = icon("check-square"),
-        theme = "success"
+      # Control status table BELOW
+      card(
+        class = "mt-3",
+        card_header("Control Status by Run"),
+        card_body(
+          DTOutput(ns("tbl_controls")),
+          class = "p-3"
+        )
       )
     ),
 
-    # ===========================================================================
-    # MAIN CONTENT TABS
-    # ===========================================================================
-    navset_card_tab(
-      id = ns("main_tabs"),
+    # =========================================================================
+    # PANEL 4: MIC - ANALYSIS
+    # =========================================================================
+    nav_panel(
+      title = "MIC - Analysis",
+      icon = icon("chart-scatter"),
 
-      # =========================================================================
-      # TAB 1: RUNS OVERVIEW
-      # =========================================================================
-      nav_panel(
-        title = "Runs",
-        icon = icon("clipboard-list"),
+      layout_columns(
+        col_widths = c(6, 6),
 
         card(
-          full_screen = TRUE,
-          card_header("Run Metadata"),
+          card_header("Trypanozoon: 18S2 vs 177T"),
           card_body(
-            DTOutput(ns("tbl_runs")),
+            plotlyOutput(ns("scatter_tryp"), height = "550px"),
+            class = "p-3"
+          )
+        ),
+
+        card(
+          card_header("Sample Quality: RNAseP RNA vs DNA (ΔCq)"),
+          card_body(
+            plotlyOutput(ns("scatter_rnp"), height = "550px"),
             class = "p-3"
           )
         )
-      ),
+      )
+    ),
 
-      # =========================================================================
-      # TAB 2: SAMPLES & RESULTS (with filters!)
-      # =========================================================================
-      nav_panel(
-        title = "Samples",
-        icon = icon("vials"),
+    # =========================================================================
+    # PANEL 5: MIC - EXPORT
+    # =========================================================================
+    nav_panel(
+      title = "MIC - Export",
+      icon = icon("download"),
 
-        layout_columns(
-          col_widths = c(12),
+      layout_columns(
+        col_widths = c(6, 6),
 
-          # Results table with compact filters
-          card(
-            full_screen = TRUE,
-            card_header(
-              class = "d-flex justify-content-between align-items-center flex-wrap gap-3",
-              span("Sample Results"),
-              div(
-                class = "d-flex gap-2 align-items-center",
-                selectInput(
-                  ns("filter_call"),
-                  NULL,
-                  choices = c("All Results" = "all", "Positive", "Negative", "LatePositive", "Invalid_NoDNA"),
-                  selected = "all",
-                  width = "180px"
-                ),
-                checkboxInput(
-                  ns("filter_flagged_only"),
-                  "Flagged only",
-                  value = FALSE
-                ),
-                downloadButton(ns("dl_samples_filtered"), "Download", class = "btn-sm btn-outline-primary")
-              )
-            ),
-            card_body(
-              DTOutput(ns("tbl_samples")),
-              class = "p-3"
-            )
+        card(
+          card_header("Core Data Exports"),
+          card_body(
+            class = "p-4",
+            h5("Sample-Level Data", class = "mb-3"),
+            downloadButton(ns("dl_samples"), "All Sample Calls", class = "btn-primary w-100 mb-3"),
+            downloadButton(ns("dl_positives"), "Positive Samples Only", class = "btn-success w-100 mb-3"),
+
+            tags$hr(),
+
+            h5("Run-Level Data", class = "mb-3"),
+            downloadButton(ns("dl_runs"), "Run Metadata", class = "btn-info w-100 mb-3"),
+            downloadButton(ns("dl_controls"), "Control Performance", class = "btn-info w-100 mb-3")
           )
-        )
-      ),
+        ),
 
-      # =========================================================================
-      # TAB 3: QUALITY CONTROL
-      # =========================================================================
-      nav_panel(
-        title = "Quality Control",
-        icon = icon("chart-line"),
+        card(
+          card_header("Analysis Exports"),
+          card_body(
+            class = "p-4",
+            h5("Quality Metrics", class = "mb-3"),
+            downloadButton(ns("dl_deltas"), "ΔCq Summary", class = "btn-secondary w-100 mb-3"),
+            downloadButton(ns("dl_lj"), "Levey-Jennings Stats", class = "btn-secondary w-100 mb-3"),
 
-        layout_columns(
-          col_widths = c(12),
+            tags$hr(),
 
-          # Control status
-          card(
-            class = "mb-3",
-            card_header("Control Status by Run"),
-            card_body(
-              DTOutput(ns("tbl_controls")),
-              class = "p-3"
-            )
-          ),
-
-          # Levey-Jennings plots
-          card(
-            card_header("Levey-Jennings Control Charts"),
-            card_body(
-              class = "p-3",
-              layout_columns(
-                col_widths = c(6, 6),
-                card(
-                  card_header("177T Positive Control", class = "bg-light"),
-                  plotlyOutput(ns("lj_177t"), height = "500px")
-                ),
-                card(
-                  card_header("18S2 Positive Control", class = "bg-light"),
-                  plotlyOutput(ns("lj_18s2"), height = "500px")
-                )
-              ),
-              layout_columns(
-                col_widths = c(6, 6),
-                card(
-                  card_header("RNAseP-DNA Positive Control", class = "bg-light"),
-                  plotlyOutput(ns("lj_rnp_dna"), height = "500px")
-                ),
-                card(
-                  card_header("RNAseP-RNA Positive Control", class = "bg-light"),
-                  plotlyOutput(ns("lj_rnp_rna"), height = "500px")
-                )
-              )
-            )
-          )
-        )
-      ),
-
-      # =========================================================================
-      # TAB 4: SCATTER PLOTS
-      # =========================================================================
-      nav_panel(
-        title = "Target Analysis",
-        icon = icon("chart-scatter"),
-
-        layout_columns(
-          col_widths = c(6, 6),
-
-          card(
-            card_header("Trypanozoon: 18S2 vs 177T"),
-            card_body(
-              plotlyOutput(ns("scatter_tryp"), height = "550px"),
-              class = "p-3"
-            )
-          ),
-
-          card(
-            card_header("Sample Quality: RNAseP RNA vs DNA (ΔCq)"),
-            card_body(
-              plotlyOutput(ns("scatter_rnp"), height = "550px"),
-              class = "p-3"
-            )
-          )
-        )
-      ),
-
-      # =========================================================================
-      # TAB 5: FLAGS & ISSUES
-      # =========================================================================
-      nav_panel(
-        title = "QC Flags",
-        icon = icon("flag"),
-
-        layout_columns(
-          col_widths = c(12),
-
-          card(
-            full_screen = TRUE,
-            card_header(
-              class = "d-flex justify-content-between align-items-center",
-              span("Samples with QC Issues"),
-              downloadButton(ns("dl_flags"), "Download Flagged", class = "btn-sm btn-warning")
-            ),
-            card_body(
-              DTOutput(ns("tbl_flags")),
-              class = "p-3"
-            )
-          )
-        )
-      ),
-
-      # =========================================================================
-      # TAB 6: EXPORTS
-      # =========================================================================
-      nav_panel(
-        title = "Export",
-        icon = icon("download"),
-
-        layout_columns(
-          col_widths = c(6, 6),
-
-          card(
-            card_header("Core Data Exports"),
-            card_body(
-              class = "p-4",
-              h5("Sample-Level Data", class = "mb-3"),
-              downloadButton(ns("dl_samples"), "All Sample Calls", class = "btn-primary w-100 mb-3"),
-              downloadButton(ns("dl_positives"), "Positive Samples Only", class = "btn-success w-100 mb-3"),
-
-              tags$hr(),
-
-              h5("Run-Level Data", class = "mb-3"),
-              downloadButton(ns("dl_runs"), "Run Metadata", class = "btn-info w-100 mb-3"),
-              downloadButton(ns("dl_controls"), "Control Performance", class = "btn-info w-100 mb-3")
-            )
-          ),
-
-          card(
-            card_header("Analysis Exports"),
-            card_body(
-              class = "p-4",
-              h5("Quality Metrics", class = "mb-3"),
-              downloadButton(ns("dl_deltas"), "ΔCq Summary", class = "btn-secondary w-100 mb-3"),
-              downloadButton(ns("dl_lj"), "Levey-Jennings Stats", class = "btn-secondary w-100 mb-3"),
-
-              tags$hr(),
-
-              h5("Complete Dataset", class = "mb-3"),
-              downloadButton(ns("dl_complete"), "Full Export (All Data)", class = "btn-dark w-100 mb-3")
-            )
+            h5("Complete Dataset", class = "mb-3"),
+            downloadButton(ns("dl_complete"), "Full Export (All Data)", class = "btn-dark w-100 mb-3")
           )
         )
       )
@@ -1510,6 +1460,30 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
         scales::comma()
     })
 
+    output$kpi_late_positives <- renderText({
+      df <- filtered_samples()
+      if (!nrow(df) || !"ControlType" %in% names(df) || !"FinalCall" %in% names(df)) {
+        return("0")
+      }
+
+      df %>%
+        filter(ControlType == "Sample", FinalCall == "LatePositive") %>%
+        nrow() %>%
+        scales::comma()
+    })
+
+    output$kpi_incomplete <- renderText({
+      df <- filtered_samples()
+      if (!nrow(df) || !"ControlType" %in% names(df) || !"Flags" %in% names(df)) {
+        return("0")
+      }
+
+      df %>%
+        filter(ControlType == "Sample", !is.na(Flags), grepl("IncompleteTargets", Flags)) %>%
+        nrow() %>%
+        scales::comma()
+    })
+
     output$kpi_prevalence <- renderText({
       df <- filtered_samples()
       if (!nrow(df) || !"ControlType" %in% names(df) || !"FinalCall" %in% names(df)) {
@@ -1704,9 +1678,14 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
           mutate(across(all_of(numeric_cols), ~round(.x, 2)))
       }
 
-      # Select columns
+      # Rename SampleID to Barcode for clarity
+      if ("SampleID" %in% names(df)) {
+        df <- df %>% rename(Barcode = SampleID)
+      }
+
+      # Select columns - INCLUDE BARCODE
       available_cols <- intersect(
-        c("RunID", "SampleName", "FinalCall",
+        c("RunID", "Barcode", "SampleName", "FinalCall",
           "Cq_median_177T", "Cq_median_18S2",
           "Cq_median_RNAseP_DNA", "Cq_median_RNAseP_RNA",
           "Delta_18S2_177T", "Delta_RP",

@@ -4,20 +4,11 @@
 
 mod_mic_qc_ui <- function(id) {
   ns <- NS(id)
-  
+
   tagList(
-    # Control status table
+    # Levey-Jennings plots - shown first per user request
     card(
-      class = "mb-3",
-      card_header("Control Status by Run"),
-      card_body(
-        DTOutput(ns("tbl_controls")),
-        class = "p-3"
-      )
-    ),
-    
-    # Levey-Jennings plots
-    card(
+      full_screen = TRUE,
       card_header("Levey-Jennings Control Charts"),
       card_body(
         class = "p-3",
@@ -43,6 +34,17 @@ mod_mic_qc_ui <- function(id) {
             plotlyOutput(ns("lj_rnp_rna"), height = "400px")
           )
         )
+      )
+    ),
+
+    # Control status table - shown below charts
+    card(
+      class = "mt-3",
+      full_screen = TRUE,
+      card_header("Control Status by Run"),
+      card_body(
+        DTOutput(ns("tbl_controls")),
+        class = "p-3"
       )
     )
   )

@@ -6,79 +6,98 @@ mod_mic_overview_ui <- function(id) {
   ns <- NS(id)
   
   tagList(
-    # KPI Dashboard - 2 rows
+    # KPI Dashboard - 3 rows with all requested metrics
     layout_column_wrap(
-      width = 1/5,
+      width = 1/4,
       heights_equal = "row",
-      
+
       value_box(
         title = "Total Runs",
         value = textOutput(ns("kpi_runs")),
         showcase = icon("folder-open"),
         theme = "primary"
       ),
-      
+
       value_box(
         title = "Total Samples",
         value = textOutput(ns("kpi_samples")),
         showcase = icon("vial"),
         theme = "info"
       ),
-      
+
       value_box(
         title = "Positives",
         value = textOutput(ns("kpi_positives")),
         showcase = icon("check-circle"),
         theme = "success"
       ),
-      
+
+      value_box(
+        title = "Late Positives",
+        value = textOutput(ns("kpi_late_positives")),
+        showcase = icon("clock"),
+        theme = "warning"
+      )
+    ),
+
+    layout_column_wrap(
+      width = 1/4,
+      heights_equal = "row",
+
+      value_box(
+        title = "Incomplete Targets",
+        value = textOutput(ns("kpi_incomplete")),
+        showcase = icon("exclamation-triangle"),
+        theme = "danger"
+      ),
+
       value_box(
         title = "Prevalence",
         value = textOutput(ns("kpi_prevalence")),
         showcase = icon("percent"),
         theme = "success"
       ),
-      
+
       value_box(
         title = "QC Issues",
         value = textOutput(ns("kpi_flagged")),
         showcase = icon("flag"),
         theme = "warning"
-      )
-    ),
-    
-    layout_column_wrap(
-      width = 1/5,
-      heights_equal = "row",
-      
+      ),
+
       value_box(
         title = "Biobank Linked",
         value = textOutput(ns("kpi_biobank")),
         showcase = icon("link"),
         theme = "secondary"
-      ),
-      
+      )
+    ),
+
+    layout_column_wrap(
+      width = 1/4,
+      heights_equal = "row",
+
       value_box(
         title = "Extractions Linked",
         value = textOutput(ns("kpi_extractions")),
         showcase = icon("flask"),
         theme = "secondary"
       ),
-      
+
       value_box(
-        title = "RNA Quality Good",
+        title = "RNA Quality",
         value = textOutput(ns("kpi_rna_good")),
         showcase = icon("star"),
         theme = "info"
       ),
-      
+
       value_box(
-        title = "DNA Quality Good",
+        title = "DNA Quality",
         value = textOutput(ns("kpi_dna_good")),
         showcase = icon("star"),
         theme = "info"
       ),
-      
+
       value_box(
         title = "Valid Runs",
         value = textOutput(ns("kpi_valid_runs")),
@@ -118,10 +137,24 @@ mod_mic_overview_server <- function(id, processed_data, filtered_base) {
     output$kpi_positives <- renderText({
       df <- filtered_base()
       if (!nrow(df) || !"ControlType" %in% names(df)) return("0")
-      df %>% filter(ControlType == "Sample", FinalCall == "Positive") %>% 
+      df %>% filter(ControlType == "Sample", FinalCall == "Positive") %>%
         nrow() %>% scales::comma()
     })
-    
+
+    output$kpi_late_positives <- renderText({
+      df <- filtered_base()
+      if (!nrow(df) || !"ControlType" %in% names(df)) return("0")
+      df %>% filter(ControlType == "Sample", FinalCall == "LatePositive") %>%
+        nrow() %>% scales::comma()
+    })
+
+    output$kpi_incomplete <- renderText({
+      df <- filtered_base()
+      if (!nrow(df) || !"ControlType" %in% names(df)) return("0")
+      df %>% filter(ControlType == "Sample", FinalCall == "IncompleteTargets") %>%
+        nrow() %>% scales::comma()
+    })
+
     output$kpi_prevalence <- renderText({
       df <- filtered_base() %>% filter(ControlType == "Sample")
       if (!nrow(df)) return("0%")

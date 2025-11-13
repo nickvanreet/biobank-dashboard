@@ -5,82 +5,85 @@
 
 mod_mic_qpcr_coordinator_ui <- function(id) {
   ns <- NS(id)
-  
-  nav_panel(
-    title = "MIC qPCR",
-    icon = icon("dna"),
-    
-    # Top action bar
-    card(
-      class = "mb-3",
-      card_body(
-        class = "py-2",
-        layout_columns(
-          col_widths = c(8, 4),
-          textInput(
-            ns("mic_dir"), 
-            NULL,
-            value = "data/MIC", 
-            placeholder = "Path to MIC Excel files",
-            width = "100%"
+
+  # Shared action bar component
+  action_bar <- card(
+    class = "mb-3",
+    card_body(
+      class = "py-2",
+      layout_columns(
+        col_widths = c(8, 4),
+        textInput(
+          ns("mic_dir"),
+          NULL,
+          value = "data/MIC",
+          placeholder = "Path to MIC Excel files",
+          width = "100%"
+        ),
+        div(
+          class = "d-flex gap-2 align-items-end",
+          actionButton(
+            ns("refresh"),
+            "Refresh",
+            icon = icon("sync"),
+            class = "btn-primary"
           ),
-          div(
-            class = "d-flex gap-2 align-items-end",
-            actionButton(
-              ns("refresh"), 
-              "Refresh", 
-              icon = icon("sync"), 
-              class = "btn-primary"
-            ),
-            actionButton(
-              ns("settings"), 
-              "Settings", 
-              icon = icon("sliders"), 
-              class = "btn-outline-secondary"
-            )
+          actionButton(
+            ns("settings"),
+            "Settings",
+            icon = icon("sliders"),
+            class = "btn-outline-secondary"
           )
         )
       )
+    )
+  )
+
+  # Return separate nav panels (not nested tabs)
+  tagList(
+    # Module 1: Overview
+    nav_panel(
+      title = "MIC Overview",
+      icon = icon("dashboard"),
+      value = "mic_overview",
+      action_bar,
+      mod_mic_overview_ui(ns("overview"))
     ),
-    
-    # Sub-modules in tabs
-    navset_card_tab(
-      id = ns("sections"),
-      
-      # Module 1: Overview
-      nav_panel(
-        title = "Overview",
-        icon = icon("dashboard"),
-        mod_mic_overview_ui(ns("overview"))
-      ),
-      
-      # Module 2: Sample Results
-      nav_panel(
-        title = "Samples",
-        icon = icon("vials"),
-        mod_mic_samples_ui(ns("samples"))
-      ),
-      
-      # Module 3: Quality Control
-      nav_panel(
-        title = "QC & Controls",
-        icon = icon("chart-line"),
-        mod_mic_qc_ui(ns("qc"))
-      ),
-      
-      # Module 4: Analysis
-      nav_panel(
-        title = "Analysis",
-        icon = icon("chart-scatter"),
-        mod_mic_analysis_ui(ns("analysis"))
-      ),
-      
-      # Module 5: Export
-      nav_panel(
-        title = "Export",
-        icon = icon("download"),
-        mod_mic_export_ui(ns("export"))
-      )
+
+    # Module 2: Sample Results
+    nav_panel(
+      title = "MIC - Samples",
+      icon = icon("vials"),
+      value = "mic_samples",
+      action_bar,
+      mod_mic_samples_ui(ns("samples"))
+    ),
+
+    # Module 3: Quality Control
+    nav_panel(
+      title = "MIC - QC & Controls",
+      icon = icon("chart-line"),
+      value = "mic_qc",
+      action_bar,
+      mod_mic_qc_ui(ns("qc"))
+    ),
+
+    # Module 4: Analysis
+    nav_panel(
+      title = "MIC - Analysis",
+      icon = icon("chart-scatter"),
+      value = "mic_analysis",
+      action_bar,
+      mod_mic_analysis_ui(ns("analysis"))
+    ),
+
+    # Module 5: Export
+    nav_panel(
+      title = "MIC - Export",
+      icon = icon("download"),
+      value = "mic_export",
+      action_bar,
+      mod_mic_export_ui(ns("export"))
     )
   )
 }

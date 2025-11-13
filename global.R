@@ -110,12 +110,12 @@ cat("✓ MIC modules loaded\n")
 
 app_theme <- bslib::bs_theme(
   version = 5,
-  bootswatch = "cerulean",
-  primary = "#3498DB",
-  success = "#27AE60",
-  danger = "#E74C3C",
-  warning = "#F39C12",
-  info = "#2980B9",
+  primary = "#2563EB",   # Vibrant cobalt blue for primary actions
+  secondary = "#64748B", # Muted slate for secondary accents
+  success = "#16A34A",   # Functional green for success KPI states
+  danger = "#DC2626",    # Accessible red for alerts and errors
+  warning = "#F59E0B",   # Warm amber for warning KPI states
+  info = "#0EA5E9",      # Bright cyan for informational states
   heading_font = "'Helvetica Neue', Helvetica, Arial, sans-serif",
   base_font = "'Source Sans Pro', 'Segoe UI', system-ui, sans-serif"
 )
@@ -129,6 +129,11 @@ app_theme <- bslib::bs_add_rules(
     scroll-behavior: smooth;
   }
 
+  body {
+    background-color: #f5f7fb;
+    color: #0f172a;
+  }
+
   /* Make main content area scrollable */
   .container-fluid {
     overflow-y: auto;
@@ -136,68 +141,135 @@ app_theme <- bslib::bs_add_rules(
     padding-bottom: 2rem;
   }
 
-  /* Elegant card styling */
+  /* Lighter card styling */
   .card {
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
     transition: box-shadow 0.3s ease;
-    background-color: #272b30;
-    border: 1px solid #1b2836;
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
   }
 
   .card:hover {
-    box-shadow: 0 4px 8px rgba(0,0,0,0.12);
+    box-shadow: 0 18px 38px rgba(15, 23, 42, 0.12);
   }
 
   /* Value box enhancements */
   .bslib-value-box {
-    border-radius: 8px;
-    transition: transform 0.2s ease;
+    border-radius: 14px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 16px 24px rgba(15, 23, 42, 0.12);
+    border: none;
+    color: #ffffff;
   }
 
   .bslib-value-box:hover {
-    transform: translateY(-2px);
+    transform: translateY(-4px);
+    box-shadow: 0 24px 32px rgba(15, 23, 42, 0.18);
+  }
+
+  .bslib-value-box .value-box-title {
+    color: inherit;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .bslib-value-box .value-box-value {
+    color: inherit;
+    font-weight: 700;
+  }
+
+  .bslib-value-box .value-box-showcase {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 50%;
+    width: 3.5rem;
+    height: 3.5rem;
+    margin-right: 1rem;
+  }
+
+  .bslib-value-box .value-box-showcase > * {
+    font-size: 2rem;
+    color: rgba(255, 255, 255, 0.95);
+  }
+
+  .bslib-value-box[data-theme='primary'],
+  .bslib-value-box.bg-primary {
+    background: linear-gradient(135deg, #2563EB, #1D4ED8);
+  }
+
+  .bslib-value-box[data-theme='success'],
+  .bslib-value-box.bg-success {
+    background: linear-gradient(135deg, #16A34A, #15803D);
+  }
+
+  .bslib-value-box[data-theme='danger'],
+  .bslib-value-box.bg-danger {
+    background: linear-gradient(135deg, #DC2626, #B91C1C);
+  }
+
+  .bslib-value-box[data-theme='warning'],
+  .bslib-value-box.bg-warning {
+    background: linear-gradient(135deg, #F59E0B, #D97706);
+    color: #1F2937;
+  }
+
+  .bslib-value-box[data-theme='warning'] .value-box-title,
+  .bslib-value-box[data-theme='warning'] .value-box-value,
+  .bslib-value-box[data-theme='warning'] .value-box-showcase > * {
+    color: #1F2937;
+  }
+
+  .bslib-value-box[data-theme='info'],
+  .bslib-value-box.bg-info {
+    background: linear-gradient(135deg, #0EA5E9, #0284C7);
   }
 
   /* Table styling enhancements */
   .dataTables_wrapper {
     font-family: 'Source Sans Pro', 'Segoe UI', system-ui, sans-serif;
-    color: #f8f9fa;
+    color: #1e293b;
   }
 
   .table {
     font-size: 13px;
+    color: #0f172a;
+    background-color: #ffffff;
   }
 
   .table thead th {
-    background-color: #2c3e50;
+    background-color: #e2e8f0;
     font-weight: 600;
-    border-bottom: 2px solid #1b2836;
+    border-bottom: 2px solid #cbd5f5;
+    color: #1e293b;
   }
 
   .table-striped tbody tr:nth-of-type(odd) {
-    background-color: rgba(255,255,255,0.03);
+    background-color: rgba(226, 232, 240, 0.4);
   }
 
   .table-hover tbody tr:hover {
-    background-color: rgba(52, 152, 219, 0.15);
+    background-color: rgba(37, 99, 235, 0.08);
   }
 
   /* Plotly chart containers */
   .plotly {
-    border-radius: 4px;
+    border-radius: 8px;
   }
 
   /* Card headers */
   .card-header {
     font-weight: 600;
-    background-color: #2c3e50;
-    border-bottom: 1px solid #1b2836;
+    background-color: #f1f5f9;
+    border-bottom: 1px solid #e2e8f0;
+    color: #0f172a;
   }
 
   .card-body,
   .card-footer {
-    background-color: #272b30;
+    background-color: #ffffff;
   }
   "
 )

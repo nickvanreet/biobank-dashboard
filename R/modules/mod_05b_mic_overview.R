@@ -82,7 +82,7 @@ mod_mic_overview_ui <- function(id) {
       heights_equal = "row",
 
       value_box(
-        title = "Incomplete Targets",
+        title = "Indeterminate",
         value = textOutput(ns("kpi_incomplete")),
         showcase = icon("exclamation-triangle"),
         theme = "danger"
@@ -188,7 +188,7 @@ mod_mic_overview_server <- function(id, processed_data, filtered_base) {
     output$kpi_incomplete <- renderText({
       df <- filtered_base()
       if (!nrow(df) || !"ControlType" %in% names(df)) return("0")
-      df %>% filter(ControlType == "Sample", FinalCall == "IncompleteTargets") %>%
+      df %>% filter(ControlType == "Sample", FinalCall == "Indeterminate") %>%
         nrow() %>% scales::comma()
     })
 

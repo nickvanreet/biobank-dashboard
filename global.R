@@ -110,7 +110,7 @@ cat("✓ MIC modules loaded\n")
 
 app_theme <- bslib::bs_theme(
   version = 5,
-  bootswatch = "darkly",
+  bootswatch = "cerulean",
   primary = "#3498DB",
   success = "#27AE60",
   danger = "#E74C3C",

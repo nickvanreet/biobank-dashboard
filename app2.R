@@ -20,7 +20,8 @@ ui <- page_navbar(
   mod_overview_demographics_ui("overview_demographics"),
   mod_transport_ui("transport"),
   mod_extractions_ui("extractions"),
-  mod_mic_qpcr_ui("mic")
+  mod_mic_qpcr_ui("mic"),
+  mod_drs_rnasep_ui("drs_rnasep")
   )
 
 # ============================================================================
@@ -65,7 +66,15 @@ server <- function(input, output, session) {
     extractions_df = data$filtered_extractions, # ← Extractions data from data manager
     filters = reactive(NULL)                      # ← Filters from data manager
   )
-  
+
+  # DRS vs RNAseP module
+  mod_drs_rnasep_server(
+    "drs_rnasep",
+    extractions_df = data$filtered_extractions, # ← Extractions data from data manager
+    qpcr_data = reactive(NULL),                 # ← qPCR data (not available yet)
+    filters = data$filters                      # ← Filters from data manager
+  )
+
   # Session management
   session$onSessionEnded(function() {
     message("Session ended")

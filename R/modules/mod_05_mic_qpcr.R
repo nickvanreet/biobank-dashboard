@@ -78,6 +78,16 @@ safe_median <- function(x) {
   median(x, na.rm = TRUE)
 }
 
+safe_mean <- function(x) {
+  if (all(is.na(x))) return(NA_real_)
+  mean(x, na.rm = TRUE)
+}
+
+safe_sd <- function(x) {
+  if (length(na.omit(x)) <= 1) return(NA_real_)
+  sd(x, na.rm = TRUE)
+}
+
 # =============================================================================
 # FILE DISCOVERY & CACHING
 # =============================================================================
@@ -265,6 +275,14 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
       Cq_median_18S2 = numeric(),
       Cq_median_RNAseP_DNA = numeric(),
       Cq_median_RNAseP_RNA = numeric(),
+      Cq_mean_177T = numeric(),
+      Cq_mean_18S2 = numeric(),
+      Cq_mean_RNAseP_DNA = numeric(),
+      Cq_mean_RNAseP_RNA = numeric(),
+      Cq_sd_177T = numeric(),
+      Cq_sd_18S2 = numeric(),
+      Cq_sd_RNAseP_DNA = numeric(),
+      Cq_sd_RNAseP_RNA = numeric(),
       Call_177T = character(),
       Call_18S2 = character(),
       Call_RNAseP_DNA = character(),
@@ -274,6 +292,18 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
       FinalCall = character(),
       Flags = character(),
       AnyFlag = logical(),
+      Sample_DNA_Positive = logical(),
+      Sample_DNA_Suspect = logical(),
+      Sample_RNA_Positive = logical(),
+      Sample_RNA_Suspect = logical(),
+      Sample_TNA_Positive = logical(),
+      Sample_TNA_Suspect = logical(),
+      Wells_DNA_Positive = numeric(),
+      Wells_DNA_Suspect = numeric(),
+      Wells_RNA_Positive = numeric(),
+      Wells_RNA_Suspect = numeric(),
+      Wells_TNA_Positive = numeric(),
+      Wells_TNA_Suspect = numeric(),
       PipelineCategory = character(),
       PipelineDecision = character(),
       PipelineQualityFlag = character(),
@@ -302,41 +332,99 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
     group_by(RunID, SampleID, SampleName, ControlType, Target) %>%
     summarise(
       Cq_median = safe_median(Cq),
-      Cq_mean = mean(Cq, na.rm = TRUE),
+      Cq_mean = safe_mean(Cq),
+      Cq_sd = safe_sd(Cq),
       n_reps = sum(!is.na(Cq)),
       .groups = "drop"
     )
 
   # Pivot wide
   samples_wide <- target_summary %>%
-    select(RunID, SampleID, SampleName, ControlType, Target, Cq_median) %>%
+    select(RunID, SampleID, SampleName, ControlType, Target,
+           Cq_median, Cq_mean, Cq_sd) %>%
     pivot_wider(
       names_from = Target,
-      values_from = Cq_median,
-      names_prefix = "Cq_median_"
+      values_from = c(Cq_median, Cq_mean, Cq_sd),
+      names_glue = "{.value}_{Target}"
     )
 
   # Ensure all target columns exist
-  for (target in c("177T", "18S2", "RNAseP_DNA", "RNAseP_RNA")) {
-    col <- paste0("Cq_median_", target)
-    if (!col %in% names(samples_wide)) {
-      samples_wide[[col]] <- NA_real_
+  targets <- c("177T", "18S2", "RNAseP_DNA", "RNAseP_RNA")
+  stats_cols <- c("Cq_median", "Cq_mean", "Cq_sd")
+  for (stat in stats_cols) {
+    for (target in targets) {
+      col <- paste0(stat, "_", target)
+      if (!col %in% names(samples_wide)) {
+        samples_wide[[col]] <- NA_real_
+      }
     }
   }
 
-  samples_wide <- samples_wide %>%
+  # Replicate-level co-detection (well scoring)
+  well_flags <- replicates_long %>%
+    filter(Target %in% c("177T", "18S2")) %>%
     mutate(
-      Call_177T = classify_target_vectorized(Cq_median_177T, "177T", settings),
-      Call_18S2 = classify_target_vectorized(Cq_median_18S2, "18S2", settings),
-      Call_RNAseP_DNA = classify_target_vectorized(Cq_median_RNAseP_DNA, "RNAseP_DNA", settings),
-      Call_RNAseP_RNA = classify_target_vectorized(Cq_median_RNAseP_RNA, "RNAseP_RNA", settings)
+      TargetCall = map2_chr(Cq, Target, ~classify_target_vectorized(.x, .y, settings)),
+      TargetDetected = TargetCall %in% c("Positive", "LatePositive"),
+      TargetPositive = TargetCall == "Positive",
+      TargetLate = TargetCall == "LatePositive"
+    ) %>%
+    group_by(RunID, SampleID, SampleName, Replicate) %>%
+    summarise(
+      Well_DNA_Positive = any(Target == "177T" & TargetPositive, na.rm = TRUE),
+      Well_DNA_Suspect = any(Target == "177T" & TargetLate, na.rm = TRUE),
+      Well_RNA_Positive = any(Target == "18S2" & TargetPositive, na.rm = TRUE),
+      Well_RNA_Suspect = any(Target == "18S2" & TargetLate, na.rm = TRUE),
+      Well_TNA_Positive = any(Target == "177T" & TargetPositive, na.rm = TRUE) &
+        any(Target == "18S2" & TargetPositive, na.rm = TRUE),
+      Well_TNA_Detected = any(Target == "177T" & TargetDetected, na.rm = TRUE) &
+        any(Target == "18S2" & TargetDetected, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      Well_TNA_Suspect = Well_TNA_Detected & !Well_TNA_Positive
+    )
+
+  well_counts <- if (nrow(well_flags)) {
+    well_flags %>%
+      group_by(RunID, SampleID, SampleName) %>%
+      summarise(
+        Wells_DNA_Positive = sum(Well_DNA_Positive, na.rm = TRUE),
+        Wells_DNA_Suspect = sum(!Well_DNA_Positive & Well_DNA_Suspect, na.rm = TRUE),
+        Wells_RNA_Positive = sum(Well_RNA_Positive, na.rm = TRUE),
+        Wells_RNA_Suspect = sum(!Well_RNA_Positive & Well_RNA_Suspect, na.rm = TRUE),
+        Wells_TNA_Positive = sum(Well_TNA_Positive, na.rm = TRUE),
+        Wells_TNA_Suspect = sum(Well_TNA_Suspect, na.rm = TRUE),
+        .groups = "drop"
+      )
+  } else {
+    tibble(
+      RunID = character(),
+      SampleID = character(),
+      SampleName = character(),
+      Wells_DNA_Positive = numeric(),
+      Wells_DNA_Suspect = numeric(),
+      Wells_RNA_Positive = numeric(),
+      Wells_RNA_Suspect = numeric(),
+      Wells_TNA_Positive = numeric(),
+      Wells_TNA_Suspect = numeric()
+    )
+  }
+
+  samples_wide <- samples_wide %>%
+    left_join(well_counts, by = c("RunID", "SampleID", "SampleName")) %>%
+    mutate(
+      Call_177T = classify_target_vectorized(coalesce(Cq_mean_177T, Cq_median_177T), "177T", settings),
+      Call_18S2 = classify_target_vectorized(coalesce(Cq_mean_18S2, Cq_median_18S2), "18S2", settings),
+      Call_RNAseP_DNA = classify_target_vectorized(coalesce(Cq_mean_RNAseP_DNA, Cq_median_RNAseP_DNA), "RNAseP_DNA", settings),
+      Call_RNAseP_RNA = classify_target_vectorized(coalesce(Cq_mean_RNAseP_RNA, Cq_median_RNAseP_RNA), "RNAseP_RNA", settings)
     )
 
   # Calculate deltas
   samples_wide <- samples_wide %>%
     mutate(
-      Delta_18S2_177T = Cq_median_18S2 - Cq_median_177T,
-      Delta_RP = Cq_median_RNAseP_RNA - Cq_median_RNAseP_DNA
+      Delta_18S2_177T = coalesce(Cq_mean_18S2, Cq_median_18S2) - coalesce(Cq_mean_177T, Cq_median_177T),
+      Delta_RP = coalesce(Cq_mean_RNAseP_RNA, Cq_median_RNAseP_RNA) - coalesce(Cq_mean_RNAseP_DNA, Cq_median_RNAseP_DNA)
     )
 
   summary_template <- tibble(
@@ -416,6 +504,16 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
         trimws(sub("^⚠\\s*", "", PipelineDecision)),
         NA_character_
       ),
+      Sample_DNA_Positive = Call_177T == "Positive",
+      Sample_DNA_Suspect = Call_177T == "LatePositive",
+      Sample_RNA_Positive = Call_18S2 == "Positive",
+      Sample_RNA_Suspect = Call_18S2 == "LatePositive",
+      Sample_TNA_Positive = (Call_177T == "Positive" & Call_18S2 == "Positive"),
+      Sample_TNA_Suspect = (
+        Call_177T %in% c("Positive", "LatePositive") &
+          Call_18S2 %in% c("Positive", "LatePositive") &
+          !(Call_177T == "Positive" & Call_18S2 == "Positive")
+      ),
       FinalCall = case_when(
         ControlType %in% c("PC", "NC") & PipelineCategoryLower == "control_fail" ~ "Control_Fail",
         ControlType %in% c("PC", "NC") ~ "Control",
@@ -444,6 +542,10 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
       AnyFlag = !is.na(Flags)
     ) %>%
     ungroup() %>%
+    mutate(
+      across(starts_with("Sample_"), ~replace_na(.x, FALSE)),
+      across(starts_with("Wells_"), ~replace_na(.x, 0))
+    ) %>%
     select(
       -PositiveTryp,
       -LateTryp,
@@ -464,6 +566,12 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
       RNA_Quality, DNA_Quality, RNA_Preservation_Status,
       RNA_Preservation_Delta, Avg_177T_Positive_Cq,
       Avg_18S2_Positive_Cq,
+      Sample_DNA_Positive, Sample_DNA_Suspect,
+      Sample_RNA_Positive, Sample_RNA_Suspect,
+      Sample_TNA_Positive, Sample_TNA_Suspect,
+      Wells_DNA_Positive, Wells_DNA_Suspect,
+      Wells_RNA_Positive, Wells_RNA_Suspect,
+      Wells_TNA_Positive, Wells_TNA_Suspect,
       .after = AnyFlag
     )
 

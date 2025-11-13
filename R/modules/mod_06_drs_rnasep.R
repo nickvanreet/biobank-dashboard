@@ -183,11 +183,11 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
       ext_data <- ext_data %>%
         mutate(
           volume_category = case_when(
-            is.na(volume_drs) ~ "No volume",
-            volume_drs < 50 ~ "< 50 μL",
-            volume_drs >= 50 & volume_drs < 100 ~ "50-100 μL",
-            volume_drs >= 100 & volume_drs < 150 ~ "100-150 μL",
-            volume_drs >= 150 ~ "≥ 150 μL",
+            is.na(drs_volume_ml) ~ "No volume",
+            drs_volume_ml < 0.05 ~ "< 50 μL",
+            drs_volume_ml >= 0.05 & drs_volume_ml < 0.1 ~ "50-100 μL",
+            drs_volume_ml >= 0.1 & drs_volume_ml < 0.15 ~ "100-150 μL",
+            drs_volume_ml >= 0.15 ~ "≥ 150 μL",
             TRUE ~ "Unknown"
           ),
           volume_category = factor(
@@ -207,7 +207,7 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
       data <- combined_data()
       if (nrow(data) == 0) return("0")
 
-      n <- sum(!is.na(data$volume_drs), na.rm = TRUE)
+      n <- sum(!is.na(data$drs_volume_ml), na.rm = TRUE)
       scales::comma(n)
     })
 
@@ -215,7 +215,7 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
       data <- combined_data()
       if (nrow(data) == 0) return("—")
 
-      mean_vol <- mean(data$volume_drs, na.rm = TRUE)
+      mean_vol <- mean(data$drs_volume_ml, na.rm = TRUE) * 1000  # Convert mL to μL
       if (is.na(mean_vol)) return("—")
 
       sprintf("%.1f", mean_vol)
@@ -242,7 +242,7 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
       if (nrow(data) == 0) return("0")
 
       n <- sum(
-        !is.na(data$volume_drs) &
+        !is.na(data$drs_volume_ml) &
         ((!is.na(data$rnasep_dna_cq) & !is.infinite(data$rnasep_dna_cq)) |
          (!is.na(data$rnasep_rna_cq) & !is.infinite(data$rnasep_rna_cq))),
         na.rm = TRUE
@@ -268,8 +268,9 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
       }
 
       plot_data <- data %>%
-        filter(!is.na(volume_drs), !is.na(extraction_date)) %>%
-        arrange(extraction_date)
+        filter(!is.na(drs_volume_ml), !is.na(extraction_date)) %>%
+        arrange(extraction_date) %>%
+        mutate(volume_ul = drs_volume_ml * 1000)  # Convert mL to μL for display
 
       if (nrow(plot_data) == 0) {
         return(plotly::plot_ly() %>%
@@ -280,11 +281,11 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
           ))
       }
 
-      plotly::plot_ly(plot_data, x = ~extraction_date, y = ~volume_drs, type = "scatter",
+      plotly::plot_ly(plot_data, x = ~extraction_date, y = ~volume_ul, type = "scatter",
                       mode = "markers", marker = list(size = 8, opacity = 0.6),
                       text = ~paste0(
                         "Date: ", extraction_date, "<br>",
-                        "Volume: ", volume_drs, " μL<br>",
+                        "Volume: ", round(volume_ul, 1), " μL<br>",
                         "Sample ID: ", sample_id
                       ),
                       hoverinfo = "text") %>%
@@ -309,7 +310,8 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
       }
 
       plot_data <- data %>%
-        filter(!is.na(volume_drs), !is.na(rnasep_dna_cq), !is.infinite(rnasep_dna_cq))
+        filter(!is.na(drs_volume_ml), !is.na(rnasep_dna_cq), !is.infinite(rnasep_dna_cq)) %>%
+        mutate(volume_ul = drs_volume_ml * 1000)  # Convert mL to μL for display
 
       if (nrow(plot_data) == 0) {
         return(plotly::plot_ly() %>%
@@ -320,11 +322,11 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
           ))
       }
 
-      plotly::plot_ly(plot_data, x = ~volume_drs, y = ~rnasep_dna_cq,
+      plotly::plot_ly(plot_data, x = ~volume_ul, y = ~rnasep_dna_cq,
                       type = "scatter", mode = "markers",
                       marker = list(size = 10, opacity = 0.6, color = "#3498DB"),
                       text = ~paste0(
-                        "Volume: ", volume_drs, " μL<br>",
+                        "Volume: ", round(volume_ul, 1), " μL<br>",
                         "RNAseP DNA Cq: ", round(rnasep_dna_cq, 2), "<br>",
                         "Sample ID: ", sample_id
                       ),
@@ -350,7 +352,8 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
       }
 
       plot_data <- data %>%
-        filter(!is.na(volume_drs), !is.na(rnasep_rna_cq), !is.infinite(rnasep_rna_cq))
+        filter(!is.na(drs_volume_ml), !is.na(rnasep_rna_cq), !is.infinite(rnasep_rna_cq)) %>%
+        mutate(volume_ul = drs_volume_ml * 1000)  # Convert mL to μL for display
 
       if (nrow(plot_data) == 0) {
         return(plotly::plot_ly() %>%
@@ -361,11 +364,11 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
           ))
       }
 
-      plotly::plot_ly(plot_data, x = ~volume_drs, y = ~rnasep_rna_cq,
+      plotly::plot_ly(plot_data, x = ~volume_ul, y = ~rnasep_rna_cq,
                       type = "scatter", mode = "markers",
                       marker = list(size = 10, opacity = 0.6, color = "#E67E22"),
                       text = ~paste0(
-                        "Volume: ", volume_drs, " μL<br>",
+                        "Volume: ", round(volume_ul, 1), " μL<br>",
                         "RNAseP RNA Cq: ", round(rnasep_rna_cq, 2), "<br>",
                         "Sample ID: ", sample_id
                       ),
@@ -397,7 +400,8 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
           !is.na(rnasep_dna_cq), !is.infinite(rnasep_dna_cq),
           !is.na(rnasep_rna_cq), !is.infinite(rnasep_rna_cq),
           !is.na(volume_category)
-        )
+        ) %>%
+        mutate(volume_ul = drs_volume_ml * 1000)  # Convert mL to μL for display
 
       if (nrow(plot_data) == 0) {
         return(plotly::plot_ly() %>%
@@ -415,7 +419,7 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
                       text = ~paste0(
                         "RNAseP DNA Cq: ", round(rnasep_dna_cq, 2), "<br>",
                         "RNAseP RNA Cq: ", round(rnasep_rna_cq, 2), "<br>",
-                        "Volume: ", volume_drs, " μL<br>",
+                        "Volume: ", round(volume_ul, 1), " μL<br>",
                         "Category: ", volume_category, "<br>",
                         "Sample ID: ", sample_id
                       ),
@@ -445,8 +449,8 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
         group_by(volume_category) %>%
         summarise(
           n_samples = n(),
-          mean_volume = mean(volume_drs, na.rm = TRUE),
-          sd_volume = sd(volume_drs, na.rm = TRUE),
+          mean_volume = mean(drs_volume_ml * 1000, na.rm = TRUE),  # Convert mL to μL
+          sd_volume = sd(drs_volume_ml * 1000, na.rm = TRUE),  # Convert mL to μL
           mean_rnasep_dna = if ("rnasep_dna_cq" %in% names(data)) {
             mean(rnasep_dna_cq[!is.infinite(rnasep_dna_cq)], na.rm = TRUE)
           } else NA_real_,
@@ -495,7 +499,7 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
         return(DT::datatable(tibble::tibble(Message = "No data available")))
       }
 
-      detail_cols <- c("sample_id", "extraction_date", "volume_drs", "volume_category")
+      detail_cols <- c("sample_id", "extraction_date", "drs_volume_ml", "volume_category")
 
       if ("rnasep_dna_cq" %in% names(data)) {
         detail_cols <- c(detail_cols, "rnasep_dna_cq")
@@ -516,7 +520,8 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
 
       detail_data <- data %>%
         select(any_of(detail_cols)) %>%
-        filter(!is.na(volume_drs))
+        filter(!is.na(drs_volume_ml)) %>%
+        mutate(drs_volume_ml = drs_volume_ml * 1000)  # Convert to μL for display
 
       DT::datatable(
         detail_data,
@@ -532,7 +537,7 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
         filter = "top"
       ) %>%
         DT::formatRound(
-          columns = c("volume_drs", "rnasep_dna_cq", "rnasep_rna_cq"),
+          columns = c("drs_volume_ml", "rnasep_dna_cq", "rnasep_rna_cq"),
           digits = 2
         ) %>%
         DT::formatStyle(

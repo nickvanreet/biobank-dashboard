@@ -39,12 +39,16 @@ mod_mic_qpcr_coordinator_ui <- function(id) {
     )
   )
 
-  # Return separate nav panels (not nested tabs)
-  # NOTE: Return as a plain list (not tagList) so !!! splicing works in page_navbar
-  list(
+  # Return a single nav_menu with sub-panels (dropdown menu)
+  # This avoids the !!! splicing issue with page_navbar
+  nav_menu(
+    title = "MIC qPCR",
+    icon = icon("dna"),
+    value = "mic_menu",
+
     # Module 1: Overview
     nav_panel(
-      title = "MIC Overview",
+      title = "Overview",
       icon = icon("dashboard"),
       value = "mic_overview",
       action_bar,
@@ -53,7 +57,7 @@ mod_mic_qpcr_coordinator_ui <- function(id) {
 
     # Module 2: Sample Results
     nav_panel(
-      title = "MIC - Samples",
+      title = "Samples",
       icon = icon("vials"),
       value = "mic_samples",
       action_bar,
@@ -62,7 +66,7 @@ mod_mic_qpcr_coordinator_ui <- function(id) {
 
     # Module 3: Quality Control
     nav_panel(
-      title = "MIC - QC & Controls",
+      title = "QC & Controls",
       icon = icon("chart-line"),
       value = "mic_qc",
       action_bar,
@@ -71,7 +75,7 @@ mod_mic_qpcr_coordinator_ui <- function(id) {
 
     # Module 4: Analysis
     nav_panel(
-      title = "MIC - Analysis",
+      title = "Analysis",
       icon = icon("chart-scatter"),
       value = "mic_analysis",
       action_bar,
@@ -80,7 +84,7 @@ mod_mic_qpcr_coordinator_ui <- function(id) {
 
     # Module 5: Export
     nav_panel(
-      title = "MIC - Export",
+      title = "Export",
       icon = icon("download"),
       value = "mic_export",
       action_bar,

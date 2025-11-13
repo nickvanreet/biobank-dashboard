@@ -20,7 +20,7 @@ ui <- page_navbar(
   mod_overview_demographics_ui("overview_demographics"),
   mod_transport_ui("transport"),
   mod_extractions_ui("extractions"),
-  !!!mod_mic_qpcr_ui("mic_qpcr"),  # Splices multiple nav_panels from coordinator
+  mod_mic_qpcr_ui("mic_qpcr"),  # Returns a single nav_menu with sub-panels
   mod_drs_rnasep_ui("drs_rnasep")
   
   # Add other modules here as they're developed:

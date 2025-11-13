@@ -2081,6 +2081,17 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
       )
     })
 
+    # =========================================================================
+    # RETURN qPCR data for other modules (e.g., Module 06)
+    # =========================================================================
+    return(list(
+      qpcr_samples = reactive({
+        pd <- processed_data()
+        if (!nrow(pd$samples)) return(tibble())
+        pd$samples
+      })
+    ))
+
   })
 }
 

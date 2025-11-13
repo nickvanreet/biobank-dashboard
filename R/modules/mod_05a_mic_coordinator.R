@@ -81,15 +81,6 @@ mod_mic_qpcr_coordinator_ui <- function(id) {
         icon = icon("download"),
         mod_mic_export_ui(ns("export"))
       )
-    ),
-    
-    # Settings modal
-    bslib::modal_dialog(
-      id = ns("settings_modal"),
-      title = "qPCR Settings",
-      size = "xl",
-      easy_close = TRUE,
-      mod_mic_settings_ui(ns("settings_content"))
     )
   )
 }

@@ -66,7 +66,7 @@ server <- function(input, output, session) {
     biobank_data = data$clean_data
   )
   
-  mod_mic_qpcr_server(
+  mic_data <- mod_mic_qpcr_server(
     "mic_qpcr",
     biobank_df = data$clean_data,
     extractions_df = data$filtered_extractions,
@@ -77,7 +77,7 @@ server <- function(input, output, session) {
   mod_drs_rnasep_server(
     "drs_rnasep",
     extractions_df = data$filtered_extractions,
-    qpcr_data = reactive(NULL),  # Will be linked when qPCR data is available
+    qpcr_data = mic_data$qpcr_samples,  # Now linked to qPCR data from MIC module
     filters = data$filters
   )
   

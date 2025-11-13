@@ -930,48 +930,28 @@ mod_mic_qpcr_ui <- function(id) {
         layout_columns(
           col_widths = c(12),
 
-          # Filters card
-          card(
-            class = "mb-3",
-            card_header("Filters"),
-            card_body(
-              class = "py-2",
-              layout_columns(
-                col_widths = c(3, 3, 3, 3),
-                selectInput(
-                  ns("filter_call"),
-                  "Final Call",
-                  choices = c("All" = "all", "Positive", "Negative", "LatePositive", "Invalid_NoDNA"),
-                  selected = "all"
-                ),
-                selectInput(
-                  ns("filter_province"),
-                  "Province",
-                  choices = c("All" = "all"),
-                  selected = "all"
-                ),
-                selectInput(
-                  ns("filter_structure"),
-                  "Health Structure",
-                  choices = c("All" = "all"),
-                  selected = "all"
-                ),
-                checkboxInput(
-                  ns("filter_flagged_only"),
-                  "Show flagged only",
-                  value = FALSE
-                )
-              )
-            )
-          ),
-
-          # Results table
+          # Results table with compact filters
           card(
             full_screen = TRUE,
             card_header(
-              class = "d-flex justify-content-between align-items-center",
+              class = "d-flex justify-content-between align-items-center flex-wrap gap-3",
               span("Sample Results"),
-              downloadButton(ns("dl_samples_filtered"), "Download", class = "btn-sm btn-outline-primary")
+              div(
+                class = "d-flex gap-2 align-items-center",
+                selectInput(
+                  ns("filter_call"),
+                  NULL,
+                  choices = c("All Results" = "all", "Positive", "Negative", "LatePositive", "Invalid_NoDNA"),
+                  selected = "all",
+                  width = "180px"
+                ),
+                checkboxInput(
+                  ns("filter_flagged_only"),
+                  "Flagged only",
+                  value = FALSE
+                ),
+                downloadButton(ns("dl_samples_filtered"), "Download", class = "btn-sm btn-outline-primary")
+              )
             ),
             card_body(
               DTOutput(ns("tbl_samples")),
@@ -1483,20 +1463,12 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
 
       if (!nrow(df)) return(df)
 
-      # Apply global filters first
+      # Apply global sidebar filters first
       df <- apply_global_filters(df, if (is.null(filters)) NULL else filters())
 
-      # Apply UI filters
+      # Apply module-specific UI filters
       if (!is.null(input$filter_call) && input$filter_call != "all") {
         df <- df %>% filter(FinalCall == input$filter_call)
-      }
-
-      if (!is.null(input$filter_province) && input$filter_province != "all") {
-        df <- df %>% filter(Province == input$filter_province)
-      }
-
-      if (!is.null(input$filter_structure) && input$filter_structure != "all") {
-        df <- df %>% filter(Structure == input$filter_structure)
       }
 
       if (isTRUE(input$filter_flagged_only)) {
@@ -1504,26 +1476,6 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
       }
 
       df
-    })
-
-    # Update filter dropdowns dynamically
-    observe({
-      df <- processed_data()$samples
-      if (nrow(df) > 0 && "Province" %in% names(df)) {
-        provinces <- sort(unique(na.omit(df$Province)))
-        if (length(provinces) > 0) {
-          updateSelectInput(session, "filter_province",
-                            choices = c("All" = "all", provinces))
-        }
-      }
-
-      if (nrow(df) > 0 && "Structure" %in% names(df)) {
-        structures <- sort(unique(na.omit(df$Structure)))
-        if (length(structures) > 0) {
-          updateSelectInput(session, "filter_structure",
-                            choices = c("All" = "all", structures))
-        }
-      }
     })
 
     # =========================================================================

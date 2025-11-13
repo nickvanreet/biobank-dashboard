@@ -157,11 +157,11 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
       if (!is.null(qpcr_data) && !is.null(qpcr_data())) {
         qpcr <- qpcr_data()
 
-        # Try to link qPCR data to extraction data by barcode
-        if (nrow(qpcr) > 0 && "barcode" %in% names(ext_data)) {
-          # Normalize barcodes for matching
+        # Try to link qPCR data to extraction data by sample_id
+        if (nrow(qpcr) > 0 && "sample_id" %in% names(ext_data)) {
+          # Normalize sample IDs for matching
           ext_data <- ext_data %>%
-            mutate(barcode_norm = toupper(trimws(as.character(barcode))))
+            mutate(barcode_norm = toupper(trimws(as.character(sample_id))))
 
           # Prepare qPCR data with RNAseP values
           qpcr_summary <- qpcr %>%
@@ -285,7 +285,7 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
                       text = ~paste0(
                         "Date: ", extraction_date, "<br>",
                         "Volume: ", volume_drs, " μL<br>",
-                        "Barcode: ", barcode
+                        "Sample ID: ", sample_id
                       ),
                       hoverinfo = "text") %>%
         plotly::layout(
@@ -326,7 +326,7 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
                       text = ~paste0(
                         "Volume: ", volume_drs, " μL<br>",
                         "RNAseP DNA Cq: ", round(rnasep_dna_cq, 2), "<br>",
-                        "Barcode: ", barcode
+                        "Sample ID: ", sample_id
                       ),
                       hoverinfo = "text") %>%
         plotly::layout(
@@ -367,7 +367,7 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
                       text = ~paste0(
                         "Volume: ", volume_drs, " μL<br>",
                         "RNAseP RNA Cq: ", round(rnasep_rna_cq, 2), "<br>",
-                        "Barcode: ", barcode
+                        "Sample ID: ", sample_id
                       ),
                       hoverinfo = "text") %>%
         plotly::layout(
@@ -417,7 +417,7 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
                         "RNAseP RNA Cq: ", round(rnasep_rna_cq, 2), "<br>",
                         "Volume: ", volume_drs, " μL<br>",
                         "Category: ", volume_category, "<br>",
-                        "Barcode: ", barcode
+                        "Sample ID: ", sample_id
                       ),
                       hoverinfo = "text") %>%
         plotly::layout(
@@ -495,7 +495,7 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
         return(DT::datatable(tibble::tibble(Message = "No data available")))
       }
 
-      detail_cols <- c("barcode", "extraction_date", "volume_drs", "volume_category")
+      detail_cols <- c("sample_id", "extraction_date", "volume_drs", "volume_category")
 
       if ("rnasep_dna_cq" %in% names(data)) {
         detail_cols <- c(detail_cols, "rnasep_dna_cq")

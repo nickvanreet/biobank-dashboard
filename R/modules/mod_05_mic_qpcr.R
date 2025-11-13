@@ -2148,10 +2148,7 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
 # =============================================================================
 # NOTE: The functions above are deprecated. The modular architecture uses
 # the coordinator and submodules (mod_05a through mod_05g).
-# These wrapper functions maintain backward compatibility with app.R.
+# The reassignment is now done in global.R after all modules are loaded
+# to ensure mod_mic_qpcr_coordinator_ui and mod_mic_qpcr_coordinator_server exist.
 # =============================================================================
-
-# Override the old monolithic functions with new modular approach
-mod_mic_qpcr_ui <- mod_mic_qpcr_coordinator_ui
-mod_mic_qpcr_server <- mod_mic_qpcr_coordinator_server
 

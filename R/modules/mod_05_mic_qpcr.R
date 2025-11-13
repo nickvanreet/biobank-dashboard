@@ -205,8 +205,18 @@ parse_single_mic_file <- function(file_info, settings) {
       return(list(success = FALSE, error = "No valid target data"))
     }
     
-    # Aggregate samples
-    samples <- aggregate_samples_from_replicates(replicates_long, settings, run_id)
+    # Aggregate samples using pipeline-derived sample summary where available
+    sample_summary <- analysis$sample_summary
+    if (is.null(sample_summary)) {
+      sample_summary <- tibble()
+    }
+
+    samples <- aggregate_samples_from_replicates(
+      replicates_long,
+      sample_summary,
+      settings,
+      run_id
+    )
     
     if (!nrow(samples)) {
       warning(glue("Failed to aggregate samples in {file_info$file_name}"))
@@ -243,8 +253,8 @@ parse_single_mic_file <- function(file_info, settings) {
 # SAMPLE AGGREGATION & INTERPRETATION
 # =============================================================================
 
-aggregate_samples_from_replicates <- function(replicates_long, settings, run_id) {
-  
+aggregate_samples_from_replicates <- function(replicates_long, sample_summary, settings, run_id) {
+
   if (!nrow(replicates_long)) {
     return(tibble(
       RunID = character(),
@@ -263,10 +273,30 @@ aggregate_samples_from_replicates <- function(replicates_long, settings, run_id)
       Delta_RP = numeric(),
       FinalCall = character(),
       Flags = character(),
-      AnyFlag = logical()
+      AnyFlag = logical(),
+      PipelineCategory = character(),
+      PipelineDecision = character(),
+      PipelineQualityFlag = character(),
+      ReplicatesTotal = numeric(),
+      Replicates_Positive = numeric(),
+      Replicates_Negative = numeric(),
+      Replicates_Failed = numeric(),
+      Replicates_Inconclusive = numeric(),
+      Replicates_ControlOK = numeric(),
+      Replicates_ControlFail = numeric(),
+      RNA_Quality = character(),
+      DNA_Quality = character(),
+      RNA_Preservation_Status = character(),
+      RNA_Preservation_Delta = numeric(),
+      Avg_177T_Positive_Cq = numeric(),
+      Avg_18S2_Positive_Cq = numeric()
     ))
   }
-  
+
+  if (is.null(sample_summary)) {
+    sample_summary <- tibble()
+  }
+
   # Calculate median Cq per sample per target
   target_summary <- replicates_long %>%
     group_by(RunID, SampleID, SampleName, ControlType, Target) %>%
@@ -276,7 +306,7 @@ aggregate_samples_from_replicates <- function(replicates_long, settings, run_id)
       n_reps = sum(!is.na(Cq)),
       .groups = "drop"
     )
-  
+
   # Pivot wide
   samples_wide <- target_summary %>%
     select(RunID, SampleID, SampleName, ControlType, Target, Cq_median) %>%
@@ -285,7 +315,7 @@ aggregate_samples_from_replicates <- function(replicates_long, settings, run_id)
       values_from = Cq_median,
       names_prefix = "Cq_median_"
     )
-  
+
   # Ensure all target columns exist
   for (target in c("177T", "18S2", "RNAseP_DNA", "RNAseP_RNA")) {
     col <- paste0("Cq_median_", target)
@@ -293,8 +323,7 @@ aggregate_samples_from_replicates <- function(replicates_long, settings, run_id)
       samples_wide[[col]] <- NA_real_
     }
   }
-  
-  # Then in aggregate_samples_from_replicates, replace classify_target with classify_target_vectorized:
+
   samples_wide <- samples_wide %>%
     mutate(
       Call_177T = classify_target_vectorized(Cq_median_177T, "177T", settings),
@@ -302,44 +331,142 @@ aggregate_samples_from_replicates <- function(replicates_long, settings, run_id)
       Call_RNAseP_DNA = classify_target_vectorized(Cq_median_RNAseP_DNA, "RNAseP_DNA", settings),
       Call_RNAseP_RNA = classify_target_vectorized(Cq_median_RNAseP_RNA, "RNAseP_RNA", settings)
     )
-  
+
   # Calculate deltas
   samples_wide <- samples_wide %>%
     mutate(
       Delta_18S2_177T = Cq_median_18S2 - Cq_median_177T,
       Delta_RP = Cq_median_RNAseP_RNA - Cq_median_RNAseP_DNA
     )
-  
+
+  summary_template <- tibble(
+    RunID = character(),
+    SampleID = character(),
+    SampleName = character(),
+    PipelineCategory = character(),
+    PipelineDecision = character(),
+    PipelineQualityFlag = character(),
+    ReplicatesTotal = numeric(),
+    Replicates_Positive = numeric(),
+    Replicates_Negative = numeric(),
+    Replicates_Failed = numeric(),
+    Replicates_Inconclusive = numeric(),
+    Replicates_ControlOK = numeric(),
+    Replicates_ControlFail = numeric(),
+    Avg_177T_Positive_Cq = numeric(),
+    Avg_18S2_Positive_Cq = numeric(),
+    RNA_Quality = character(),
+    DNA_Quality = character(),
+    RNA_Preservation_Status = character(),
+    RNA_Preservation_Delta = numeric()
+  )
+
+  summary_clean <- summary_template
+
+  if (nrow(sample_summary)) {
+    summary_clean <- sample_summary %>%
+      mutate(
+        SampleName = as.character(Name),
+        SampleID = normalize_id(SampleName),
+        RunID = run_id
+      ) %>%
+      transmute(
+        RunID,
+        SampleID,
+        SampleName,
+        PipelineCategory = as.character(final_category),
+        PipelineDecision = as.character(final_decision),
+        PipelineQualityFlag = as.character(quality_flag),
+        ReplicatesTotal = as.numeric(n_replicates),
+        Replicates_Positive = as.numeric(n_positive),
+        Replicates_Negative = as.numeric(n_negative),
+        Replicates_Failed = as.numeric(n_failed),
+        Replicates_Inconclusive = as.numeric(n_inconclusive),
+        Replicates_ControlOK = as.numeric(n_control_ok),
+        Replicates_ControlFail = as.numeric(n_control_fail),
+        Avg_177T_Positive_Cq = as.numeric(avg_177T_Cq),
+        Avg_18S2_Positive_Cq = as.numeric(avg_18S2_Cq),
+        RNA_Quality = as.character(rna_quality),
+        DNA_Quality = as.character(dna_quality),
+        RNA_Preservation_Status = as.character(rna_preservation),
+        RNA_Preservation_Delta = as.numeric(avg_preservation_delta)
+      )
+  }
+
+  samples_wide <- samples_wide %>%
+    left_join(summary_clean, by = c("RunID", "SampleID", "SampleName"))
+
   # Determine final call and flags - use rowwise for complex logic
   samples_wide <- samples_wide %>%
     rowwise() %>%
     mutate(
+      PipelineCategoryLower = tolower(coalesce(PipelineCategory, "")),
       PositiveTryp = (Call_177T == "Positive" | Call_18S2 == "Positive"),
       LateTryp = !PositiveTryp & (Call_177T == "LatePositive" | Call_18S2 == "LatePositive"),
       HostOK = (Call_RNAseP_DNA %in% c("Positive", "LatePositive")),
+      HostFailed = (ControlType == "Sample" & !HostOK),
       Flag_SampleDecay = !is.na(Delta_RP) & Delta_RP > settings$delta_rp_limit,
-      
+      PipelineQualityFlagClean = if_else(
+        !is.na(PipelineQualityFlag) & grepl("^⚠", PipelineQualityFlag),
+        trimws(sub("^⚠\\s*", "", PipelineQualityFlag)),
+        NA_character_
+      ),
+      PipelineDecisionFlag = if_else(
+        ControlType %in% c("PC", "NC") & !is.na(PipelineDecision) & grepl("^⚠", PipelineDecision),
+        trimws(sub("^⚠\\s*", "", PipelineDecision)),
+        NA_character_
+      ),
       FinalCall = case_when(
+        ControlType %in% c("PC", "NC") & PipelineCategoryLower == "control_fail" ~ "Control_Fail",
         ControlType %in% c("PC", "NC") ~ "Control",
+        PipelineCategoryLower == "positive" ~ "Positive",
+        PipelineCategoryLower == "failed" ~ "Invalid_NoDNA",
+        PipelineCategoryLower == "inconclusive" ~ "Indeterminate",
+        PipelineCategoryLower == "negative" & LateTryp ~ "LatePositive",
+        PipelineCategoryLower == "negative" ~ "Negative",
+        PipelineCategoryLower == "control_fail" ~ "Control_Fail",
+        PipelineCategoryLower == "control_ok" ~ "Control",
+        HostFailed ~ "Invalid_NoDNA",
         PositiveTryp ~ "Positive",
         LateTryp ~ "LatePositive",
-        !HostOK ~ "Invalid_NoDNA",
-        TRUE ~ "Negative"
+        TRUE ~ if_else(ControlType == "Sample", "Indeterminate", "Control")
       ),
-      
       Flags = {
         flags <- character()
         if (Flag_SampleDecay) flags <- c(flags, "SampleDecay")
-        if (!HostOK && ControlType == "Sample") flags <- c(flags, "NoDNA")
+        if (HostFailed) flags <- c(flags, "NoDNA")
         if (is.na(Delta_18S2_177T) && PositiveTryp) flags <- c(flags, "IncompleteTargets")
+        if (!is.na(PipelineQualityFlagClean)) flags <- c(flags, PipelineQualityFlagClean)
+        if (!is.na(PipelineDecisionFlag)) flags <- c(flags, PipelineDecisionFlag)
+        flags <- unique(flags)
         if (length(flags)) paste(flags, collapse = ";") else NA_character_
       },
-      
       AnyFlag = !is.na(Flags)
     ) %>%
     ungroup() %>%
-    select(-PositiveTryp, -LateTryp, -HostOK, -Flag_SampleDecay)
-  
+    select(
+      -PositiveTryp,
+      -LateTryp,
+      -HostOK,
+      -HostFailed,
+      -Flag_SampleDecay,
+      -PipelineCategoryLower,
+      -PipelineQualityFlagClean,
+      -PipelineDecisionFlag
+    )
+
+  samples_wide <- samples_wide %>%
+    relocate(
+      PipelineCategory, PipelineDecision, PipelineQualityFlag,
+      ReplicatesTotal, Replicates_Positive, Replicates_Negative,
+      Replicates_Failed, Replicates_Inconclusive,
+      Replicates_ControlOK, Replicates_ControlFail,
+      RNA_Quality, DNA_Quality, RNA_Preservation_Status,
+      RNA_Preservation_Delta, Avg_177T_Positive_Cq,
+      Avg_18S2_Positive_Cq,
+      .after = AnyFlag
+    )
+
   samples_wide
 }
 
@@ -515,6 +642,8 @@ create_run_summary <- function(samples_df, runs_df, control_status) {
       Positives = sum(FinalCall == "Positive" & ControlType == "Sample", na.rm = TRUE),
       Negatives = sum(FinalCall == "Negative" & ControlType == "Sample", na.rm = TRUE),
       LatePositives = sum(FinalCall == "LatePositive" & ControlType == "Sample", na.rm = TRUE),
+      InvalidNoDNA = sum(FinalCall == "Invalid_NoDNA" & ControlType == "Sample", na.rm = TRUE),
+      Indeterminate = sum(FinalCall == "Indeterminate" & ControlType == "Sample", na.rm = TRUE),
       Flagged = sum(AnyFlag & ControlType == "Sample", na.rm = TRUE),
       .groups = "drop"
     )
@@ -534,7 +663,11 @@ create_run_summary <- function(samples_df, runs_df, control_status) {
       RunValid = if_else(is.na(ControlsPassing), TRUE, ControlsPassing),
       TotalSamples = replace_na(TotalSamples, 0),
       Positives = replace_na(Positives, 0),
-      Negatives = replace_na(Negatives, 0)
+      Negatives = replace_na(Negatives, 0),
+      LatePositives = replace_na(LatePositives, 0),
+      InvalidNoDNA = replace_na(InvalidNoDNA, 0),
+      Indeterminate = replace_na(Indeterminate, 0),
+      Flagged = replace_na(Flagged, 0)
     )
 }
 
@@ -849,7 +982,7 @@ mod_mic_qpcr_ui <- function(id) {
         ),
 
         value_box(
-          title = "Incomplete Targets",
+          title = "Indeterminate",
           value = textOutput(ns("kpi_incomplete")),
           showcase = icon("exclamation-triangle"),
           theme = "danger"
@@ -1474,12 +1607,12 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
 
     output$kpi_incomplete <- renderText({
       df <- filtered_samples()
-      if (!nrow(df) || !"ControlType" %in% names(df) || !"Flags" %in% names(df)) {
+      if (!nrow(df) || !"ControlType" %in% names(df) || !"FinalCall" %in% names(df)) {
         return("0")
       }
 
       df %>%
-        filter(ControlType == "Sample", !is.na(Flags), grepl("IncompleteTargets", Flags)) %>%
+        filter(ControlType == "Sample", FinalCall == "Indeterminate") %>%
         nrow() %>%
         scales::comma()
     })
@@ -1712,8 +1845,8 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
       ) %>%
         formatStyle('FinalCall',
                     backgroundColor = styleEqual(
-                      c('Positive', 'Negative', 'Invalid_NoDNA'),
-                      c('#d4edda', '#f8f9fa', '#f8d7da')
+                      c('Positive', 'LatePositive', 'Negative', 'Indeterminate', 'Invalid_NoDNA', 'Control', 'Control_Fail'),
+                      c('#d4edda', '#ffe8a1', '#f8f9fa', '#fff3cd', '#f8d7da', '#dbe9ff', '#f5c6cb')
                     ))
     })
 
@@ -1884,8 +2017,13 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
 
       plot_ly(df, x = ~Cq_median_177T, y = ~Cq_median_18S2,
               color = ~FinalCall,
-              colors = c("Positive" = "#27ae60", "Negative" = "#95a5a6",
-                         "LatePositive" = "#f39c12", "Invalid_NoDNA" = "#e74c3c"),
+              colors = c(
+                "Positive" = "#27ae60",
+                "LatePositive" = "#f39c12",
+                "Negative" = "#95a5a6",
+                "Indeterminate" = "#f1c40f",
+                "Invalid_NoDNA" = "#e74c3c"
+              ),
               type = 'scatter', mode = 'markers',
               text = ~SampleName,
               hovertemplate = paste0(

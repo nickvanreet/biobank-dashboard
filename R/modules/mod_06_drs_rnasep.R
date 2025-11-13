@@ -164,14 +164,48 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
             mutate(barcode_norm = toupper(trimws(as.character(sample_id))))
 
           # Prepare qPCR data with RNAseP values
+          # Note: qPCR data from module 05 has Cq_median_RNAseP_DNA and Cq_median_RNAseP_RNA columns
           qpcr_summary <- qpcr %>%
-            mutate(barcode_norm = toupper(trimws(as.character(SampleID)))) %>%
-            group_by(barcode_norm) %>%
-            summarise(
-              rnasep_dna_cq = mean(Cq[Target == "RNAseP_DNA" & !is.na(Cq)], na.rm = TRUE),
-              rnasep_rna_cq = mean(Cq[Target == "RNAseP_RNA" & !is.na(Cq)], na.rm = TRUE),
-              .groups = "drop"
-            )
+            mutate(barcode_norm = toupper(trimws(as.character(SampleID))))
+
+          # Check which RNAseP columns are available
+          has_dna <- "Cq_median_RNAseP_DNA" %in% names(qpcr_summary)
+          has_rna <- "Cq_median_RNAseP_RNA" %in% names(qpcr_summary)
+
+          # Aggregate by sample ID, handling available columns
+          if (has_dna && has_rna) {
+            qpcr_summary <- qpcr_summary %>%
+              group_by(barcode_norm) %>%
+              summarise(
+                rnasep_dna_cq = mean(Cq_median_RNAseP_DNA, na.rm = TRUE),
+                rnasep_rna_cq = mean(Cq_median_RNAseP_RNA, na.rm = TRUE),
+                .groups = "drop"
+              )
+          } else if (has_dna) {
+            qpcr_summary <- qpcr_summary %>%
+              group_by(barcode_norm) %>%
+              summarise(
+                rnasep_dna_cq = mean(Cq_median_RNAseP_DNA, na.rm = TRUE),
+                rnasep_rna_cq = NA_real_,
+                .groups = "drop"
+              )
+          } else if (has_rna) {
+            qpcr_summary <- qpcr_summary %>%
+              group_by(barcode_norm) %>%
+              summarise(
+                rnasep_dna_cq = NA_real_,
+                rnasep_rna_cq = mean(Cq_median_RNAseP_RNA, na.rm = TRUE),
+                .groups = "drop"
+              )
+          } else {
+            # No RNAseP data available
+            qpcr_summary <- qpcr_summary %>%
+              distinct(barcode_norm) %>%
+              mutate(
+                rnasep_dna_cq = NA_real_,
+                rnasep_rna_cq = NA_real_
+              )
+          }
 
           # Join with extraction data
           ext_data <- ext_data %>%

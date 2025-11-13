@@ -1091,19 +1091,19 @@ mod_mic_qpcr_ui <- function(id) {
             gap = "16px",
             card(
               card_header("177T Positive Control", class = "bg-light"),
-              plotlyOutput(ns("lj_177t"), width = "800px", height = "600px")
+              plotlyOutput(ns("lj_177t"), height = "500px")
             ),
             card(
               card_header("18S2 Positive Control", class = "bg-light"),
-              plotlyOutput(ns("lj_18s2"), width = "800px", height = "600px")
+              plotlyOutput(ns("lj_18s2"), height = "500px")
             ),
             card(
               card_header("RNAseP-DNA Positive Control", class = "bg-light"),
-              plotlyOutput(ns("lj_rnp_dna"), width = "800px", height = "600px")
+              plotlyOutput(ns("lj_rnp_dna"), height = "500px")
             ),
             card(
               card_header("RNAseP-RNA Positive Control", class = "bg-light"),
-              plotlyOutput(ns("lj_rnp_rna"), width = "800px", height = "600px")
+              plotlyOutput(ns("lj_rnp_rna"), height = "500px")
             )
           )
         )

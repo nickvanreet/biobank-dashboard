@@ -222,20 +222,34 @@ mod_mic_overview_server <- function(id, processed_data, filtered_base) {
     })
     
     output$kpi_rna_good <- renderText({
-      rep_data <- processed_data()$replicates
-      if (!nrow(rep_data) || !"rnasep_rna" %in% names(rep_data)) return("N/A")
-      good <- sum(rep_data$rnasep_rna == "Good", na.rm = TRUE)
-      total <- sum(!is.na(rep_data$rnasep_rna))
+      df <- filtered_base()
+      if (!nrow(df) || !"ControlType" %in% names(df) || !"Call_RNAseP_RNA" %in% names(df)) {
+        return("N/A")
+      }
+
+      df <- df %>% filter(ControlType == "Sample")
+      if (!nrow(df)) return("N/A")
+
+      good <- sum(df$Call_RNAseP_RNA %in% c("Positive", "LatePositive"), na.rm = TRUE)
+      total <- sum(!is.na(df$Call_RNAseP_RNA))
       if (total == 0) return("N/A")
+
       paste0(round(100 * good / total), "%")
     })
-    
+
     output$kpi_dna_good <- renderText({
-      rep_data <- processed_data()$replicates
-      if (!nrow(rep_data) || !"rnasep_dna" %in% names(rep_data)) return("N/A")
-      good <- sum(rep_data$rnasep_dna == "Good", na.rm = TRUE)
-      total <- sum(!is.na(rep_data$rnasep_dna))
+      df <- filtered_base()
+      if (!nrow(df) || !"ControlType" %in% names(df) || !"Call_RNAseP_DNA" %in% names(df)) {
+        return("N/A")
+      }
+
+      df <- df %>% filter(ControlType == "Sample")
+      if (!nrow(df)) return("N/A")
+
+      good <- sum(df$Call_RNAseP_DNA %in% c("Positive", "LatePositive"), na.rm = TRUE)
+      total <- sum(!is.na(df$Call_RNAseP_DNA))
       if (total == 0) return("N/A")
+
       paste0(round(100 * good / total), "%")
     })
     

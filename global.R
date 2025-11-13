@@ -110,7 +110,7 @@ cat("✓ MIC modules loaded\n")
 
 app_theme <- bslib::bs_theme(
   version = 5,
-  bootswatch = "flatly",
+  bootswatch = "darkly",
   primary = "#3498DB",
   success = "#27AE60",
   danger = "#E74C3C",
@@ -141,6 +141,8 @@ app_theme <- bslib::bs_add_rules(
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.08);
     transition: box-shadow 0.3s ease;
+    background-color: #272b30;
+    border: 1px solid #1b2836;
   }
 
   .card:hover {
@@ -160,6 +162,7 @@ app_theme <- bslib::bs_add_rules(
   /* Table styling enhancements */
   .dataTables_wrapper {
     font-family: 'Source Sans Pro', 'Segoe UI', system-ui, sans-serif;
+    color: #f8f9fa;
   }
 
   .table {
@@ -167,17 +170,17 @@ app_theme <- bslib::bs_add_rules(
   }
 
   .table thead th {
-    background-color: #f8f9fa;
+    background-color: #2c3e50;
     font-weight: 600;
-    border-bottom: 2px solid #dee2e6;
+    border-bottom: 2px solid #1b2836;
   }
 
   .table-striped tbody tr:nth-of-type(odd) {
-    background-color: rgba(0,0,0,0.02);
+    background-color: rgba(255,255,255,0.03);
   }
 
   .table-hover tbody tr:hover {
-    background-color: rgba(52, 152, 219, 0.08);
+    background-color: rgba(52, 152, 219, 0.15);
   }
 
   /* Plotly chart containers */
@@ -188,8 +191,13 @@ app_theme <- bslib::bs_add_rules(
   /* Card headers */
   .card-header {
     font-weight: 600;
-    background-color: #f8f9fa;
-    border-bottom: 1px solid #dee2e6;
+    background-color: #2c3e50;
+    border-bottom: 1px solid #1b2836;
+  }
+
+  .card-body,
+  .card-footer {
+    background-color: #272b30;
   }
   "
 )

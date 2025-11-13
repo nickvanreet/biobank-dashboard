@@ -20,7 +20,7 @@ ui <- page_navbar(
   mod_overview_demographics_ui("overview_demographics"),
   mod_transport_ui("transport"),
   mod_extractions_ui("extractions"),
-  mod_mic_qpcr_ui("mic"),
+  mod_mic_qpcr_coordinator_ui("mic"),
   mod_drs_rnasep_ui("drs_rnasep")
   )
 
@@ -59,12 +59,12 @@ server <- function(input, output, session) {
     biobank_data = data$clean_data
   )
   
-  # MIC qPCR module - FIXED
-  mic_data <- mod_mic_qpcr_server(
+  # MIC qPCR module - FIXED to use new coordinator architecture
+  mic_data <- mod_mic_qpcr_coordinator_server(
     "mic",
     biobank_df = data$clean_data,              # ← Biobank data from data manager
     extractions_df = data$filtered_extractions, # ← Extractions data from data manager
-    filters = reactive(NULL)                      # ← Filters from data manager
+    filters = data$filters                      # ← Filters from data manager (FIXED)
   )
 
   # DRS vs RNAseP module

@@ -239,6 +239,15 @@ mod_mic_qpcr_coordinator_server <- function(id, biobank_df, extractions_df, filt
     
     # Export module - All downloads
     mod_mic_export_server("export", processed_data, filtered_base)
-    
+
+    # =========================================================================
+    # RETURN DATA - For downstream modules (e.g., DRS/RNAseP)
+    # =========================================================================
+
+    return(list(
+      qpcr_samples = filtered_base,       # Filtered samples for DRS module
+      processed_data = processed_data,    # Full processed data
+      raw_data = raw_data                 # Raw data if needed
+    ))
   })
 }

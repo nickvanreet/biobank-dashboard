@@ -90,8 +90,8 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       ) %>%
         formatStyle('FinalCall',
                     backgroundColor = styleEqual(
-                      c('Positive', 'Negative', 'Invalid_NoDNA'),
-                      c('#d4edda', '#f8f9fa', '#f8d7da')
+                      c('Positive', 'LatePositive', 'Negative', 'Indeterminate', 'Invalid_NoDNA', 'Control', 'Control_Fail'),
+                      c('#d4edda', '#ffe8a1', '#f8f9fa', '#fff3cd', '#f8d7da', '#dbe9ff', '#f5c6cb')
                     ))
     })
 

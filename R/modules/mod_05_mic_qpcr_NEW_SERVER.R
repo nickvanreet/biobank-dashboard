@@ -647,8 +647,8 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
       ) %>%
         formatStyle('FinalCall',
                     backgroundColor = styleEqual(
-                      c('Positive', 'Negative', 'Invalid_NoDNA'),
-                      c('#d4edda', '#f8f9fa', '#f8d7da')
+                      c('Positive', 'LatePositive', 'Negative', 'Indeterminate', 'Invalid_NoDNA', 'Control', 'Control_Fail'),
+                      c('#d4edda', '#ffe8a1', '#f8f9fa', '#fff3cd', '#f8d7da', '#dbe9ff', '#f5c6cb')
                     ))
     })
 
@@ -819,8 +819,13 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
 
       plot_ly(df, x = ~Cq_median_177T, y = ~Cq_median_18S2,
               color = ~FinalCall,
-              colors = c("Positive" = "#27ae60", "Negative" = "#95a5a6",
-                         "LatePositive" = "#f39c12", "Invalid_NoDNA" = "#e74c3c"),
+              colors = c(
+                "Positive" = "#27ae60",
+                "LatePositive" = "#f39c12",
+                "Negative" = "#95a5a6",
+                "Indeterminate" = "#f1c40f",
+                "Invalid_NoDNA" = "#e74c3c"
+              ),
               type = 'scatter', mode = 'markers',
               text = ~SampleName,
               hovertemplate = paste0(

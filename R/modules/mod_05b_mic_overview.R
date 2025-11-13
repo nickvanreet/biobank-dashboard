@@ -151,7 +151,7 @@ mod_mic_overview_ui <- function(id) {
       full_screen = TRUE,
       card_header("Run Metadata"),
       card_body(
-        DTOutput(ns("tbl_runs")),
+        DTOutput(ns("tbl_runs"), height = "500px"),
         class = "p-3"
       )
     )
@@ -276,16 +276,17 @@ mod_mic_overview_server <- function(id, processed_data, filtered_base) {
       }
       
       display <- runs %>%
+        select(-any_of(c("FilePath", "FileName", "FileMTime", "RunID", "ThresholdsJSON"))) %>%
         mutate(
           RunDateTime = as.character(RunDateTime),
           RunValid = if_else(RunValid, "✓", "✗")
         )
-      
+
       datatable(
         display,
         options = list(
           pageLength = 15,
-          scrollX = TRUE,
+          autoWidth = TRUE,
           dom = 'lfrtip',
           columnDefs = list(
             list(className = 'dt-center', targets = '_all')

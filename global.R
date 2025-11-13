@@ -1,4 +1,4 @@
-# global.R - Updated for rebuilt MIC qPCR module
+# global.R - Updated for rebuilt MIC qPCR module (Simplified UI)
 # ============================================================================
 
 # ============================================================================
@@ -81,12 +81,13 @@ source("R/modules/mod_01_data_quality.R")
 source("R/modules/mod_02_overview_demographics.R")
 source("R/modules/mod_03_transport.R")
 source("R/modules/mod_04_extractions.R")
-source("R/modules/mod_05_mic_qpcr.R")  # The rebuilt module
-source("R/modules/mod_06_drs_rnasep.R")  # DRS volume vs RNAseP analysis
+source("R/modules/mod_05_mic_qpcr.R")       # The rebuilt module
+source("R/modules/mod_06_drs_rnasep.R")     # DRS volume vs RNAseP analysis
 
 # ============================================================================
-# SOURCE MODULES - ADD THIS SECTION HERE
+# SOURCE MIC SUB-MODULES
 # ============================================================================
+
 source("R/modules/mod_05a_mic_coordinator.R")
 source("R/modules/mod_05b_mic_overview.R")
 source("R/modules/mod_05c_mic_samples.R")
@@ -101,729 +102,43 @@ mod_mic_qpcr_ui <- mod_mic_qpcr_coordinator_ui
 mod_mic_qpcr_server <- mod_mic_qpcr_coordinator_server
 
 cat("✓ MIC modules loaded\n")
-# ============================================================================
-
 
 # ============================================================================
-# UI THEME
+# UI THEME — SIMPLE & CLEAN
 # ============================================================================
 
 app_theme <- bslib::bs_theme(
-  version = 5,
-  bootswatch = "flatly",
-  primary = "#4F46E5",   # Elegant indigo for primary actions
-  success = "#10B981",   # Fresh emerald for success states
-  danger = "#EF4444",    # Vibrant red for alerts and errors
-  warning = "#F59E0B",   # Warm amber for warning states
-  info = "#06B6D4",      # Cyan for informational states
-  secondary = "#64748B", # Slate for secondary elements
-  heading_font = "'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif",
-  base_font = "'Inter', 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif"
+  version      = 5,
+  bootswatch   = "flatly",
+  primary      = "#4F46E5",
+  success      = "#10B981",
+  danger       = "#EF4444",
+  warning      = "#F59E0B",
+  info         = "#06B6D4",
+  base_font    = bslib::font_google("Inter"),
+  heading_font = bslib::font_google("Inter")
 )
 
-# Add custom CSS for elegant, modern UI
+# Optional: small amount of extra polish, no layout hacking
 app_theme <- bslib::bs_add_rules(
   app_theme,
   "
-  /* ========================================== */
-  /* ELEGANT MODERN UI - Core Foundations      */
-  /* ========================================== */
-
-  /* Smooth scrolling and refined animations */
-  html {
-    scroll-behavior: smooth;
-  }
-
   body {
-    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-    color: #0f172a;
-    font-size: 15px;
-    line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    background-color: #f5f5f5;
   }
-
-  /* Main content area */
-  .container-fluid {
-    overflow-y: auto;
-    max-height: 100vh;
-    padding: 2rem 1.5rem 3rem;
-  }
-
-  /* ========================================== */
-  /* ELEGANT CARDS - Modern depth & shadows    */
-  /* ========================================== */
 
   .card {
-    border-radius: 16px;
-    box-shadow:
-      0 1px 3px rgba(15, 23, 42, 0.08),
-      0 10px 30px rgba(15, 23, 42, 0.06);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    background: rgba(255, 255, 255, 0.98);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(226, 232, 240, 0.8);
-    overflow: hidden;
+    border-radius: 8px;
   }
-
-  .card:hover {
-    box-shadow:
-      0 4px 6px rgba(15, 23, 42, 0.1),
-      0 20px 40px rgba(15, 23, 42, 0.1);
-    transform: translateY(-2px);
-    border-color: rgba(79, 70, 229, 0.2);
-  }
-
-  /* ========================================== */
-  /* VALUE BOXES - Sophisticated KPI Cards     */
-  /* ========================================== */
 
   .bslib-value-box {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    padding: 1.5rem;
-    border-radius: 20px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow:
-      0 2px 8px rgba(15, 23, 42, 0.06),
-      0 12px 24px rgba(15, 23, 42, 0.04);
-    background: linear-gradient(135deg,
-      rgba(255, 255, 255, 0.98) 0%,
-      rgba(248, 250, 252, 0.98) 100%);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(226, 232, 240, 0.6);
-    overflow: hidden;
-    color: #0f172a;
-  }
-
-  .bslib-value-box:hover {
-    transform: translateY(-6px) scale(1.02);
-    box-shadow:
-      0 6px 16px rgba(15, 23, 42, 0.1),
-      0 24px 48px rgba(15, 23, 42, 0.08);
-    border-color: rgba(79, 70, 229, 0.3);
-  }
-
-  .bslib-value-box::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(circle at top right, rgba(79, 70, 229, 0.12), transparent 55%);
-    opacity: 0;
-    transition: opacity 0.35s ease;
-    pointer-events: none;
-  }
-
-  .bslib-value-box:hover::before {
-    opacity: 1;
-  }
-
-  .bslib-value-box .value-box-title {
-    color: #64748b;
-    font-weight: 600;
-    font-size: 0.875rem;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    margin-bottom: 0.25rem;
-  }
-
-  .bslib-value-box .value-box-subtitle {
-    color: #64748b;
-    font-size: 0.875rem;
-  }
-
-  .bslib-value-box .value-box-value,
-  .bslib-value-box .value-box-value .shiny-text-output {
-    color: #0f172a;
-    font-weight: 700;
-    font-size: 2.35rem;
-    letter-spacing: -0.02em;
-    margin: 0;
-    line-height: 1.2;
-  }
-
-  .bslib-value-box .value-box-value .shiny-text-output {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.25rem;
-  }
-
-  .bslib-value-box .value-box-showcase {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 56px;
-    height: 56px;
-    border-radius: 16px;
-    background: rgba(79, 70, 229, 0.08);
-    color: inherit;
-    font-size: 2rem;
-    transition: background 0.3s ease, transform 0.3s ease;
-  }
-
-  .bslib-value-box:hover .value-box-showcase {
-    transform: scale(1.05);
-  }
-
-  .bslib-value-box .value-box-showcase svg,
-  .bslib-value-box .value-box-showcase i,
-  .bslib-value-box .value-box-showcase .fa,
-  .bslib-value-box .value-box-showcase .bi {
-    font-size: 1.75rem;
-  }
-
-  .bslib-value-box[data-theme] {
-    border: none;
-    color: #ffffff;
-  }
-
-  .bslib-value-box[data-theme='primary'],
-  .bslib-value-box.bg-primary {
-    background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);
-  }
-
-  .bslib-value-box[data-theme='primary'] .value-box-title,
-  .bslib-value-box.bg-primary .value-box-title {
-    color: rgba(255, 255, 255, 0.85);
-  }
-
-  .bslib-value-box[data-theme='primary'] .value-box-value,
-  .bslib-value-box.bg-primary .value-box-value {
-    color: white;
-  }
-
-  .bslib-value-box[data-theme='success'],
-  .bslib-value-box.bg-success {
-    background: linear-gradient(135deg, #10B981 0%, #34D399 100%);
-    color: white;
-    border: none;
-  }
-
-  .bslib-value-box[data-theme='success'] .value-box-title,
-  .bslib-value-box.bg-success .value-box-title {
-    color: rgba(255, 255, 255, 0.9);
-  }
-
-  .bslib-value-box[data-theme='success'] .value-box-value,
-  .bslib-value-box.bg-success .value-box-value {
-    color: white;
-  }
-
-  .bslib-value-box[data-theme='danger'],
-  .bslib-value-box.bg-danger {
-    background: linear-gradient(135deg, #EF4444 0%, #F87171 100%);
-    color: white;
-    border: none;
-  }
-
-  .bslib-value-box[data-theme='danger'] .value-box-title,
-  .bslib-value-box.bg-danger .value-box-title {
-    color: rgba(255, 255, 255, 0.9);
-  }
-
-  .bslib-value-box[data-theme='danger'] .value-box-value,
-  .bslib-value-box.bg-danger .value-box-value {
-    color: white;
-  }
-
-  .bslib-value-box[data-theme='warning'],
-  .bslib-value-box.bg-warning {
-    background: linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%);
-    color: white;
-    border: none;
-  }
-
-  .bslib-value-box[data-theme='warning'] .value-box-title,
-  .bslib-value-box.bg-warning .value-box-title {
-    color: rgba(255, 255, 255, 0.9);
-  }
-
-  .bslib-value-box[data-theme='warning'] .value-box-value,
-  .bslib-value-box.bg-warning .value-box-value {
-    color: white;
-  }
-
-  .bslib-value-box[data-theme='info'],
-  .bslib-value-box.bg-info {
-    background: linear-gradient(135deg, #06B6D4 0%, #22D3EE 100%);
-    color: white;
-    border: none;
-  }
-
-  .bslib-value-box[data-theme='info'] .value-box-title,
-  .bslib-value-box.bg-info .value-box-title {
-    color: rgba(255, 255, 255, 0.9);
-  }
-
-  .bslib-value-box[data-theme='info'] .value-box-value,
-  .bslib-value-box.bg-info .value-box-value {
-    color: white;
-  }
-
-  .bslib-value-box[data-theme='secondary'],
-  .bslib-value-box.bg-secondary {
-    background: linear-gradient(135deg, #64748B 0%, #94A3B8 100%);
-    color: white;
-    border: none;
-  }
-
-  .bslib-value-box[data-theme='secondary'] .value-box-title,
-  .bslib-value-box.bg-secondary .value-box-title {
-    color: rgba(255, 255, 255, 0.9);
-  }
-
-  .bslib-value-box[data-theme='secondary'] .value-box-value,
-  .bslib-value-box.bg-secondary .value-box-value {
-    color: white;
-  }
-
-  .bslib-value-box[data-theme] .value-box-showcase {
-    background: rgba(255, 255, 255, 0.16);
-    color: #ffffff;
-  }
-
-  .bslib-value-box[data-theme] .value-box-title,
-  .bslib-value-box[data-theme] .value-box-subtitle,
-  .bslib-value-box[data-theme] .value-box-value,
-  .bslib-value-box[data-theme] .value-box-value .shiny-text-output,
-  .bslib-value-box[data-theme] .value-box-subtitle .shiny-text-output {
-    color: rgba(255, 255, 255, 0.95) !important;
-  }
-
-  .bslib-value-box[data-theme] .value-box-value,
-  .bslib-value-box[data-theme] .value-box-value .shiny-text-output {
-    color: #ffffff !important;
-  }
-
-  .bslib-value-box[data-theme] .value-box-value *,
-  .bslib-value-box[data-theme] .value-box-subtitle * {
-    color: inherit !important;
-  }
-
-  .bslib-value-box .bslib-value-box-icon {
-    color: inherit;
-  }
-
-  @media (max-width: 992px) {
-    .bslib-value-box {
-      padding: 1.25rem;
-      gap: 0.75rem;
-    }
-
-    .bslib-value-box .value-box-value,
-    .bslib-value-box .value-box-value .shiny-text-output {
-      font-size: 1.85rem;
-    }
-
-    .bslib-value-box .value-box-showcase {
-      width: 48px;
-      height: 48px;
-      border-radius: 14px;
-      font-size: 1.5rem;
-    }
-  }
-
-  /* ========================================== */
-  /* NAVIGATION - Polished & Modern            */
-  /* ========================================== */
-
-  .navbar {
-    background: rgba(255, 255, 255, 0.98) !important;
-    backdrop-filter: blur(20px) saturate(180%);
-    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.08),
-                0 4px 16px rgba(15, 23, 42, 0.04);
-    border-bottom: 1px solid rgba(226, 232, 240, 0.6);
-    padding: 0.75rem 1.5rem;
-  }
-
-  /* Account for fixed navbar */
-  body.bslib-page-navbar {
-    padding-top: 72px;
-  }
-
-  .navbar-brand {
-    margin-right: 2rem;
-  }
-
-  .nav-link {
-    color: #475569 !important;
-    font-weight: 500;
-    font-size: 0.9375rem;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     border-radius: 10px;
-    margin: 0 2px;
-    padding: 0.625rem 1.125rem !important;
-    position: relative;
-  }
-
-  .nav-link::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%) scaleX(0);
-    width: 80%;
-    height: 2px;
-    background: linear-gradient(90deg, #4F46E5, #6366F1);
-    border-radius: 2px 2px 0 0;
-    transition: transform 0.3s ease;
-  }
-
-  .nav-link:hover {
-    color: #4F46E5 !important;
-    background-color: rgba(79, 70, 229, 0.06);
-  }
-
-  .nav-link.active {
-    color: #4F46E5 !important;
-    background-color: rgba(79, 70, 229, 0.1);
-    font-weight: 600;
-  }
-
-  .nav-link.active::after {
-    transform: translateX(-50%) scaleX(1);
-  }
-
-  /* ========================================== */
-  /* TABLES - Clean & Professional             */
-  /* ========================================== */
-
-  .dataTables_wrapper {
-    font-family: 'Inter', 'SF Pro Text', system-ui, sans-serif;
-    color: #1e293b;
   }
 
   .table {
     font-size: 14px;
-    color: #0f172a;
-    background-color: #ffffff;
-  }
-
-  .table thead th {
-    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-    font-weight: 600;
-    font-size: 0.8125rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-bottom: 2px solid #cbd5e1;
-    color: #475569;
-    padding: 1rem 0.75rem;
-  }
-
-  .table-striped tbody tr:nth-of-type(odd) {
-    background-color: rgba(248, 250, 252, 0.6);
-  }
-
-  .table-hover tbody tr {
-    transition: all 0.2s ease;
-  }
-
-  .table-hover tbody tr:hover {
-    background-color: rgba(79, 70, 229, 0.06);
-    transform: scale(1.002);
-    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.1);
-  }
-
-  .table td {
-    padding: 0.875rem 0.75rem;
-    border-top: 1px solid #f1f5f9;
-  }
-
-  /* ========================================== */
-  /* CHARTS - Elegant Plotly Containers        */
-  /* ========================================== */
-
-  .plotly {
-    border-radius: 12px;
-    padding: 1rem;
-    background: #ffffff;
-  }
-
-  /* Enhanced Plotly modebar */
-  .modebar {
-    padding: 8px;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(8px);
-  }
-
-  .modebar-btn {
-    transition: all 0.2s ease;
-  }
-
-  .modebar-btn:hover {
-    background-color: rgba(79, 70, 229, 0.1);
-  }
-
-  /* ========================================== */
-  /* CARD HEADERS & SECTIONS                   */
-  /* ========================================== */
-
-  .card-header {
-    font-weight: 600;
-    font-size: 1.125rem;
-    background: linear-gradient(135deg, #fafbfc 0%, #f8fafc 100%);
-    border-bottom: 1px solid #e2e8f0;
-    color: #0f172a;
-    padding: 1.25rem 1.5rem;
-    letter-spacing: -0.01em;
-  }
-
-  .card-body {
-    background-color: #ffffff;
-    padding: 1.5rem;
-  }
-
-  .card-footer {
-    background-color: #fafbfc;
-    border-top: 1px solid #f1f5f9;
-    padding: 1rem 1.5rem;
-  }
-
-  /* ========================================== */
-  /* BUTTONS - Modern & Inviting               */
-  /* ========================================== */
-
-  .btn {
-    border-radius: 10px;
-    font-weight: 600;
-    padding: 0.625rem 1.25rem;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    border: none;
-  }
-
-  .btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  }
-
-  .btn:active {
-    transform: translateY(0);
-  }
-
-  .btn-primary {
-    background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);
-  }
-
-  .btn-primary:hover {
-    background: linear-gradient(135deg, #4338CA 0%, #4F46E5 100%);
-  }
-
-  /* ========================================== */
-  /* FORM INPUTS - Clean & Accessible          */
-  /* ========================================== */
-
-  .form-control, .form-select {
-    border-radius: 10px;
-    border: 1.5px solid #e2e8f0;
-    padding: 0.625rem 1rem;
-    transition: all 0.2s ease;
-    background-color: #ffffff;
-  }
-
-  .form-control:focus, .form-select:focus {
-    border-color: #4F46E5;
-    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
-    outline: none;
-  }
-
-  /* ========================================== */
-  /* SIDEBAR - Elegant Panel                   */
-  /* ========================================== */
-
-  .bslib-sidebar-layout > .sidebar {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(10px);
-    border-right: 1px solid rgba(226, 232, 240, 0.8);
-    box-shadow: 2px 0 12px rgba(15, 23, 42, 0.04);
-  }
-
-  /* ========================================== */
-  /* UTILITY CLASSES                           */
-  /* ========================================== */
-
-  /* Elegant spacing */
-  .mb-elegant { margin-bottom: 2rem; }
-  .mt-elegant { margin-top: 2rem; }
-
-  /* Smooth fade-in animation */
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .card, .bslib-value-box {
-    animation: fadeIn 0.4s ease-out;
-  }
-
-  /* ========================================== */
-  /* SCROLLBAR - Minimal & Modern              */
-  /* ========================================== */
-
-  ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
-
-  ::-webkit-scrollbar-track {
-    background: #f1f5f9;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 5px;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
-  }
-
-  /* ========================================== */
-  /* ADDITIONAL UI POLISH                      */
-  /* ========================================== */
-
-  /* Loading spinner */
-  .shiny-spinner-output-container {
-    position: relative;
-  }
-
-  /* Alerts and notifications */
-  .alert {
-    border-radius: 12px;
-    border: 1px solid;
-    padding: 1rem 1.25rem;
-    margin-bottom: 1rem;
-  }
-
-  .alert-info {
-    background-color: rgba(6, 182, 212, 0.08);
-    border-color: rgba(6, 182, 212, 0.3);
-    color: #0e7490;
-  }
-
-  .alert-success {
-    background-color: rgba(16, 185, 129, 0.08);
-    border-color: rgba(16, 185, 129, 0.3);
-    color: #047857;
-  }
-
-  .alert-warning {
-    background-color: rgba(245, 158, 11, 0.08);
-    border-color: rgba(245, 158, 11, 0.3);
-    color: #b45309;
-  }
-
-  .alert-danger {
-    background-color: rgba(239, 68, 68, 0.08);
-    border-color: rgba(239, 68, 68, 0.3);
-    color: #b91c1c;
-  }
-
-  /* Badges */
-  .badge {
-    border-radius: 6px;
-    padding: 0.35rem 0.65rem;
-    font-weight: 600;
-    font-size: 0.75rem;
-    letter-spacing: 0.025em;
-  }
-
-  /* Modal dialogs */
-  .modal-content {
-    border-radius: 16px;
-    border: none;
-    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.3);
-  }
-
-  .modal-header {
-    border-bottom: 1px solid #e2e8f0;
-    padding: 1.5rem;
-    background: linear-gradient(135deg, #fafbfc 0%, #f8fafc 100%);
-    border-radius: 16px 16px 0 0;
-  }
-
-  .modal-body {
-    padding: 1.5rem;
-  }
-
-  .modal-footer {
-    border-top: 1px solid #e2e8f0;
-    padding: 1rem 1.5rem;
-    background-color: #fafbfc;
-    border-radius: 0 0 16px 16px;
-  }
-
-  /* Tooltips */
-  .tooltip {
-    font-size: 0.875rem;
-  }
-
-  .tooltip-inner {
-    background-color: #0f172a;
-    border-radius: 8px;
-    padding: 0.5rem 0.75rem;
-    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.3);
-  }
-
-  /* Progress bars */
-  .progress {
-    height: 8px;
-    border-radius: 4px;
-    background-color: #e2e8f0;
-    overflow: hidden;
-  }
-
-  .progress-bar {
-    background: linear-gradient(90deg, #4F46E5, #6366F1);
-    border-radius: 4px;
-  }
-
-  /* Tabs */
-  .nav-tabs {
-    border-bottom: 2px solid #e2e8f0;
-  }
-
-  .nav-tabs .nav-link {
-    border: none;
-    color: #64748b;
-    border-bottom: 3px solid transparent;
-    margin-bottom: -2px;
-  }
-
-  .nav-tabs .nav-link:hover {
-    border-bottom-color: rgba(79, 70, 229, 0.3);
-    background-color: rgba(79, 70, 229, 0.04);
-  }
-
-  .nav-tabs .nav-link.active {
-    color: #4F46E5;
-    border-bottom-color: #4F46E5;
-    background-color: transparent;
-  }
-
-  /* Select2 dropdowns (if used) */
-  .select2-container--default .select2-selection--single {
-    border-radius: 10px;
-    border: 1.5px solid #e2e8f0;
-    height: 42px;
-    padding: 0.5rem;
-  }
-
-  .select2-container--default .select2-selection--single:focus {
-    border-color: #4F46E5;
-    outline: none;
   }
   "
-)
 )
 
 # ============================================================================
@@ -856,16 +171,16 @@ create_elegant_table <- function(data,
                                  compact = TRUE,
                                  bordered = FALSE,
                                  ...) {
-
+  
   # Build class string
   classes <- c("table")
   if (striped) classes <- c(classes, "table-striped")
   if (hover) classes <- c(classes, "table-hover")
   if (compact) classes <- c(classes, "table-sm")
   if (bordered) classes <- c(classes, "table-bordered")
-
+  
   class_str <- paste(classes, collapse = " ")
-
+  
   # Create datatable with elegant styling
   dt <- DT::datatable(
     data,
@@ -896,7 +211,7 @@ create_elegant_table <- function(data,
       fontSize = '14px',
       fontFamily = "'Inter', 'SF Pro Text', system-ui, sans-serif"
     )
-
+  
   return(dt)
 }
 
@@ -904,7 +219,6 @@ create_elegant_table <- function(data,
 # HELPER FUNCTIONS (if not in other files)
 # ============================================================================
 
-# These might be needed by modules but not defined elsewhere
 if (!exists("normalize_id")) {
   normalize_id <- function(x) {
     if (is.null(x)) return(NA_character_)
@@ -931,8 +245,8 @@ if (!exists("safe_coalesce")) {
 # Check that all critical functions are available
 critical_functions <- c(
   "normalize_barcode",
-  "analyze_qpcr",             # From qpcr_analysis.R
-  "extract_cq_values",        # From qpcr_analysis.R
+  "analyze_qpcr",             # From qpcr_analysis.R or mic_qpcr_pipeline.R
+  "extract_cq_values",        # From qpcr_analysis.R or mic_qpcr_pipeline.R
   "link_extraction_to_biobank",
   "apply_filters",
   "mod_data_manager_ui",
@@ -979,7 +293,7 @@ message(sprintf("📁 PCR directory:        %s", config$paths$pcr_dir))
 message(sprintf("📁 MIC directory:        %s", config$paths$mic_dir))
 message("")
 message(sprintf("✅ %d packages loaded", length(required_packages)))
-message(sprintf("✅ %d critical functions verified", 
+message(sprintf("✅ %d critical functions verified",
                 length(critical_functions) - length(missing_functions)))
 message("")
 

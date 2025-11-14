@@ -617,13 +617,28 @@ mod_mic_analysis_server <- function(id, filtered_base) {
       df <- filtered_base() %>%
         filter(ControlType == "Sample")
 
-      if (!nrow(df) || !"Date" %in% names(df)) {
+      if (!nrow(df)) {
+        return(plotly_empty() %>% layout(title = "No temporal data available"))
+      }
+
+      plot_dates <- NULL
+
+      if ("SampleDate" %in% names(df)) {
+        plot_dates <- suppressWarnings(as.Date(df$SampleDate))
+      } else if ("Date" %in% names(df)) {
+        plot_dates <- suppressWarnings(as.Date(df$Date))
+      } else if ("RunDate" %in% names(df)) {
+        plot_dates <- suppressWarnings(as.Date(df$RunDate))
+      }
+
+      if (is.null(plot_dates)) {
         return(plotly_empty() %>% layout(title = "No temporal data available"))
       }
 
       df_temporal <- df %>%
-        filter(!is.na(Date)) %>%
-        mutate(Week = lubridate::floor_date(Date, "week")) %>%
+        mutate(PlotDate = plot_dates) %>%
+        filter(!is.na(PlotDate)) %>%
+        mutate(Week = lubridate::floor_date(PlotDate, "week")) %>%
         group_by(Week) %>%
         summarise(
           Volume = n(),

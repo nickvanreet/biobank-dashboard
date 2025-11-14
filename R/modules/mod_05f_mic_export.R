@@ -37,8 +37,10 @@ mod_mic_export_ui <- function(id) {
         downloadButton(ns("dl_replicates"), "Replicate-Level Data", class = "btn-secondary w-100 mb-3"),
         
         hr(),
-        
+
         h5("Complete Dataset", class = "mb-3"),
+        downloadButton(ns("dl_calling_summary"), "Calling Summary & Rules", class = "btn-primary w-100 mb-3"),
+        p(class = "small text-muted mb-3", "Summary report with calling criteria used"),
         downloadButton(ns("dl_complete"), "Full Export (Excel)", class = "btn-dark w-100 mb-3"),
         p(class = "small text-muted", "All data in multiple sheets")
       )
@@ -46,9 +48,77 @@ mod_mic_export_ui <- function(id) {
   )
 }
 
-mod_mic_export_server <- function(id, processed_data, filtered_base) {
+mod_mic_export_server <- function(id, processed_data, filtered_base, settings = NULL) {
   moduleServer(id, function(input, output, session) {
-    
+
+    # Calling Summary export
+    output$dl_calling_summary <- downloadHandler(
+      filename = function() sprintf("mic_calling_summary_%s.csv", format(Sys.Date(), "%Y%m%d")),
+      content = function(file) {
+        df <- filtered_base() %>% filter(ControlType == "Sample")
+
+        # Get current settings
+        current_settings <- if (!is.null(settings)) settings() else list()
+
+        # Extract thresholds
+        th_177t_pos <- if (is.null(current_settings$thresholds$`177T`$positive)) 35 else current_settings$thresholds$`177T`$positive
+        th_177t_neg <- if (is.null(current_settings$thresholds$`177T`$negative)) 40 else current_settings$thresholds$`177T`$negative
+        th_18s2_pos <- if (is.null(current_settings$thresholds$`18S2`$positive)) 35 else current_settings$thresholds$`18S2`$positive
+        th_18s2_neg <- if (is.null(current_settings$thresholds$`18S2`$negative)) 40 else current_settings$thresholds$`18S2`$negative
+        min_reps <- if (is.null(current_settings$min_positive_reps)) 2 else current_settings$min_positive_reps
+
+        # Create summary tibble
+        summary <- tibble(
+          Metric = c(
+            "Total Samples",
+            "TNA Positive (both targets)",
+            "DNA Only Positive (177T)",
+            "RNA Only Positive (18S2)",
+            "Negative",
+            "Invalid (QC Fail)",
+            "Indeterminate",
+            "Late Positive",
+            "",
+            "Calling Criteria Used:",
+            "177T Positive Threshold",
+            "177T Negative Threshold",
+            "18S2 Positive Threshold",
+            "18S2 Negative Threshold",
+            "Min Replicates for Positive Call",
+            "",
+            "Prevalence (%)",
+            "QC Failure Rate (%)"
+          ),
+          Value = c(
+            nrow(df),
+            sum(df$FinalCall == "Positive", na.rm = TRUE),
+            sum(df$FinalCall == "Positive_DNA", na.rm = TRUE),
+            sum(df$FinalCall == "Positive_RNA", na.rm = TRUE),
+            sum(df$FinalCall == "Negative", na.rm = TRUE),
+            sum(df$FinalCall %in% c("Invalid", "Invalid_NoDNA"), na.rm = TRUE),
+            sum(df$FinalCall == "Indeterminate", na.rm = TRUE),
+            sum(df$FinalCall == "LatePositive", na.rm = TRUE),
+            "",
+            "",
+            paste0("≤ ", th_177t_pos),
+            paste0("> ", th_177t_neg),
+            paste0("≤ ", th_18s2_pos),
+            paste0("> ", th_18s2_neg),
+            paste0(min_reps, "/4 replicates"),
+            "",
+            if (nrow(df) > 0) {
+              paste0(round(100 * sum(df$FinalCall %in% c("Positive", "Positive_DNA", "Positive_RNA"), na.rm = TRUE) / nrow(df), 1), "%")
+            } else "0%",
+            if (nrow(df) > 0) {
+              paste0(round(100 * sum(df$FinalCall %in% c("Invalid", "Invalid_NoDNA"), na.rm = TRUE) / nrow(df), 1), "%")
+            } else "0%"
+          )
+        )
+
+        write_csv(summary, file)
+      }
+    )
+
     # Core samples export
     output$dl_samples <- downloadHandler(
       filename = function() sprintf("mic_samples_%s.csv", format(Sys.Date(), "%Y%m%d")),

@@ -85,6 +85,8 @@ mod_mic_analysis_server <- function(id, filtered_base) {
               color = ~FinalCall,
               colors = c(
                 "Positive" = "#27ae60",
+                "Positive_DNA" = "#3498db",
+                "Positive_RNA" = "#9b59b6",
                 "LatePositive" = "#f39c12",
                 "Negative" = "#95a5a6",
                 "Indeterminate" = "#f1c40f",

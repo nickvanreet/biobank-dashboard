@@ -61,9 +61,11 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         df <- df %>% mutate(across(all_of(numeric_cols), ~round(.x, 2)))
       }
       
-      # Select columns to display - including Barcode
+      # Select columns to display - including Barcode and replicate counts
       available_cols <- intersect(
         c("RunID", "SampleName", "Barcode", "FinalCall",
+          "Wells_TNA_Positive", "Wells_DNA_Positive", "Wells_RNA_Positive",
+          "ReplicatesTotal", "Replicates_Positive", "Replicates_Negative", "Replicates_Failed",
           "Cq_median_177T", "Cq_median_18S2",
           "Cq_median_RNAseP_DNA", "Cq_median_RNAseP_RNA",
           "Delta_18S2_177T", "Delta_RP",
@@ -90,8 +92,8 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       ) %>%
         formatStyle('FinalCall',
                     backgroundColor = styleEqual(
-                      c('Positive', 'LatePositive', 'Negative', 'Indeterminate', 'Invalid_NoDNA', 'Control', 'Control_Fail'),
-                      c('#d4edda', '#ffe8a1', '#f8f9fa', '#fff3cd', '#f8d7da', '#dbe9ff', '#f5c6cb')
+                      c('Positive', 'Positive_DNA', 'Positive_RNA', 'LatePositive', 'Negative', 'Indeterminate', 'Invalid_NoDNA', 'Control', 'Control_Fail'),
+                      c('#d4edda', '#b3e0f2', '#d4b3f2', '#ffe8a1', '#f8f9fa', '#fff3cd', '#f8d7da', '#dbe9ff', '#f5c6cb')
                     ))
     })
 

@@ -76,6 +76,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         df %>% select(all_of(available_cols)),
         options = list(
           pageLength = 25,
+          scrollX = TRUE,
           dom = 'Blfrtip',
           buttons = c('copy', 'csv', 'excel'),
           lengthMenu = list(c(10, 25, 50, 100, -1), c('10', '25', '50', '100', 'All')),

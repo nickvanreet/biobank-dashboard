@@ -162,6 +162,7 @@ app_theme <- bslib::bs_add_rules(
 APP_CONSTANTS <- list(
   DT_OPTIONS = list(
     pageLength = 20,
+    scrollX = TRUE,
     dom = 'Bfrtip',
     buttons = c('copy', 'csv', 'excel')
   )
@@ -199,6 +200,9 @@ create_elegant_table <- function(data,
     data,
     options = list(
       pageLength = pageLength,
+      scrollX = TRUE,
+      scrollY = "500px",
+      scrollCollapse = TRUE,
       dom = 'Bfrtip',
       buttons = buttons,
       columnDefs = list(

@@ -318,6 +318,7 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
         DT::datatable(
           options = list(
             pageLength = 25,
+            scrollX = TRUE,
             dom = 'frtip'
           ),
           class = "table-sm"
@@ -398,6 +399,7 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
         rownames = FALSE,
         options = list(
           pageLength = 10,
+          scrollX = TRUE,
           dom = 'frtip',
           order = list(list(1, "desc"))
         ),
@@ -433,7 +435,7 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
         report$duplicates %>%
           dplyr::select(dplyr::all_of(cols_to_show)) %>%
           DT::datatable(
-            options = list(pageLength = 10, dom = 'frtip'),
+            options = list(pageLength = 10, scrollX = TRUE, dom = 'frtip'),
             class = "table-sm"
           )
       }
@@ -481,7 +483,7 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
         report$labid_conflicts %>%
           dplyr::select(dplyr::all_of(cols)) %>%
           DT::datatable(
-            options = list(pageLength = 10, dom = 'frtip'),
+            options = list(pageLength = 10, scrollX = TRUE, dom = 'frtip'),
             class = "table-sm"
           )
       }

@@ -423,7 +423,7 @@ mod_transport_server <- function(id, filtered_data) {
       DT::datatable(
         delayed_shipments(),
         rownames = FALSE,
-        options = list(pageLength = 10)
+        options = list(pageLength = 10, scrollX = TRUE)
       )
     })
 
@@ -456,7 +456,7 @@ mod_transport_server <- function(id, filtered_data) {
       DT::datatable(
         missing_dates(),
         rownames = FALSE,
-        options = list(pageLength = 10)
+        options = list(pageLength = 10, scrollX = TRUE)
       )
     })
   })

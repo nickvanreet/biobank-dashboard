@@ -819,20 +819,31 @@ create_run_summary <- function(samples_df, runs_df, control_status) {
 link_to_biobank <- function(samples_df, biobank_df) {
   if (!nrow(samples_df) || is.null(biobank_df) || !nrow(biobank_df)) {
     message("⚠️ No biobank data available for linking")
-    return(samples_df %>% 
+    return(samples_df %>%
              mutate(
-               BiobankMatched = FALSE, 
+               BiobankMatched = FALSE,
                Province = NA_character_,
+               HealthZone = NA_character_,
                Structure = NA_character_,
                Cohort = NA_character_,
                SampleDate = as.Date(NA)
              ))
   }
-  
+
   # DEBUG: Print what columns we actually have
   message("📊 Biobank data columns: ", paste(names(biobank_df), collapse = ", "))
   message("📊 Biobank data has ", nrow(biobank_df), " rows")
-  
+
+  fetch_column <- function(data, candidates, transform = identity, default = NA_character_) {
+    for (col in candidates) {
+      if (col %in% names(data)) {
+        return(transform(data[[col]]))
+      }
+    }
+
+    rep(default, nrow(data))
+  }
+
   # Find the ID column (use lab_id or barcode from your actual data)
   id_col <- NULL
   for (col in c("lab_id", "barcode", "numero", "Numero", "Sample", "sample_id")) {
@@ -845,29 +856,37 @@ link_to_biobank <- function(samples_df, biobank_df) {
   
   if (is.null(id_col)) {
     warning("❌ No ID column found in biobank data")
-    return(samples_df %>% 
+    return(samples_df %>%
              mutate(
-               BiobankMatched = FALSE, 
+               BiobankMatched = FALSE,
                Province = NA_character_,
+               HealthZone = NA_character_,
                Structure = NA_character_,
                Cohort = NA_character_,
                SampleDate = as.Date(NA)
              ))
   }
-  
+
   # Build lookup using your actual column names
   bb_lookup <- tibble(
     id_norm = normalize_id(biobank_df[[id_col]]),
-    Province = if ("province" %in% names(biobank_df)) biobank_df$province else NA_character_,
-    Structure = if ("health_facility" %in% names(biobank_df)) biobank_df$health_facility 
-    else if ("health_structure" %in% names(biobank_df)) biobank_df$health_structure
-    else NA_character_,
-    Cohort = if ("study" %in% names(biobank_df)) biobank_df$study else NA_character_,
-    SampleDate = if ("date_sample" %in% names(biobank_df)) suppressWarnings(as.Date(biobank_df$date_sample)) else as.Date(NA)
+    Province = fetch_column(biobank_df, c("province", "Province", "biobank_province")),
+    HealthZone = fetch_column(biobank_df, c("health_zone", "zone_de_sante", "biobank_health_zone")),
+    Structure = fetch_column(
+      biobank_df,
+      c("health_facility", "health_structure", "structure_sanitaire", "biobank_health_facility", "biobank_structure_sanitaire")
+    ),
+    Cohort = fetch_column(biobank_df, c("study", "Study", "cohort", "biobank_study")),
+    SampleDate = fetch_column(
+      biobank_df,
+      c("date_sample", "sample_date", "Date", "collection_date"),
+      transform = function(x) suppressWarnings(as.Date(x)),
+      default = as.Date(NA)
+    )
   ) %>%
     filter(!is.na(id_norm), id_norm != "") %>%
     distinct(id_norm, .keep_all = TRUE)
-  
+
   message("📊 Created biobank lookup with ", nrow(bb_lookup), " unique samples")
   if (nrow(bb_lookup) > 0) {
     message("   Example biobank IDs: ", paste(head(bb_lookup$id_norm, 5), collapse = ", "))
@@ -884,11 +903,21 @@ link_to_biobank <- function(samples_df, biobank_df) {
   result <- samples_df %>%
     mutate(SampleID_norm = normalize_id(SampleID)) %>%
     left_join(bb_lookup, by = c("SampleID_norm" = "id_norm")) %>%
-    mutate(BiobankMatched = !is.na(Province) | !is.na(Structure) | !is.na(Cohort)) %>%
+    mutate(
+      BiobankMatched = dplyr::if_else(
+        dplyr::coalesce(!is.na(Province), FALSE) |
+          dplyr::coalesce(!is.na(Structure), FALSE) |
+          dplyr::coalesce(!is.na(Cohort), FALSE) |
+          dplyr::coalesce(!is.na(HealthZone), FALSE),
+        TRUE,
+        FALSE,
+        missing = FALSE
+      )
+    ) %>%
     select(-SampleID_norm)
-  
+
   n_matched <- sum(result$BiobankMatched, na.rm = TRUE)
-  message("✓ Matched ", n_matched, " MIC samples to biobank (", 
+  message("✓ Matched ", n_matched, " MIC samples to biobank (",
           round(100 * n_matched / nrow(samples_df)), "%)")
   
   result
@@ -1013,12 +1042,17 @@ apply_global_filters <- function(df, filters) {
   if (!is.null(filters$province) && !identical(filters$province, "all") && "Province" %in% names(df)) {
     df <- df %>% filter(is.na(Province) | Province %in% filters$province)
   }
-  
+
+  # Health zone filter
+  if (!is.null(filters$zone) && !identical(filters$zone, "all") && "HealthZone" %in% names(df)) {
+    df <- df %>% filter(is.na(HealthZone) | HealthZone %in% filters$zone)
+  }
+
   # Structure filter
   if (!is.null(filters$structure) && !identical(filters$structure, "all") && "Structure" %in% names(df)) {
     df <- df %>% filter(is.na(Structure) | Structure %in% filters$structure)
   }
-  
+
   # Cohort filter
   if (!is.null(filters$cohort) && !identical(filters$cohort, "all") && "Cohort" %in% names(df)) {
     df <- df %>% filter(is.na(Cohort) | Cohort %in% filters$cohort)

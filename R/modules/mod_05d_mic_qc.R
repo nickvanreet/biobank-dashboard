@@ -7,30 +7,36 @@ mod_mic_qc_ui <- function(id) {
 
   tagList(
     # Levey-Jennings plots - shown first per user request
-    card(
-      full_screen = TRUE,
-      card_header("Levey-Jennings Control Charts"),
-      card_body(
-        class = "p-3",
-        layout_columns(
-          col_widths = c(6, 6),
-          gap = "16px",
-          card(
-            card_header("177T Positive Control", class = "bg-light"),
-            plotlyOutput(ns("lj_177t"), height = "400px", width = "100%")
-          ),
-          card(
-            card_header("18S2 Positive Control", class = "bg-light"),
-            plotlyOutput(ns("lj_18s2"), height = "400px", width = "100%")
-          ),
-          card(
-            card_header("RNAseP-DNA Positive Control", class = "bg-light"),
-            plotlyOutput(ns("lj_rnp_dna"), height = "400px", width = "100%")
-          ),
-          card(
-            card_header("RNAseP-RNA Positive Control", class = "bg-light"),
-            plotlyOutput(ns("lj_rnp_rna"), height = "400px", width = "100%")
-          )
+    # Each chart is now a separate, independent card
+    layout_columns(
+      col_widths = c(6, 6),
+      gap = "16px",
+      card(
+        full_screen = TRUE,
+        card_header("177T Positive Control"),
+        card_body(
+          plotlyOutput(ns("lj_177t"), height = "400px", width = "100%")
+        )
+      ),
+      card(
+        full_screen = TRUE,
+        card_header("18S2 Positive Control"),
+        card_body(
+          plotlyOutput(ns("lj_18s2"), height = "400px", width = "100%")
+        )
+      ),
+      card(
+        full_screen = TRUE,
+        card_header("RNAseP-DNA Positive Control"),
+        card_body(
+          plotlyOutput(ns("lj_rnp_dna"), height = "400px", width = "100%")
+        )
+      ),
+      card(
+        full_screen = TRUE,
+        card_header("RNAseP-RNA Positive Control"),
+        card_body(
+          plotlyOutput(ns("lj_rnp_rna"), height = "400px", width = "100%")
         )
       )
     ),

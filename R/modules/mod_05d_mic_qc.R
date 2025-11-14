@@ -7,36 +7,40 @@ mod_mic_qc_ui <- function(id) {
 
   tagList(
     # Levey-Jennings plots - shown first per user request
-    # Each chart is now a separate, independent card
+    # Each chart is now a separate, independent card with full width for better visibility
     layout_columns(
-      col_widths = c(6, 6),
-      gap = "16px",
+      col_widths = c(12),
+      gap = "20px",
       card(
         full_screen = TRUE,
         card_header("177T Positive Control"),
         card_body(
-          plotlyOutput(ns("lj_177t"), height = "400px", width = "100%")
+          plotlyOutput(ns("lj_177t"), height = "600px", width = "100%"),
+          class = "p-3"
         )
       ),
       card(
         full_screen = TRUE,
         card_header("18S2 Positive Control"),
         card_body(
-          plotlyOutput(ns("lj_18s2"), height = "400px", width = "100%")
+          plotlyOutput(ns("lj_18s2"), height = "600px", width = "100%"),
+          class = "p-3"
         )
       ),
       card(
         full_screen = TRUE,
         card_header("RNAseP-DNA Positive Control"),
         card_body(
-          plotlyOutput(ns("lj_rnp_dna"), height = "400px", width = "100%")
+          plotlyOutput(ns("lj_rnp_dna"), height = "600px", width = "100%"),
+          class = "p-3"
         )
       ),
       card(
         full_screen = TRUE,
         card_header("RNAseP-RNA Positive Control"),
         card_body(
-          plotlyOutput(ns("lj_rnp_rna"), height = "400px", width = "100%")
+          plotlyOutput(ns("lj_rnp_rna"), height = "600px", width = "100%"),
+          class = "p-3"
         )
       )
     ),
@@ -139,8 +143,8 @@ mod_mic_qc_server <- function(id, processed_data) {
           layout(
             xaxis = list(title = "Run ID", tickangle = -45, automargin = TRUE),
             yaxis = list(title = "Cq Value", automargin = TRUE),
-            legend = list(orientation = 'h', y = -0.25, x = 0),
-            margin = list(t = 40, r = 40, b = 120, l = 60),
+            legend = list(orientation = 'h', y = -0.15, x = 0.1, xanchor = 'left'),
+            margin = list(t = 50, r = 50, b = 100, l = 70),
             hovermode = 'closest'
           )
       })

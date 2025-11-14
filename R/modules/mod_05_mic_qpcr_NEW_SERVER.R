@@ -618,9 +618,11 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
           mutate(across(all_of(numeric_cols), ~round(.x, 2)))
       }
 
-      # Select columns
+      # Select columns including replicate counts
       available_cols <- intersect(
         c("RunID", "SampleName", "FinalCall",
+          "Wells_TNA_Positive", "Wells_DNA_Positive", "Wells_RNA_Positive",
+          "ReplicatesTotal", "Replicates_Positive", "Replicates_Negative", "Replicates_Failed",
           "Cq_median_177T", "Cq_median_18S2",
           "Cq_median_RNAseP_DNA", "Cq_median_RNAseP_RNA",
           "Delta_18S2_177T", "Delta_RP",
@@ -647,8 +649,8 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
       ) %>%
         formatStyle('FinalCall',
                     backgroundColor = styleEqual(
-                      c('Positive', 'LatePositive', 'Negative', 'Indeterminate', 'Invalid_NoDNA', 'Control', 'Control_Fail'),
-                      c('#d4edda', '#ffe8a1', '#f8f9fa', '#fff3cd', '#f8d7da', '#dbe9ff', '#f5c6cb')
+                      c('Positive', 'Positive_DNA', 'Positive_RNA', 'LatePositive', 'Negative', 'Indeterminate', 'Invalid_NoDNA', 'Control', 'Control_Fail'),
+                      c('#d4edda', '#b3e0f2', '#d4b3f2', '#ffe8a1', '#f8f9fa', '#fff3cd', '#f8d7da', '#dbe9ff', '#f5c6cb')
                     ))
     })
 
@@ -821,6 +823,8 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
               color = ~FinalCall,
               colors = c(
                 "Positive" = "#27ae60",
+                "Positive_DNA" = "#3498db",
+                "Positive_RNA" = "#9b59b6",
                 "LatePositive" = "#f39c12",
                 "Negative" = "#95a5a6",
                 "Indeterminate" = "#f1c40f",

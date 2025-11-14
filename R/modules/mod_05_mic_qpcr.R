@@ -485,10 +485,22 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
     left_join(summary_clean, by = c("RunID", "SampleID", "SampleName"))
 
   # Determine final call and flags - use rowwise for complex logic
+  # Extract min_positive_reps setting (default 2/4)
+  min_tna_reps <- if (!is.null(settings$min_positive_reps)) {
+    as.numeric(settings$min_positive_reps)
+  } else {
+    2  # Default: require 2/4 replicates for positive call
+  }
+
   samples_wide <- samples_wide %>%
     rowwise() %>%
     mutate(
       PipelineCategoryLower = tolower(coalesce(PipelineCategory, "")),
+
+      # Calculate QC pass count (based on RNAseP-DNA detection)
+      QC_Pass_Count = coalesce(ReplicatesTotal, 4) - coalesce(Replicates_Failed, 0),
+
+      # Per-target positivity based on well counts
       PositiveTryp = (Call_177T == "Positive" | Call_18S2 == "Positive"),
       LateTryp = !PositiveTryp & (Call_177T == "LatePositive" | Call_18S2 == "LatePositive"),
       HostOK = (Call_RNAseP_DNA %in% c("Positive", "LatePositive")),
@@ -514,20 +526,38 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
           Call_18S2 %in% c("Positive", "LatePositive") &
           !(Call_177T == "Positive" & Call_18S2 == "Positive")
       ),
+
+      # Enhanced final call using clear decision tree
       FinalCall = case_when(
+        # Step 0: Handle controls first
         ControlType %in% c("PC", "NC") & PipelineCategoryLower == "control_fail" ~ "Control_Fail",
         ControlType %in% c("PC", "NC") ~ "Control",
-        PipelineCategoryLower == "positive" ~ "Positive",
-        PipelineCategoryLower == "failed" ~ "Invalid_NoDNA",
-        PipelineCategoryLower == "inconclusive" ~ "Indeterminate",
-        PipelineCategoryLower == "negative" & LateTryp ~ "LatePositive",
-        PipelineCategoryLower == "negative" ~ "Negative",
-        PipelineCategoryLower == "control_fail" ~ "Control_Fail",
-        PipelineCategoryLower == "control_ok" ~ "Control",
-        HostFailed ~ "Invalid_NoDNA",
-        PositiveTryp ~ "Positive",
-        LateTryp ~ "LatePositive",
-        TRUE ~ if_else(ControlType == "Sample", "Indeterminate", "Control")
+
+        # Step 1: Check QC validity (all replicates failed QC)
+        QC_Pass_Count == 0 ~ "Invalid",
+
+        # Step 2: TNA-based calling (highest priority) - use well counts
+        Wells_TNA_Positive >= min_tna_reps ~ "Positive",
+
+        # Step 3: Single replicate TNA positive
+        Wells_TNA_Positive == 1 ~ "Indeterminate",
+
+        # Step 4: DNA or RNA only patterns (using well counts)
+        Wells_DNA_Positive >= min_tna_reps & Wells_RNA_Positive == 0 ~ "Positive_DNA",
+        Wells_RNA_Positive >= min_tna_reps & Wells_DNA_Positive == 0 ~ "Positive_RNA",
+
+        # Step 5: Late positives (TNA suspect with sufficient replicates)
+        Wells_TNA_Suspect >= min_tna_reps ~ "LatePositive",
+
+        # Step 6: Mixed weak signals (1 replicate with DNA or RNA)
+        Wells_DNA_Positive == 1 | Wells_RNA_Positive == 1 ~ "Indeterminate",
+        Wells_TNA_Suspect == 1 ~ "Indeterminate",
+
+        # Step 7: True negative (good QC, no detection)
+        QC_Pass_Count >= min_tna_reps ~ "Negative",
+
+        # Step 8: Insufficient valid replicates
+        TRUE ~ "Indeterminate"
       ),
       Flags = {
         flags <- character()
@@ -554,7 +584,8 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
       -Flag_SampleDecay,
       -PipelineCategoryLower,
       -PipelineQualityFlagClean,
-      -PipelineDecisionFlag
+      -PipelineDecisionFlag,
+      -QC_Pass_Count
     )
 
   samples_wide <- samples_wide %>%

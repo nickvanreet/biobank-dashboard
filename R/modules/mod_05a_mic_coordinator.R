@@ -69,7 +69,8 @@ mod_mic_qpcr_coordinator_server <- function(id, biobank_df, extractions_df, filt
       ),
       late_window = c(38, 40),
       delta_rp_limit = 8,
-      allow_review_controls = FALSE
+      allow_review_controls = FALSE,
+      min_positive_reps = 2  # Default: require 2/4 replicates for positive call
     ))
     
     # Settings modal
@@ -204,7 +205,7 @@ mod_mic_qpcr_coordinator_server <- function(id, biobank_df, extractions_df, filt
     mod_mic_analysis_server("analysis", filtered_base)
     
     # Export module - All downloads
-    mod_mic_export_server("export", processed_data, filtered_base)
+    mod_mic_export_server("export", processed_data, filtered_base, settings)
 
     # =========================================================================
     # RETURN DATA - For downstream modules (e.g., DRS/RNAseP)

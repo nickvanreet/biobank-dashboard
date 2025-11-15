@@ -103,6 +103,19 @@ mod_mic_analysis_ui <- function(id) {
         )
       ),
 
+      card(
+        class = "mic-plot-card",
+        card_header("Sample Testing Frequency"),
+        card_body(
+          div(
+            class = "mb-3",
+            textOutput(ns("sample_repeat_caption"))
+          ),
+          tableOutput(ns("sample_repeat_table")),
+          class = "p-3"
+        )
+      ),
+
       # === SECTION 4: Quality Metrics ===
       h4("Quality Control Metrics", class = "mt-4 mb-3"),
       layout_column_wrap(
@@ -447,6 +460,120 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
           yaxis = list(title = "177T Cq Value"),
           showlegend = FALSE
         )
+    })
+
+    # Helper: Sample repeat frequency summary ---------------------------------
+    sample_repeat_summary <- reactive({
+      df <- filtered_base()
+
+      if (is.null(df) || !nrow(df)) {
+        return(NULL)
+      }
+
+      if (!"ControlType" %in% names(df)) {
+        return(list(message = "Control information is unavailable for the current selection."))
+      }
+
+      has_sample_id <- "SampleID" %in% names(df)
+      has_sample_name <- "SampleName" %in% names(df)
+
+      if (!has_sample_id && !has_sample_name) {
+        return(list(message = "No sample identifiers available to summarise repeats."))
+      }
+
+      if (!"RunID" %in% names(df)) {
+        return(list(message = "Run identifiers are missing, so repeat testing cannot be calculated."))
+      }
+
+      sample_runs <- df %>%
+        filter(ControlType == "Sample") %>%
+        mutate(
+          SampleKey = dplyr::coalesce(
+            if (has_sample_id) as.character(SampleID) else NA_character_,
+            if (has_sample_name) as.character(SampleName) else NA_character_,
+            "Unknown sample"
+          ),
+          RunKey = dplyr::coalesce(as.character(RunID), "Unknown run")
+        ) %>%
+        distinct(SampleKey, RunKey)
+
+      if (!nrow(sample_runs)) {
+        return(list(message = "No samples available after filters are applied."))
+      }
+
+      sample_counts <- sample_runs %>%
+        count(SampleKey, name = "TimesTested")
+
+      if (!nrow(sample_counts)) {
+        return(list(message = "Unable to determine repeat testing counts."))
+      }
+
+      distribution <- sample_counts %>%
+        count(TimesTested, name = "NumberOfSamples") %>%
+        arrange(TimesTested) %>%
+        mutate(
+          Percent = if (sum(NumberOfSamples) > 0) {
+            sprintf("%.1f%%", NumberOfSamples / sum(NumberOfSamples) * 100)
+          } else {
+            "0.0%"
+          }
+        )
+
+      list(
+        table = distribution %>%
+          transmute(
+            `Times Tested` = TimesTested,
+            `Number of Samples` = NumberOfSamples,
+            `Percent of Samples` = Percent
+          ),
+        total_samples = nrow(sample_counts),
+        total_instances = nrow(sample_runs),
+        repeated_samples = sum(sample_counts$TimesTested > 1)
+      )
+    })
+
+    output$sample_repeat_table <- renderTable({
+      summary <- sample_repeat_summary()
+
+      if (is.null(summary)) {
+        return(tibble(`Times Tested` = integer(), `Number of Samples` = integer(), `Percent of Samples` = character()))
+      }
+
+      if (!is.null(summary$message)) {
+        return(tibble(Message = summary$message))
+      }
+
+      summary$table
+    },
+    striped = TRUE,
+    bordered = TRUE,
+    hover = TRUE,
+    spacing = "s",
+    align = "c",
+    rownames = FALSE)
+
+    output$sample_repeat_caption <- renderText({
+      summary <- sample_repeat_summary()
+
+      if (is.null(summary)) {
+        return("No sample data available for the current filters.")
+      }
+
+      if (!is.null(summary$message)) {
+        return(summary$message)
+      }
+
+      repeated <- summary$repeated_samples
+
+      paste0(
+        format(summary$total_samples, big.mark = ","),
+        " unique samples covering ",
+        format(summary$total_instances, big.mark = ","),
+        " run-sample combinations. ",
+        format(repeated, big.mark = ","),
+        if (repeated == 1) " sample was" else " samples were",
+        " tested more than once."
+      )
     })
 
     # === NEW: Replicate Concordance Heatmap ===

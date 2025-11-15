@@ -121,27 +121,41 @@ mod_mic_qc_server <- function(id, processed_data) {
                           "Mean Cq: %{y:.2f}<br>",
                           "<extra></extra>"
                         )) %>%
-          add_lines(y = ~Mean, name = 'Mean',
+          add_lines(data = lj$data, x = ~RunID, y = ~Mean, name = 'Mean',
                     line = list(color = 'black', width = 2, dash = 'solid'),
-                    hoverinfo = 'skip') %>%
-          add_lines(y = ~plus1, name = '+1 SD',
+                    mode = 'lines',
+                    hoverinfo = 'skip',
+                    inherit = FALSE) %>%
+          add_lines(data = lj$data, x = ~RunID, y = ~plus1, name = '+1 SD',
                     line = list(color = '#3498db', dash = 'dot', width = 1),
-                    hoverinfo = 'skip') %>%
-          add_lines(y = ~minus1, name = '-1 SD',
+                    mode = 'lines',
+                    hoverinfo = 'skip',
+                    inherit = FALSE) %>%
+          add_lines(data = lj$data, x = ~RunID, y = ~minus1, name = '-1 SD',
                     line = list(color = '#3498db', dash = 'dot', width = 1),
-                    hoverinfo = 'skip') %>%
-          add_lines(y = ~plus2, name = '+2 SD',
+                    mode = 'lines',
+                    hoverinfo = 'skip',
+                    inherit = FALSE) %>%
+          add_lines(data = lj$data, x = ~RunID, y = ~plus2, name = '+2 SD',
                     line = list(color = '#f39c12', dash = 'dash', width = 2),
-                    hoverinfo = 'skip') %>%
-          add_lines(y = ~minus2, name = '-2 SD',
+                    mode = 'lines',
+                    hoverinfo = 'skip',
+                    inherit = FALSE) %>%
+          add_lines(data = lj$data, x = ~RunID, y = ~minus2, name = '-2 SD',
                     line = list(color = '#f39c12', dash = 'dash', width = 2),
-                    hoverinfo = 'skip') %>%
-          add_lines(y = ~plus3, name = '+3 SD',
+                    mode = 'lines',
+                    hoverinfo = 'skip',
+                    inherit = FALSE) %>%
+          add_lines(data = lj$data, x = ~RunID, y = ~plus3, name = '+3 SD',
                     line = list(color = '#e74c3c', dash = 'dashdot', width = 2),
-                    hoverinfo = 'skip') %>%
-          add_lines(y = ~minus3, name = '-3 SD',
+                    mode = 'lines',
+                    hoverinfo = 'skip',
+                    inherit = FALSE) %>%
+          add_lines(data = lj$data, x = ~RunID, y = ~minus3, name = '-3 SD',
                     line = list(color = '#e74c3c', dash = 'dashdot', width = 2),
-                    hoverinfo = 'skip') %>%
+                    mode = 'lines',
+                    hoverinfo = 'skip',
+                    inherit = FALSE) %>%
           layout(
             xaxis = list(title = "Run ID", tickangle = -45, automargin = TRUE),
             yaxis = list(title = "Cq Value", automargin = TRUE),

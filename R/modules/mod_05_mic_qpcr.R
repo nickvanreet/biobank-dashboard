@@ -53,6 +53,54 @@ normalize_id <- function(x) {
   x %>% as.character() %>% str_trim() %>% toupper()
 }
 
+normalize_field_name <- function(x) {
+  if (is.null(x)) return(NA_character_)
+
+  x %>%
+    stringi::stri_trans_general("Latin-ASCII") %>%
+    tolower() %>%
+    str_replace_all("[^a-z0-9]+", "")
+}
+
+match_column_name <- function(data_names, candidates) {
+  if (is.null(data_names) || !length(data_names)) {
+    return(NULL)
+  }
+
+  normalized_cols <- tibble(
+    original = data_names,
+    normalized = normalize_field_name(data_names)
+  ) %>%
+    mutate(normalized = replace_na(normalized, ""))
+
+  for (candidate in candidates) {
+    cand_norm <- normalize_field_name(candidate)
+
+    if (is.na(cand_norm) || !nzchar(cand_norm)) {
+      next
+    }
+
+    direct_match <- which(normalized_cols$normalized == cand_norm)
+    if (length(direct_match)) {
+      return(normalized_cols$original[direct_match[1]])
+    }
+
+    partial_match <- which(vapply(normalized_cols$normalized, function(col_norm) {
+      if (!nzchar(col_norm)) {
+        return(FALSE)
+      }
+
+      str_detect(col_norm, fixed(cand_norm)) || str_detect(cand_norm, fixed(col_norm))
+    }, logical(1)))
+
+    if (length(partial_match)) {
+      return(normalized_cols$original[partial_match[1]])
+    }
+  }
+
+  NULL
+}
+
 safe_get_column <- function(df, possible_names, default = NA_character_) {
   # Try each possible column name and return the first one found
   for (name in possible_names) {
@@ -835,25 +883,26 @@ link_to_biobank <- function(samples_df, biobank_df) {
   message("📊 Biobank data has ", nrow(biobank_df), " rows")
 
   fetch_column <- function(data, candidates, transform = identity, default = NA_character_) {
-    for (col in candidates) {
-      if (col %in% names(data)) {
-        return(transform(data[[col]]))
-      }
+    matched <- match_column_name(names(data), candidates)
+
+    if (!is.null(matched)) {
+      return(transform(data[[matched]]))
     }
 
     rep(default, nrow(data))
   }
 
   # Find the ID column (use lab_id or barcode from your actual data)
-  id_col <- NULL
-  for (col in c("lab_id", "barcode", "numero", "Numero", "Sample", "sample_id")) {
-    if (col %in% names(biobank_df)) {
-      id_col <- col
-      message("✓ Found ID column: ", col)
-      break
-    }
+  id_candidates <- c(
+    "lab_id", "barcode", "numero", "Numero", "Sample", "sample_id",
+    "code_barres_kps", "code-barres kps", "codebarres_kps"
+  )
+  id_col <- match_column_name(names(biobank_df), id_candidates)
+
+  if (!is.null(id_col)) {
+    message("✓ Found ID column: ", id_col)
   }
-  
+
   if (is.null(id_col)) {
     warning("❌ No ID column found in biobank data")
     return(samples_df %>%
@@ -871,15 +920,21 @@ link_to_biobank <- function(samples_df, biobank_df) {
   bb_lookup <- tibble(
     id_norm = normalize_id(biobank_df[[id_col]]),
     Province = fetch_column(biobank_df, c("province", "Province", "biobank_province")),
-    HealthZone = fetch_column(biobank_df, c("health_zone", "zone_de_sante", "biobank_health_zone")),
+    HealthZone = fetch_column(biobank_df, c("health_zone", "zone_de_sante", "Zone de sante", "biobank_health_zone")),
     Structure = fetch_column(
       biobank_df,
-      c("health_facility", "health_structure", "structure_sanitaire", "biobank_health_facility", "biobank_structure_sanitaire")
+      c(
+        "health_facility", "health_structure", "structure_sanitaire",
+        "structure sanitaire", "biobank_health_facility", "biobank_structure_sanitaire"
+      )
     ),
-    Cohort = fetch_column(biobank_df, c("study", "Study", "cohort", "biobank_study")),
+    Cohort = fetch_column(biobank_df, c("study", "Study", "cohort", "biobank_study", "etude")),
     SampleDate = fetch_column(
       biobank_df,
-      c("date_sample", "sample_date", "Date", "collection_date"),
+      c(
+        "date_sample", "sample_date", "Date", "collection_date",
+        "date_de_prelevement", "date_prelevement"
+      ),
       transform = function(x) suppressWarnings(as.Date(x)),
       default = as.Date(NA)
     )

@@ -207,7 +207,7 @@ mod_mic_analysis_ui <- function(id) {
   )
 }
 
-mod_mic_analysis_server <- function(id, filtered_base) {
+mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NULL) {
   moduleServer(id, function(input, output, session) {
     
     # Trypanozoon scatter plot
@@ -451,79 +451,187 @@ mod_mic_analysis_server <- function(id, filtered_base) {
 
     # === NEW: Replicate Concordance Heatmap ===
     output$heatmap_replicates <- renderPlotly({
-      df <- filtered_base() %>%
-        filter(ControlType == "Sample")
+      replicates <- if (is.null(filtered_replicates)) tibble() else filtered_replicates()
 
-      if (!nrow(df)) {
-        return(plotly_empty() %>% layout(title = "No data available"))
-      }
-
-      # Calculate % positive for each target across replicates
-      replicate_cols <- grep("^Cq_[1-4]_177T$", names(df), value = TRUE)
-
-      if (length(replicate_cols) == 0) {
+      if (!nrow(replicates)) {
         return(plotly_empty() %>% layout(title = "No replicate data available"))
       }
 
-      df_summary <- df %>%
-        head(50) %>%  # Limit to 50 samples for readability
-        mutate(
-          Pos_177T = rowSums(select(., matches("^Cq_[1-4]_177T$")) < 40, na.rm = TRUE),
-          Pos_18S2 = rowSums(select(., matches("^Cq_[1-4]_18S2$")) < 40, na.rm = TRUE),
-          Pos_RNP_DNA = rowSums(select(., matches("^Cq_[1-4]_RNAseP_DNA$")) < 40, na.rm = TRUE),
-          Pos_RNP_RNA = rowSums(select(., matches("^Cq_[1-4]_RNAseP_RNA$")) < 40, na.rm = TRUE)
+      target_map <- c(
+        "177T" = "177T",
+        "18S2" = "18S2",
+        "RNAseP_DNA" = "RNAseP-DNA",
+        "RNAseP_RNA" = "RNAseP-RNA"
+      )
+
+      summary_df <- replicates %>%
+        filter(ControlType == "Sample", Target %in% names(target_map)) %>%
+        mutate(TargetLabel = target_map[Target]) %>%
+        group_by(SampleName, TargetLabel) %>%
+        summarise(
+          TotalReps = sum(!is.na(Cq)),
+          PositiveReps = sum(Call == "Positive", na.rm = TRUE),
+          .groups = "drop"
         ) %>%
-        select(SampleName, Pos_177T, Pos_18S2, Pos_RNP_DNA, Pos_RNP_RNA)
+        filter(TotalReps > 0)
 
-      # Convert to matrix for heatmap
-      mat <- as.matrix(df_summary[, -1])
-      rownames(mat) <- df_summary$SampleName
+      if (!nrow(summary_df)) {
+        return(plotly_empty() %>% layout(title = "No replicate data available"))
+      }
 
-      plot_ly(z = t(mat),
-              x = rownames(mat),
-              y = c("177T", "18S2", "RNP-DNA", "RNP-RNA"),
-              type = "heatmap",
-              colors = colorRamp(c("#ffffff", "#27ae60")),
-              hovertemplate = paste0(
-                "Sample: %{x}<br>",
-                "Target: %{y}<br>",
-                "Positive: %{z}/4<br>",
-                "<extra></extra>"
-              )) %>%
+      sample_levels <- summary_df %>%
+        group_by(SampleName) %>%
+        summarise(
+          TotalPositive = sum(PositiveReps, na.rm = TRUE),
+          TotalReps = sum(TotalReps, na.rm = TRUE),
+          .groups = "drop"
+        ) %>%
+        arrange(desc(TotalPositive), desc(TotalReps), SampleName) %>%
+        slice_head(n = 50) %>%
+        pull(SampleName)
+
+      if (!length(sample_levels)) {
+        return(plotly_empty() %>% layout(title = "No replicate data available"))
+      }
+
+      target_levels <- unname(target_map[c("177T", "18S2", "RNAseP_DNA", "RNAseP_RNA")])
+
+      prop_mat <- matrix(NA_real_,
+                         nrow = length(target_levels),
+                         ncol = length(sample_levels),
+                         dimnames = list(target_levels, sample_levels))
+
+      text_mat <- matrix("",
+                         nrow = length(target_levels),
+                         ncol = length(sample_levels),
+                         dimnames = list(target_levels, sample_levels))
+
+      summary_filtered <- summary_df %>%
+        filter(SampleName %in% sample_levels) %>%
+        mutate(
+          SampleName = factor(SampleName, levels = sample_levels),
+          TargetLabel = factor(TargetLabel, levels = target_levels)
+        ) %>%
+        arrange(TargetLabel, SampleName)
+
+      if (nrow(summary_filtered)) {
+        for (i in seq_len(nrow(summary_filtered))) {
+          row <- summary_filtered[i, ]
+          target <- as.character(row$TargetLabel)
+          sample <- as.character(row$SampleName)
+          pos <- row$PositiveReps
+          total <- row$TotalReps
+
+          if (is.na(pos)) pos <- 0
+
+          if (!is.na(total) && total > 0) {
+            prop <- pos / total
+            prop_mat[target, sample] <- prop
+            percent_lbl <- paste0(round(prop * 100), "%")
+            text_mat[target, sample] <- paste0(
+              "Sample: ", sample, "<br>",
+              "Target: ", target, "<br>",
+              "Positive replicates: ", pos, "/", total, "<br>",
+              "Percent positive: ", percent_lbl
+            )
+          } else {
+            text_mat[target, sample] <- paste0(
+              "Sample: ", sample, "<br>",
+              "Target: ", target, "<br>",
+              "No valid replicates"
+            )
+          }
+        }
+      }
+
+      for (target in target_levels) {
+        for (sample in sample_levels) {
+          if (text_mat[target, sample] == "") {
+            text_mat[target, sample] <- paste0(
+              "Sample: ", sample, "<br>",
+              "Target: ", target, "<br>",
+              "No replicate data"
+            )
+          }
+        }
+      }
+
+      plot_ly(
+        x = sample_levels,
+        y = target_levels,
+        z = prop_mat,
+        type = "heatmap",
+        colorscale = list(c(0, "#f5f7fa"), c(1, "#27ae60")),
+        zmin = 0,
+        zmax = 1,
+        text = text_mat,
+        hoverinfo = "text",
+        colorbar = list(title = "% Positive", tickformat = ".0%")
+      ) %>%
         layout(
-          title = paste0("First 50 samples (n = ", nrow(df_summary), ")"),
-          xaxis = list(title = "", tickangle = -45),
+          title = paste0("Top ", length(sample_levels), " samples by replicate positivity"),
+          xaxis = list(title = "Sample", tickangle = -45),
           yaxis = list(title = "Target")
         )
     })
 
     # === NEW: Replicate Count Bar Chart ===
     output$bar_replicate_counts <- renderPlotly({
-      df <- filtered_base() %>%
-        filter(ControlType == "Sample")
+      replicates <- if (is.null(filtered_replicates)) tibble() else filtered_replicates()
 
-      if (!nrow(df)) {
-        return(plotly_empty() %>% layout(title = "No data available"))
+      if (!nrow(replicates)) {
+        return(plotly_empty() %>% layout(title = "No replicate data available"))
       }
 
-      # Count positive replicates for 177T
-      if (!"PosCount_177T" %in% names(df)) {
-        # Calculate on the fly
-        df <- df %>%
-          mutate(PosCount_177T = rowSums(select(., matches("^Cq_[1-4]_177T$")) < 40, na.rm = TRUE))
+      rep_counts <- replicates %>%
+        filter(ControlType == "Sample", Target == "177T", !is.na(Cq)) %>%
+        group_by(SampleName) %>%
+        summarise(
+          TotalReps = sum(!is.na(Cq)),
+          PositiveReps = sum(Call == "Positive", na.rm = TRUE),
+          .groups = "drop"
+        )
+
+      if (!nrow(rep_counts)) {
+        return(plotly_empty() %>% layout(title = "No 177T replicate data available"))
       }
 
-      df_counts <- df %>%
-        count(PosCount_177T) %>%
-        mutate(PosCount_177T = factor(PosCount_177T, levels = 0:4))
+      max_reps <- max(rep_counts$TotalReps, na.rm = TRUE)
+      if (!is.finite(max_reps)) {
+        max_reps <- 4
+      }
+      max_reps <- max(0, as.integer(ceiling(max(max_reps, 4))))
 
-      plot_ly(df_counts, x = ~PosCount_177T, y = ~n,
-              type = "bar",
-              marker = list(color = c("#95a5a6", "#f39c12", "#27ae60", "#27ae60", "#27ae60")),
-              text = ~n,
-              textposition = "outside") %>%
+      rep_distribution <- rep_counts %>%
+        count(PositiveReps, name = "SampleCount") %>%
+        tidyr::complete(PositiveReps = 0:max_reps, fill = list(SampleCount = 0)) %>%
+        mutate(
+          PositiveReps = factor(PositiveReps, levels = 0:max_reps),
+          PositiveNumeric = as.numeric(as.character(PositiveReps)),
+          HoverLabel = paste0(
+            SampleCount, " sample", if_else(SampleCount == 1, "", "s"),
+            " with ", PositiveNumeric, " positive replicate",
+            if_else(PositiveNumeric == 1, "", "s")
+          )
+        )
+
+      marker_colors <- rep("#27ae60", nrow(rep_distribution))
+      marker_colors[rep_distribution$PositiveNumeric == 0] <- "#95a5a6"
+      marker_colors[rep_distribution$PositiveNumeric == 1] <- "#f39c12"
+
+      plot_ly(
+        rep_distribution,
+        x = ~PositiveReps,
+        y = ~SampleCount,
+        type = "bar",
+        marker = list(color = marker_colors),
+        text = ~SampleCount,
+        textposition = "outside",
+        customdata = ~HoverLabel,
+        hovertemplate = "%{customdata}<extra></extra>"
+      ) %>%
         layout(
-          title = paste0("n = ", sum(df_counts$n)),
+          title = paste0("Samples analysed: ", sum(rep_distribution$SampleCount)),
           xaxis = list(title = "# Positive Replicates (177T)"),
           yaxis = list(title = "Sample Count"),
           showlegend = FALSE

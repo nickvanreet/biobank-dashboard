@@ -176,7 +176,7 @@ mod_mic_export_server <- function(id, processed_data, filtered_base, settings = 
       filename = function() sprintf("mic_lj_stats_%s.csv", format(Sys.Date(), "%Y%m%d")),
       content = function(file) {
         lj <- processed_data()$lj_stats
-        stats <- map_dfr(lj, "summary", .id = "Target")
+        stats <- map_dfr(lj, "summary")
         write_csv(stats, file)
       }
     )
@@ -198,7 +198,7 @@ mod_mic_export_server <- function(id, processed_data, filtered_base, settings = 
           "Samples" = filtered_base() %>% filter(ControlType == "Sample"),
           "Runs" = pd$runs,
           "Controls" = pd$control_status,
-          "LJ_Stats" = map_dfr(pd$lj_stats, "summary", .id = "Target"),
+          "LJ_Stats" = map_dfr(pd$lj_stats, "summary"),
           "Replicates" = pd$replicates
         )
         

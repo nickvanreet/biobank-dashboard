@@ -981,25 +981,98 @@ link_to_extractions <- function(samples_df, extractions_df) {
 # =============================================================================
 
 compute_levey_jennings <- function(replicates_long, target, control_type = "PC") {
-  df <- replicates_long %>%
-    filter(ControlType == control_type, Target == target, !is.na(Cq))
-  
-  if (!nrow(df)) {
+  if (!nrow(replicates_long)) {
     return(list(
       data = tibble(),
-      summary = tibble(Target = target, Mean = NA_real_, SD = NA_real_, N = 0)
+      summary = tibble(
+        Target = target,
+        ControlType = control_type,
+        Mean = NA_real_,
+        SD = NA_real_,
+        N = 0,
+        FallbackUsed = FALSE
+      ),
+      fallback = FALSE,
+      control_type_used = control_type
     ))
   }
-  
-  # Calculate mean Cq per run
-  run_stats <- df %>%
+
+  df <- replicates_long %>%
+    filter(Target == target, !is.na(Cq))
+
+  if (!"ControlType" %in% names(df)) {
+    df <- df %>% mutate(ControlType = NA_character_)
+  }
+
+  has_controls <- function(x) {
+    any(x %in% c("PC", "NC"), na.rm = TRUE)
+  }
+
+  if (!has_controls(df$ControlType) && "Type" %in% names(df)) {
+    df <- df %>%
+      mutate(
+        ControlType = case_when(
+          ControlType %in% c("PC", "NC") ~ ControlType,
+          Type %in% c("Positive", "Positive Control", "Standard", "CP", "PC", "POS") ~ "PC",
+          Type %in% c("Negative", "Negative Control", "NC", "NTC", "NEG") ~ "NC",
+          TRUE ~ ControlType
+        )
+      )
+  }
+
+  if (!has_controls(df$ControlType)) {
+    df <- df %>%
+      mutate(
+        .name_upper = toupper(ifelse(is.na(SampleName), "", as.character(SampleName))),
+        .id_upper = toupper(ifelse(is.na(SampleID), "", as.character(SampleID))),
+        ControlType = case_when(
+          ControlType %in% c("PC", "NC") ~ ControlType,
+          stringr::str_detect(.name_upper, "(?<![A-Z0-9])(PC|POS|POSITIVE)(?![A-Z0-9])") ~ "PC",
+          stringr::str_detect(.id_upper, "(?<![A-Z0-9])(PC|POS|POSITIVE)(?![A-Z0-9])") ~ "PC",
+          stringr::str_detect(.name_upper, "(?<![A-Z0-9])(NC|NEG|NTC|NEGATIVE)(?![A-Z0-9])") ~ "NC",
+          stringr::str_detect(.id_upper, "(?<![A-Z0-9])(NC|NEG|NTC|NEGATIVE)(?![A-Z0-9])") ~ "NC",
+          TRUE ~ ControlType
+        )
+      ) %>%
+      select(-any_of(c(".name_upper", ".id_upper")))
+  }
+
+  df <- df %>% mutate(ControlType = if_else(ControlType == "", NA_character_, ControlType))
+
+  ctrl_df <- df %>% filter(ControlType == control_type)
+  fallback <- FALSE
+  control_type_used <- control_type
+
+  if (!nrow(ctrl_df)) {
+    ctrl_df <- df
+    fallback <- TRUE
+    control_type_used <- "All"
+  }
+
+  if (!nrow(ctrl_df)) {
+    return(list(
+      data = tibble(),
+      summary = tibble(
+        Target = target,
+        ControlType = control_type_used,
+        Mean = NA_real_,
+        SD = NA_real_,
+        N = 0,
+        FallbackUsed = fallback
+      ),
+      fallback = fallback,
+      control_type_used = control_type_used
+    ))
+  }
+
+  run_stats <- ctrl_df %>%
     group_by(RunID) %>%
-    summarise(Cq_mean = mean(Cq, na.rm = TRUE), .groups = "drop")
-  
-  # Overall statistics
-  mu <- mean(df$Cq, na.rm = TRUE)
-  sdv <- sd(df$Cq, na.rm = TRUE)
-  
+    summarise(Cq_mean = mean(Cq, na.rm = TRUE), .groups = "drop") %>%
+    arrange(RunID)
+
+  mu <- mean(ctrl_df$Cq, na.rm = TRUE)
+  sdv <- sd(ctrl_df$Cq, na.rm = TRUE)
+
   plot_data <- run_stats %>%
     mutate(
       Mean = mu,
@@ -1011,10 +1084,19 @@ compute_levey_jennings <- function(replicates_long, target, control_type = "PC")
       plus3 = mu + 3 * sdv,
       minus3 = mu - 3 * sdv
     )
-  
+
   list(
     data = plot_data,
-    summary = tibble(Target = target, Mean = mu, SD = sdv, N = nrow(df))
+    summary = tibble(
+      Target = target,
+      ControlType = control_type_used,
+      Mean = mu,
+      SD = sdv,
+      N = nrow(ctrl_df),
+      FallbackUsed = fallback
+    ),
+    fallback = fallback,
+    control_type_used = control_type_used
   )
 }
 

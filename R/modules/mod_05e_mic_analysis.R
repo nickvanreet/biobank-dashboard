@@ -103,6 +103,27 @@ mod_mic_analysis_ui <- function(id) {
         )
       ),
 
+      card(
+        class = "mic-plot-card",
+        card_header("Sample Testing Frequency"),
+        card_body(
+          div(
+            class = "mb-3",
+            textOutput(ns("sample_repeat_caption"))
+          ),
+          h6("Testing distribution"),
+          tableOutput(ns("sample_repeat_table")),
+          tags$hr(),
+          h6("Final call changes across reruns"),
+          div(
+            class = "mb-2",
+            textOutput(ns("sample_transition_caption"))
+          ),
+          tableOutput(ns("sample_repeat_transition_table")),
+          class = "p-3"
+        )
+      ),
+
       # === SECTION 4: Quality Metrics ===
       h4("Quality Control Metrics", class = "mt-4 mb-3"),
       layout_column_wrap(
@@ -447,6 +468,319 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
           yaxis = list(title = "177T Cq Value"),
           showlegend = FALSE
         )
+    })
+
+    # Helper: Sample repeat frequency summary ---------------------------------
+    sample_repeat_summary <- reactive({
+      df <- filtered_base()
+
+      if (is.null(df) || !nrow(df)) {
+        return(NULL)
+      }
+
+      if (!"ControlType" %in% names(df)) {
+        return(list(message = "Control information is unavailable for the current selection."))
+      }
+
+      has_sample_id <- "SampleID" %in% names(df)
+      has_sample_name <- "SampleName" %in% names(df)
+
+      if (!has_sample_id && !has_sample_name) {
+        return(list(message = "No sample identifiers available to summarise repeats."))
+      }
+
+      if (!"RunID" %in% names(df)) {
+        return(list(message = "Run identifiers are missing, so repeat testing cannot be calculated."))
+      }
+
+      sample_runs <- df %>%
+        filter(ControlType == "Sample") %>%
+        mutate(
+          SampleKey = dplyr::coalesce(
+            if (has_sample_id) as.character(SampleID) else NA_character_,
+            if (has_sample_name) as.character(SampleName) else NA_character_,
+            "Unknown sample"
+          ),
+          RunKey = dplyr::coalesce(as.character(RunID), "Unknown run")
+        ) %>%
+        distinct(SampleKey, RunKey, .keep_all = TRUE)
+
+      if (!nrow(sample_runs)) {
+        return(list(message = "No samples available after filters are applied."))
+      }
+
+      if ("FinalCall" %in% names(sample_runs)) {
+        calls <- as.character(sample_runs$FinalCall)
+        calls[is.na(calls) | calls == ""] <- "Missing"
+        sample_runs$FinalCallClean <- calls
+      } else {
+        sample_runs$FinalCallClean <- rep("Missing", nrow(sample_runs))
+      }
+
+      run_order_value <- rep(NA_real_, nrow(sample_runs))
+
+      if ("RunDateTime" %in% names(sample_runs)) {
+        parsed <- suppressWarnings(as.POSIXct(sample_runs$RunDateTime, tz = "UTC"))
+        if (any(!is.na(parsed))) {
+          run_order_value <- as.numeric(parsed)
+        }
+      }
+
+      if (all(is.na(run_order_value)) && "RunDate" %in% names(sample_runs)) {
+        parsed_date <- suppressWarnings(as.POSIXct(sample_runs$RunDate, tz = "UTC"))
+        if (any(!is.na(parsed_date))) {
+          run_order_value <- as.numeric(parsed_date)
+        }
+      }
+
+      if (all(is.na(run_order_value))) {
+        run_order_value <- match(sample_runs$RunKey, sort(unique(sample_runs$RunKey)))
+      }
+
+      sample_runs$RunOrderValue <- run_order_value
+
+      sample_sequences <- sample_runs %>%
+        group_by(SampleKey) %>%
+        arrange(RunOrderValue, RunKey, .by_group = TRUE) %>%
+        summarise(
+          TimesTested = dplyr::n(),
+          FirstCall = dplyr::first(FinalCallClean),
+          MostRecentCall = dplyr::last(FinalCallClean),
+          EverChanged = dplyr::n_distinct(FinalCallClean) > 1,
+          .groups = "drop"
+        )
+
+      sample_counts <- sample_sequences
+
+      if (!nrow(sample_counts)) {
+        return(list(message = "Unable to determine repeat testing counts."))
+      }
+
+      distribution <- sample_counts %>%
+        count(TimesTested, name = "NumberOfSamples") %>%
+        arrange(TimesTested) %>%
+        mutate(
+          Percent = if (sum(NumberOfSamples) > 0) {
+            sprintf("%.1f%%", NumberOfSamples / sum(NumberOfSamples) * 100)
+          } else {
+            "0.0%"
+          }
+        )
+
+      repeated_details <- sample_sequences %>%
+        filter(TimesTested > 1)
+
+      repeated_samples <- nrow(repeated_details)
+      repeated_changes <- 0
+      repeated_reverted <- 0
+      transition_table <- NULL
+
+      if (repeated_samples > 0) {
+        repeated_changes <- sum(repeated_details$EverChanged)
+        repeated_reverted <- sum(repeated_details$EverChanged &
+                                    repeated_details$FirstCall == repeated_details$MostRecentCall)
+
+        transition_table <- repeated_details %>%
+          transmute(
+            FirstCall,
+            MostRecentCall,
+            CallStatus = dplyr::case_when(
+              EverChanged & FirstCall != MostRecentCall ~ "Changed",
+              EverChanged ~ "Changed (reverted)",
+              TRUE ~ "No change"
+            )
+          ) %>%
+          count(FirstCall, MostRecentCall, CallStatus, name = "Number of Samples") %>%
+          mutate(`Percent of Repeated Samples` = sprintf("%.1f%%", `Number of Samples` / repeated_samples * 100)) %>%
+          arrange(desc(`Number of Samples`), FirstCall, MostRecentCall) %>%
+          transmute(
+            `First Run Call` = FirstCall,
+            `Most Recent Call` = MostRecentCall,
+            `Call Status` = CallStatus,
+            `Number of Samples`,
+            `Percent of Repeated Samples`
+          )
+      }
+
+      list(
+        table = distribution %>%
+          transmute(
+            `Times Tested` = TimesTested,
+            `Number of Samples` = NumberOfSamples,
+            `Percent of Samples` = Percent
+          ),
+        total_samples = nrow(sample_counts),
+        total_instances = nrow(sample_runs),
+        repeated_samples = repeated_samples,
+        repeated_samples_changed = repeated_changes,
+        repeated_samples_reverted = repeated_reverted,
+        transition_table = transition_table
+      )
+    })
+
+    output$sample_repeat_table <- renderTable({
+      summary <- sample_repeat_summary()
+
+      if (is.null(summary)) {
+        return(tibble(`Times Tested` = integer(), `Number of Samples` = integer(), `Percent of Samples` = character()))
+      }
+
+      if (!is.null(summary$message)) {
+        return(tibble(Message = summary$message))
+      }
+
+      summary$table
+    },
+    striped = TRUE,
+    bordered = TRUE,
+    hover = TRUE,
+    spacing = "s",
+    align = "c",
+    rownames = FALSE)
+
+    output$sample_repeat_transition_table <- renderTable({
+      summary <- sample_repeat_summary()
+
+      if (is.null(summary)) {
+        return(tibble(`First Run Call` = character(), `Most Recent Call` = character(), `Call Status` = character(),
+                      `Number of Samples` = integer(), `Percent of Repeated Samples` = character()))
+      }
+
+      if (!is.null(summary$message)) {
+        return(tibble(Message = summary$message))
+      }
+
+      if (is.null(summary$transition_table)) {
+        return(tibble(Message = "No retested samples available for transition analysis."))
+      }
+
+      summary$transition_table
+    },
+    striped = TRUE,
+    bordered = TRUE,
+    hover = TRUE,
+    spacing = "s",
+    align = "c",
+    rownames = FALSE)
+
+    output$sample_repeat_caption <- renderText({
+      summary <- sample_repeat_summary()
+
+      if (is.null(summary)) {
+        return("No sample data available for the current filters.")
+      }
+
+      if (!is.null(summary$message)) {
+        return(summary$message)
+      }
+
+      repeated <- summary$repeated_samples
+
+      base_text <- paste0(
+        format(summary$total_samples, big.mark = ","),
+        " unique samples covering ",
+        format(summary$total_instances, big.mark = ","),
+        " run-sample combinations. ",
+        format(repeated, big.mark = ","),
+        if (repeated == 1) " sample was" else " samples were",
+        " tested more than once."
+      )
+
+      if (repeated == 0) {
+        return(paste0(base_text, " No samples were retested."))
+      }
+
+      changed <- summary$repeated_samples_changed
+      reverted <- summary$repeated_samples_reverted
+      changed_no_revert <- max(changed - reverted, 0)
+      stable <- repeated - changed
+
+      details <- c()
+
+      if (changed > 0) {
+        details <- c(details, paste0(
+          format(changed, big.mark = ","),
+          if (changed == 1) " retested sample changed" else " retested samples changed",
+          " final call at least once"
+        ))
+      } else {
+        details <- c(details, "None of the retested samples changed final call")
+      }
+
+      if (changed_no_revert > 0) {
+        details <- c(details, paste0(
+          format(changed_no_revert, big.mark = ","),
+          if (changed_no_revert == 1) " sample ended" else " samples ended",
+          " with a different final call"
+        ))
+      }
+
+      if (reverted > 0) {
+        details <- c(details, paste0(
+          format(reverted, big.mark = ","),
+          if (reverted == 1) " sample returned" else " samples returned",
+          " to the original call after intermediate changes"
+        ))
+      }
+
+      if (stable > 0) {
+        details <- c(details, paste0(
+          format(stable, big.mark = ","),
+          if (stable == 1) " sample maintained" else " samples maintained",
+          " the same call across reruns"
+        ))
+      }
+
+      paste0(base_text, " ", paste0(details, collapse = "; "), ".")
+    })
+
+    output$sample_transition_caption <- renderText({
+      summary <- sample_repeat_summary()
+
+      if (is.null(summary)) {
+        return("No sample data available for the current filters.")
+      }
+
+      if (!is.null(summary$message)) {
+        return(summary$message)
+      }
+
+      if (is.null(summary$transition_table)) {
+        return("No samples were retested under the current filters.")
+      }
+
+      changed <- summary$repeated_samples_changed
+      reverted <- summary$repeated_samples_reverted
+      changed_no_revert <- max(changed - reverted, 0)
+      stable <- summary$repeated_samples - changed
+
+      parts <- character()
+
+      if (changed_no_revert > 0) {
+        parts <- c(parts, paste0(
+          format(changed_no_revert, big.mark = ","),
+          if (changed_no_revert == 1) " sample ended" else " samples ended",
+          " with a different final call than their first run."
+        ))
+      }
+
+      if (reverted > 0) {
+        parts <- c(parts, paste0(
+          format(reverted, big.mark = ","),
+          if (reverted == 1) " sample returned" else " samples returned",
+          " to the original call after intermediate changes."
+        ))
+      }
+
+      if (stable > 0) {
+        parts <- c(parts, paste0(
+          format(stable, big.mark = ","),
+          if (stable == 1) " sample maintained" else " samples maintained",
+          " the same call across reruns."
+        ))
+      }
+
+      paste(parts, collapse = " ")
     })
 
     # === NEW: Replicate Concordance Heatmap ===

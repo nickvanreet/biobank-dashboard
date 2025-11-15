@@ -6,6 +6,17 @@ mod_mic_analysis_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
+    tags$style(HTML(
+      "
+      .mic-plot-card .card-body {
+        overflow: visible;
+      }
+
+      .mic-plot-card .plotly.html-widget {
+        height: auto !important;
+      }
+      "
+    )),
     # === SECTION 1: Detection Scatter Plots ===
     h4("Detection Analysis", class = "mt-3 mb-3"),
     layout_columns(
@@ -13,6 +24,7 @@ mod_mic_analysis_ui <- function(id) {
 
       # Trypanozoon scatter
       card(
+        class = "mic-plot-card",
         card_header("Trypanozoon Detection: 18S2 vs 177T"),
         card_body(
           plotlyOutput(ns("scatter_tryp"), height = "550px"),
@@ -22,6 +34,7 @@ mod_mic_analysis_ui <- function(id) {
 
       # RNAseP quality scatter
       card(
+        class = "mic-plot-card",
         card_header("RNA Preservation Quality: RNAseP RNA vs DNA"),
         card_body(
           plotlyOutput(ns("scatter_rnp"), height = "550px"),
@@ -36,6 +49,7 @@ mod_mic_analysis_ui <- function(id) {
       col_widths = c(6, 6),
 
       card(
+        class = "mic-plot-card",
         card_header("Cq Distribution by Target"),
         card_body(
           plotlyOutput(ns("box_cq_by_target"), height = "450px"),
@@ -44,6 +58,7 @@ mod_mic_analysis_ui <- function(id) {
       ),
 
       card(
+        class = "mic-plot-card",
         card_header("Cq Distribution by Final Call"),
         card_body(
           plotlyOutput(ns("box_cq_by_call"), height = "450px"),
@@ -58,6 +73,7 @@ mod_mic_analysis_ui <- function(id) {
       col_widths = c(8, 4),
 
       card(
+        class = "mic-plot-card",
         card_header("Replicate Positivity Heatmap"),
         card_body(
           plotlyOutput(ns("heatmap_replicates"), height = "500px"),
@@ -66,6 +82,7 @@ mod_mic_analysis_ui <- function(id) {
       ),
 
       card(
+        class = "mic-plot-card",
         card_header("Positive Replicate Distribution"),
         card_body(
           plotlyOutput(ns("bar_replicate_counts"), height = "500px"),
@@ -80,6 +97,7 @@ mod_mic_analysis_ui <- function(id) {
       col_widths = c(4, 4, 4),
 
       card(
+        class = "mic-plot-card",
         card_header("RNA Preservation Distribution"),
         card_body(
           plotlyOutput(ns("hist_delta_rp"), height = "400px"),
@@ -88,6 +106,7 @@ mod_mic_analysis_ui <- function(id) {
       ),
 
       card(
+        class = "mic-plot-card",
         card_header("RNA Quality by Detection"),
         card_body(
           plotlyOutput(ns("violin_quality"), height = "400px"),
@@ -96,6 +115,7 @@ mod_mic_analysis_ui <- function(id) {
       ),
 
       card(
+        class = "mic-plot-card",
         card_header("QC Pass Rates by Call"),
         card_body(
           plotlyOutput(ns("bar_qc_rates"), height = "400px"),
@@ -110,6 +130,7 @@ mod_mic_analysis_ui <- function(id) {
       col_widths = c(6, 6),
 
       card(
+        class = "mic-plot-card",
         card_header("Detection Pattern vs Final Call"),
         card_body(
           plotlyOutput(ns("heatmap_decision_matrix"), height = "450px"),
@@ -118,6 +139,7 @@ mod_mic_analysis_ui <- function(id) {
       ),
 
       card(
+        class = "mic-plot-card",
         card_header("ΔCq Distribution: 18S2 - 177T"),
         card_body(
           plotlyOutput(ns("hist_delta_tryp"), height = "450px"),
@@ -132,6 +154,7 @@ mod_mic_analysis_ui <- function(id) {
       col_widths = c(12),
 
       card(
+        class = "mic-plot-card",
         card_header("Temporal Trends: Volume and Positivity"),
         card_body(
           plotlyOutput(ns("line_temporal"), height = "400px"),
@@ -144,6 +167,7 @@ mod_mic_analysis_ui <- function(id) {
       col_widths = c(6, 6),
 
       card(
+        class = "mic-plot-card",
         card_header("Positivity by Province"),
         card_body(
           plotlyOutput(ns("bar_geo_positivity"), height = "450px"),
@@ -152,6 +176,7 @@ mod_mic_analysis_ui <- function(id) {
       ),
 
       card(
+        class = "mic-plot-card",
         card_header("RNA Quality by Province"),
         card_body(
           plotlyOutput(ns("box_geo_quality"), height = "450px"),

@@ -105,7 +105,7 @@ mod_mic_qc_server <- function(id, processed_data) {
                                        font = list(size = 14))))
         }
 
-        if (!nrow(lj$data)) {
+        if (is.null(lj$data) || !nrow(lj$data)) {
           return(plotly_empty() %>%
                    layout(title = list(text = glue::glue("No {target_name} control data"),
                                        font = list(size = 14))))
@@ -121,37 +121,37 @@ mod_mic_qc_server <- function(id, processed_data) {
                           "Mean Cq: %{y:.2f}<br>",
                           "<extra></extra>"
                         )) %>%
-          add_lines(data = lj$data, y = ~Mean, name = 'Mean',
+          add_lines(data = lj$data, x = ~RunID, y = ~Mean, name = 'Mean',
                     line = list(color = 'black', width = 2, dash = 'solid'),
                     mode = 'lines',
                     hoverinfo = 'skip',
                     inherit = FALSE) %>%
-          add_lines(data = lj$data, y = ~plus1, name = '+1 SD',
+          add_lines(data = lj$data, x = ~RunID, y = ~plus1, name = '+1 SD',
                     line = list(color = '#3498db', dash = 'dot', width = 1),
                     mode = 'lines',
                     hoverinfo = 'skip',
                     inherit = FALSE) %>%
-          add_lines(data = lj$data, y = ~minus1, name = '-1 SD',
+          add_lines(data = lj$data, x = ~RunID, y = ~minus1, name = '-1 SD',
                     line = list(color = '#3498db', dash = 'dot', width = 1),
                     mode = 'lines',
                     hoverinfo = 'skip',
                     inherit = FALSE) %>%
-          add_lines(data = lj$data, y = ~plus2, name = '+2 SD',
+          add_lines(data = lj$data, x = ~RunID, y = ~plus2, name = '+2 SD',
                     line = list(color = '#f39c12', dash = 'dash', width = 2),
                     mode = 'lines',
                     hoverinfo = 'skip',
                     inherit = FALSE) %>%
-          add_lines(data = lj$data, y = ~minus2, name = '-2 SD',
+          add_lines(data = lj$data, x = ~RunID, y = ~minus2, name = '-2 SD',
                     line = list(color = '#f39c12', dash = 'dash', width = 2),
                     mode = 'lines',
                     hoverinfo = 'skip',
                     inherit = FALSE) %>%
-          add_lines(data = lj$data, y = ~plus3, name = '+3 SD',
+          add_lines(data = lj$data, x = ~RunID, y = ~plus3, name = '+3 SD',
                     line = list(color = '#e74c3c', dash = 'dashdot', width = 2),
                     mode = 'lines',
                     hoverinfo = 'skip',
                     inherit = FALSE) %>%
-          add_lines(data = lj$data, y = ~minus3, name = '-3 SD',
+          add_lines(data = lj$data, x = ~RunID, y = ~minus3, name = '-3 SD',
                     line = list(color = '#e74c3c', dash = 'dashdot', width = 2),
                     mode = 'lines',
                     hoverinfo = 'skip',

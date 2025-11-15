@@ -99,38 +99,44 @@ mod_mic_qc_server <- function(id, processed_data) {
       output[[output_name]] <- renderPlotly({
         lj <- processed_data()$lj_stats[[target_name]]
         
-        if (!nrow(lj$data)) {
-          return(plotly_empty() %>% 
-                   layout(title = list(text = glue::glue("No {target_name} control data"), 
+        if (is.null(lj) || !is.list(lj)) {
+          return(plotly_empty() %>%
+                   layout(title = list(text = glue::glue("No {target_name} control data"),
                                        font = list(size = 14))))
         }
-        
-        plot_ly(lj$data, x = ~RunID, y = ~Cq_mean,
-                type = 'scatter', mode = 'markers+lines',
-                name = 'Run Mean',
-                marker = list(size = 12, color = '#2c3e50'),
-                line = list(width = 3, color = '#2c3e50'),
-                hovertemplate = paste0(
-                  "<b>Run: %{x}</b><br>",
-                  "Mean Cq: %{y:.2f}<br>",
-                  "<extra></extra>"
-                )) %>%
-          add_lines(y = ~Mean, name = 'Mean', 
+
+        if (!nrow(lj$data)) {
+          return(plotly_empty() %>%
+                   layout(title = list(text = glue::glue("No {target_name} control data"),
+                                       font = list(size = 14))))
+        }
+
+        fig <- plot_ly(lj$data, x = ~RunID, y = ~Cq_mean,
+                        type = 'scatter', mode = 'markers+lines',
+                        name = 'Run Mean',
+                        marker = list(size = 12, color = '#2c3e50'),
+                        line = list(width = 3, color = '#2c3e50'),
+                        hovertemplate = paste0(
+                          "<b>Run: %{x}</b><br>",
+                          "Mean Cq: %{y:.2f}<br>",
+                          "<extra></extra>"
+                        )) %>%
+          add_lines(y = ~Mean, name = 'Mean',
                     line = list(color = 'black', width = 2, dash = 'solid'),
                     hoverinfo = 'skip') %>%
-          add_lines(y = ~plus1, name = '+1 SD', 
+          add_lines(y = ~plus1, name = '+1 SD',
                     line = list(color = '#3498db', dash = 'dot', width = 1),
                     hoverinfo = 'skip') %>%
-          add_lines(y = ~minus1, name = '-1 SD', 
+          add_lines(y = ~minus1, name = '-1 SD',
                     line = list(color = '#3498db', dash = 'dot', width = 1),
                     hoverinfo = 'skip') %>%
-          add_lines(y = ~plus2, name = '+2 SD', 
+          add_lines(y = ~plus2, name = '+2 SD',
                     line = list(color = '#f39c12', dash = 'dash', width = 2),
                     hoverinfo = 'skip') %>%
-          add_lines(y = ~minus2, name = '-2 SD', 
+          add_lines(y = ~minus2, name = '-2 SD',
                     line = list(color = '#f39c12', dash = 'dash', width = 2),
                     hoverinfo = 'skip') %>%
-          add_lines(y = ~plus3, name = '+3 SD', 
+          add_lines(y = ~plus3, name = '+3 SD',
                     line = list(color = '#e74c3c', dash = 'dashdot', width = 2),
                     hoverinfo = 'skip') %>%
           add_lines(y = ~minus3, name = '-3 SD',
@@ -140,9 +146,28 @@ mod_mic_qc_server <- function(id, processed_data) {
             xaxis = list(title = "Run ID", tickangle = -45, automargin = TRUE),
             yaxis = list(title = "Cq Value", automargin = TRUE),
             legend = list(orientation = 'h', y = -0.25, x = 0),
-            margin = list(t = 40, r = 40, b = 120, l = 60),
+            margin = list(t = 60, r = 40, b = 120, l = 60),
             hovermode = 'closest'
           )
+
+        if (isTRUE(lj$fallback)) {
+          fig <- fig %>%
+            layout(
+              annotations = list(
+                list(
+                  text = "No control wells detected – showing all samples",
+                  x = 0.5,
+                  xref = "paper",
+                  y = 1.1,
+                  yref = "paper",
+                  showarrow = FALSE,
+                  font = list(color = "#e74c3c", size = 12)
+                )
+              )
+            )
+        }
+
+        fig
       })
     }
     

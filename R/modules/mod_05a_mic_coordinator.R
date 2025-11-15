@@ -181,6 +181,21 @@ mod_mic_qpcr_coordinator_server <- function(id, biobank_df, extractions_df, filt
       if (!nrow(df)) return(df)
       apply_global_filters(df, if (is.null(filters)) NULL else filters())
     })
+
+    filtered_replicates <- reactive({
+      base_df <- filtered_base()
+      reps <- processed_data()$replicates
+
+      if (is.null(reps) || !nrow(reps) || is.null(base_df) || !nrow(base_df)) {
+        return(tibble())
+      }
+
+      reps %>%
+        semi_join(
+          base_df %>% select(RunID, SampleID) %>% distinct(),
+          by = c("RunID", "SampleID")
+        )
+    })
     
     # =========================================================================
     # CALL CHILD MODULES - Pass shared reactive data
@@ -202,7 +217,7 @@ mod_mic_qpcr_coordinator_server <- function(id, biobank_df, extractions_df, filt
     mod_mic_qc_server("qc", processed_data)
     
     # Analysis module - Scatter plots
-    mod_mic_analysis_server("analysis", filtered_base)
+    mod_mic_analysis_server("analysis", filtered_base, filtered_replicates)
     
     # Export module - All downloads
     mod_mic_export_server("export", processed_data, filtered_base, settings)

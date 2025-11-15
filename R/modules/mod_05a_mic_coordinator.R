@@ -36,7 +36,7 @@ mod_mic_qpcr_coordinator_ui <- function(id) {
     # Module 4: Analysis
     nav_panel(
       title = "MIC - Analysis",
-      icon = icon("chart-scatter"),
+      icon = icon("chart-area"),
       value = "mic_analysis",
       mod_mic_analysis_ui(ns("analysis"))
     ),

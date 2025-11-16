@@ -1949,34 +1949,74 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
 
     output$kpi_biobank <- renderText({
       df <- filtered_samples()
-      if (!nrow(df) || !"ControlType" %in% names(df) || !"BiobankMatched" %in% names(df)) {
-        return("0%")
+      required_cols <- c("ControlType", "BiobankMatched")
+      if (!nrow(df) || !all(required_cols %in% names(df))) {
+        return("0")
       }
 
       df <- df %>% filter(ControlType == "Sample")
-      if (!nrow(df)) return("0%")
+      if (!nrow(df)) return("0")
 
-      n_linked <- sum(df$BiobankMatched, na.rm = TRUE)
-      total <- nrow(df)
-      pct <- if (total > 0) round(100 * n_linked / total) else 0
+      has_id <- "SampleID" %in% names(df)
+      has_name <- "SampleName" %in% names(df)
 
-      paste0(pct, "%")
+      summary <- df %>%
+        mutate(
+          SampleKey = dplyr::coalesce(
+            if (has_id) as.character(SampleID) else NA_character_,
+            if (has_name) as.character(SampleName) else NA_character_,
+            paste0("row_", dplyr::row_number())
+          )
+        ) %>%
+        group_by(SampleKey) %>%
+        summarise(
+          Linked = any(as.logical(BiobankMatched), na.rm = TRUE),
+          .groups = "drop"
+        )
+
+      total_unique <- nrow(summary)
+      if (!total_unique) return("0")
+
+      n_linked <- sum(summary$Linked, na.rm = TRUE)
+      percent_text <- scales::percent(n_linked / total_unique, accuracy = 0.1)
+
+      glue::glue("{scales::comma(n_linked)} ({percent_text})")
     })
 
     output$kpi_extractions <- renderText({
       df <- filtered_samples()
-      if (!nrow(df) || !"ControlType" %in% names(df) || !"ExtractionMatched" %in% names(df)) {
-        return("0%")
+      required_cols <- c("ControlType", "ExtractionMatched")
+      if (!nrow(df) || !all(required_cols %in% names(df))) {
+        return("0")
       }
 
       df <- df %>% filter(ControlType == "Sample")
-      if (!nrow(df)) return("0%")
+      if (!nrow(df)) return("0")
 
-      n_linked <- sum(df$ExtractionMatched, na.rm = TRUE)
-      total <- nrow(df)
-      pct <- if (total > 0) round(100 * n_linked / total) else 0
+      has_id <- "SampleID" %in% names(df)
+      has_name <- "SampleName" %in% names(df)
 
-      paste0(pct, "%")
+      summary <- df %>%
+        mutate(
+          SampleKey = dplyr::coalesce(
+            if (has_id) as.character(SampleID) else NA_character_,
+            if (has_name) as.character(SampleName) else NA_character_,
+            paste0("row_", dplyr::row_number())
+          )
+        ) %>%
+        group_by(SampleKey) %>%
+        summarise(
+          Linked = any(as.logical(ExtractionMatched), na.rm = TRUE),
+          .groups = "drop"
+        )
+
+      total_unique <- nrow(summary)
+      if (!total_unique) return("0")
+
+      n_linked <- sum(summary$Linked, na.rm = TRUE)
+      percent_text <- scales::percent(n_linked / total_unique, accuracy = 0.1)
+
+      glue::glue("{scales::comma(n_linked)} ({percent_text})")
     })
 
     output$kpi_dna_good <- renderText({

@@ -648,11 +648,6 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         total_samples = nrow(sample_counts),
         total_instances = nrow(sample_runs),
         repeated_samples = sum(sample_counts$TimesTested > 1),
-        retest_rate = if (nrow(sample_counts)) {
-          mean(sample_counts$TimesTested > 1)
-        } else {
-          NA_real_
-        },
         transitions = transition_info
       )
     })
@@ -699,72 +694,49 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
       repeated <- summary$repeated_samples
       rate <- summary$retest_rate
 
-      if (is.null(total_samples) || !length(total_samples)) {
-        total_samples <- 0L
-      }
-
-      if (is.null(total_instances) || !length(total_instances)) {
-        total_instances <- 0L
-      }
-
-      if (is.null(repeated) || !length(repeated)) {
-        repeated <- 0L
-      }
-
-      rate_available <- !is.null(rate) && length(rate) == 1 && !is.na(rate)
-
-      repeated_text <- if (!is.na(repeated) && repeated == 1) {
-        " sample was"
-      } else {
-        " samples were"
-      }
-
-      retest_text <- if (rate_available && total_samples > 0 && repeated >= 0) {
-        paste0(
-          " Retest rate: ",
-          scales::percent(rate, accuracy = 0.1),
-          " (",
-          format(repeated, big.mark = ","),
-          " of ",
-          format(total_samples, big.mark = ","),
-          ")."
-        )
-      } else {
-        ""
-      }
-
       paste0(
         format(total_samples, big.mark = ","),
         " unique samples covering ",
         format(total_instances, big.mark = ","),
         " run-sample combinations. ",
         format(repeated, big.mark = ","),
-        repeated_text,
+        if (repeated == 1) " sample was" else " samples were",
         " tested more than once.",
-        retest_text
+        if (!is.na(rate)) {
+          paste0(
+            " Retest rate: ",
+            scales::percent(rate, accuracy = 0.1),
+            " (",
+            format(repeated, big.mark = ","),
+            " of ",
+            format(summary$total_samples, big.mark = ","),
+            ")."
+          )
+        } else {
+          ""
+        }
       )
     })
 
-      output$sample_transition_table <- renderTable({
-        summary <- sample_repeat_summary()
+    output$sample_transition_table <- renderTable({
+      summary <- sample_repeat_summary()
 
-        if (is.null(summary)) {
-          return(tibble(`Primary Call` = character(), `Secondary Call` = character(), `Number of Samples` = integer(), `Percent of Retests` = character()))
-        }
+      if (is.null(summary)) {
+        return(tibble(`Primary Call` = character(), `Secondary Call` = character(), `Number of Samples` = integer(), `Percent of Retests` = character()))
+      }
 
-        if (!is.null(summary$message)) {
-          return(tibble(Message = summary$message))
-        }
+      if (!is.null(summary$message)) {
+        return(tibble(Message = summary$message))
+      }
 
-        transitions <- summary$transitions
-        table_data <- if (is.null(transitions)) NULL else transitions$table
+      transitions <- summary$transitions
 
-        if (is.null(table_data) || !nrow(table_data)) {
-          return(tibble(Message = "No paired primary/secondary results available."))
-        }
+      if (is.null(transitions) || !nrow(transitions$table)) {
+        return(tibble(Message = "No paired primary/secondary results available."))
+      }
 
-        table_data
-      },
+      transitions$table
+    },
     striped = TRUE,
     bordered = TRUE,
     hover = TRUE,
@@ -783,61 +755,34 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         return(summary$message)
       }
 
-        transitions <- summary$transitions
+      transitions <- summary$transitions
 
-        if (is.null(transitions)) {
-          return("No samples required both a primary and secondary MIC run within the filtered data.")
-        }
+      if (is.null(transitions) || transitions$total_retests == 0) {
+        return("No samples required both a primary and secondary MIC run within the filtered data.")
+      }
 
-        total_retests <- transitions$total_retests
-        total_pairs <- transitions$total_pairs
-        changed_pairs <- transitions$changed_pairs
+      base_text <- paste0(
+        format(transitions$total_retests, big.mark = ","),
+        " retested samples had both primary and secondary results."
+      )
 
-        if (is.null(total_retests) || !length(total_retests)) {
-          total_retests <- 0L
-        }
+      if (transitions$total_pairs == 0) {
+        return(paste(base_text, "However, Final Call information was missing for comparison."))
+      }
 
-        if (is.null(total_pairs) || !length(total_pairs)) {
-          total_pairs <- 0L
-        }
+      change_text <- paste0(
+        format(transitions$changed_pairs, big.mark = ","),
+        " (",
+        scales::percent(transitions$changed_pairs / transitions$total_pairs, accuracy = 0.1),
+        ") changed their Final Call between the first two runs."
+      )
 
-        if (is.null(changed_pairs) || !length(changed_pairs)) {
-          changed_pairs <- 0L
-        }
-
-        if (!length(transitions$top_change)) {
-          transitions$top_change <- NULL
-        }
-
-        if (total_retests == 0) {
-          return("No samples required both a primary and secondary MIC run within the filtered data.")
-        }
-
-        base_text <- paste0(
-          format(total_retests, big.mark = ","),
-          " retested samples had both primary and secondary results."
-        )
-
-        if (total_pairs == 0) {
-          return(paste(base_text, "However, Final Call information was missing for comparison."))
-        }
-
-        change_text <- paste0(
-          format(changed_pairs, big.mark = ","),
-          " (",
-          scales::percent(
-            if (total_pairs > 0) changed_pairs / total_pairs else 0,
-            accuracy = 0.1
-          ),
-          ") changed their Final Call between the first two runs."
-        )
-
-        top_change_text <- NULL
-        if (!is.null(transitions$top_change)) {
-          tc <- transitions$top_change
-          top_change_text <- paste0(
-            " Most common change: ",
-            tc$primary,
+      top_change_text <- NULL
+      if (!is.null(transitions$top_change)) {
+        tc <- transitions$top_change
+        top_change_text <- paste0(
+          " Most common change: ",
+          tc$primary,
           " → ",
           tc$secondary,
           " (",

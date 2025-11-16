@@ -172,6 +172,33 @@ app_theme <- bslib::bs_add_rules(
       height: auto;
     }
   }
+
+  .mic-overview-panel {
+    max-height: calc(100vh - 160px);
+    overflow-y: auto;
+    padding-right: 0.5rem;
+    padding-bottom: 1rem;
+  }
+
+  .mic-overview-panel::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .mic-overview-panel::-webkit-scrollbar-thumb {
+    background-color: rgba(79, 70, 229, 0.4);
+    border-radius: 4px;
+  }
+
+  .mic-overview-panel::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  @media (max-width: 991.98px) {
+    .mic-overview-panel {
+      max-height: none;
+      padding-right: 0;
+    }
+  }
   "
 )
 

@@ -103,24 +103,33 @@ mod_mic_qpcr_coordinator_server <- function(id, biobank_df, extractions_df, filt
     # Processed data - shared by all modules
     processed_data <- reactive({
       rd <- raw_data()
-      
+
       if (!nrow(rd$samples)) {
         return(list(
           runs = tibble(),
           samples = tibble(),
           replicates = tibble(),
           control_status = tibble(),
-          lj_stats = list()
+          lj_stats = list(),
+          files = rd$files
         ))
       }
-      
+
       withProgress(message = "Processing data...", value = 0.5, {
         # Validate controls
         control_status <- validate_controls(rd$samples, settings())
-        
+
         # Create run summary
         runs_summary <- create_run_summary(rd$samples, rd$runs, control_status)
-        
+
+        invalid_runs <- if (nrow(runs_summary)) {
+          runs_summary %>%
+            filter(!RunValid) %>%
+            pull(RunID)
+        } else {
+          character()
+        }
+
         # Link to biobank and extractions
         samples_linked <- rd$samples %>%
           link_to_biobank(if (is.null(biobank_df)) NULL else biobank_df()) %>%
@@ -142,38 +151,49 @@ mod_mic_qpcr_coordinator_server <- function(id, biobank_df, extractions_df, filt
           )
         
         # Mark invalid runs
-        if (!settings()$allow_review_controls) {
-          invalid_runs <- runs_summary %>% 
-            filter(!RunValid) %>% 
-            pull(RunID)
-          
+        if (!settings()$allow_review_controls && length(invalid_runs)) {
           samples_linked <- samples_linked %>%
             mutate(
               FinalCall = if_else(RunID %in% invalid_runs, "RunInvalid", FinalCall),
-              Flags = if_else(RunID %in% invalid_runs, 
-                              paste(Flags, "RunInvalid", sep = ";"), 
+              Flags = if_else(RunID %in% invalid_runs,
+                              paste(Flags, "RunInvalid", sep = ";"),
                               Flags),
               AnyFlag = if_else(RunID %in% invalid_runs, TRUE, AnyFlag)
             )
         }
-        
+
+        replicates_df <- rd$replicates
+        if (is.null(replicates_df)) {
+          replicates_df <- tibble()
+        }
+
+        if (isTRUE(input$exclude_invalid_runs) && length(invalid_runs)) {
+          samples_linked <- samples_linked %>%
+            filter(!RunID %in% invalid_runs)
+
+          if (!is.null(replicates_df) && nrow(replicates_df)) {
+            replicates_df <- replicates_df %>% filter(!RunID %in% invalid_runs)
+          }
+        }
+
         # Compute Levey-Jennings stats
         lj_stats <- list(
-          `177T` = compute_levey_jennings(rd$replicates, "177T"),
-          `18S2` = compute_levey_jennings(rd$replicates, "18S2"),
-          RNAseP_DNA = compute_levey_jennings(rd$replicates, "RNAseP_DNA"),
-          RNAseP_RNA = compute_levey_jennings(rd$replicates, "RNAseP_RNA")
+          `177T` = compute_levey_jennings(replicates_df, "177T"),
+          `18S2` = compute_levey_jennings(replicates_df, "18S2"),
+          RNAseP_DNA = compute_levey_jennings(replicates_df, "RNAseP_DNA"),
+          RNAseP_RNA = compute_levey_jennings(replicates_df, "RNAseP_RNA")
         )
-        
+
         list(
           runs = runs_summary,
           samples = samples_linked,
-          replicates = rd$replicates,
+          replicates = replicates_df,
           control_status = control_status,
-          lj_stats = lj_stats
+          lj_stats = lj_stats,
+          files = rd$files
         )
       })
-    }) %>% bindCache(raw_data(), settings())
+    }) %>% bindCache(raw_data(), settings(), input$exclude_invalid_runs)
     
     # Apply global filters once
     filtered_base <- reactive({

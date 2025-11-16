@@ -108,10 +108,27 @@ mod_mic_analysis_ui <- function(id) {
         card_header("Sample Testing Frequency"),
         card_body(
           div(
-            class = "mb-3",
-            textOutput(ns("sample_repeat_caption"))
+            class = "d-flex flex-column flex-lg-row gap-2 align-items-lg-center justify-content-lg-between mb-3",
+            div(
+              class = "flex-grow-1",
+              textOutput(ns("sample_repeat_caption"))
+            ),
+            div(
+              class = "ms-lg-3",
+              checkboxInput(
+                ns("show_latest_followup"),
+                "Focus on the latest follow-up when a sample was retested",
+                value = FALSE
+              )
+            )
           ),
           tableOutput(ns("sample_repeat_table")),
+          hr(),
+          div(
+            class = "mt-3 mb-2",
+            textOutput(ns("sample_transition_caption"))
+          ),
+          tableOutput(ns("sample_transition_table")),
           class = "p-3"
         )
       ),
@@ -485,7 +502,7 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         return(list(message = "Run identifiers are missing, so repeat testing cannot be calculated."))
       }
 
-      sample_runs <- df %>%
+      sample_base <- df %>%
         filter(ControlType == "Sample") %>%
         mutate(
           SampleKey = dplyr::coalesce(
@@ -494,7 +511,9 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
             "Unknown sample"
           ),
           RunKey = dplyr::coalesce(as.character(RunID), "Unknown run")
-        ) %>%
+        )
+
+      sample_runs <- sample_base %>%
         distinct(SampleKey, RunKey)
 
       if (!nrow(sample_runs)) {
@@ -519,6 +538,157 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
           }
         )
 
+      repeated_keys <- sample_counts %>%
+        filter(TimesTested > 1) %>%
+        pull(SampleKey)
+
+      build_transition_payload <- function(history_df, mode = c("primary", "latest")) {
+        mode <- match.arg(mode)
+
+        if (is.null(history_df) || !nrow(history_df)) {
+          return(NULL)
+        }
+
+        scoped <- history_df
+        if (mode == "primary") {
+          scoped <- scoped %>%
+            filter(TestNumber <= 2) %>%
+            group_by(SampleKey) %>%
+            filter(n() >= 2) %>%
+            mutate(PairOrder = TestNumber) %>%
+            ungroup()
+          col_names <- c("Primary Call", "Secondary Call")
+          view_label <- "both primary and secondary results"
+        } else {
+          scoped <- scoped %>%
+            group_by(SampleKey) %>%
+            mutate(MaxTest = max(TestNumber, na.rm = TRUE)) %>%
+            filter(MaxTest >= 2, TestNumber %in% c(MaxTest - 1, MaxTest)) %>%
+            arrange(SampleKey, TestNumber) %>%
+            mutate(PairOrder = dplyr::row_number()) %>%
+            filter(n() == 2) %>%
+            ungroup()
+          col_names <- c("Previous Call", "Latest Call")
+          view_label <- "their most recent follow-up"
+        }
+
+        if (!nrow(scoped)) {
+          return(NULL)
+        }
+
+        retest_wide <- scoped %>%
+          select(SampleKey, PairOrder, FinalCall) %>%
+          tidyr::pivot_wider(
+            names_from = PairOrder,
+            values_from = FinalCall,
+            names_prefix = "Test",
+            values_fn = list(FinalCall = dplyr::first),
+            values_fill = list(FinalCall = NA_character_)
+          )
+
+        valid_pairs <- retest_wide %>%
+          filter(!is.na(Test1) & !is.na(Test2))
+
+        changed_pairs <- valid_pairs %>%
+          filter(Test1 != Test2)
+
+        transition_raw <- retest_wide %>%
+          transmute(
+            CallA = tidyr::replace_na(Test1, "No Result"),
+            CallB = tidyr::replace_na(Test2, "No Result")
+          ) %>%
+          count(CallA, CallB, name = "Samples") %>%
+          arrange(desc(Samples))
+
+        transition_table <- transition_raw %>%
+          mutate(
+            `Percent of Retests` = if (sum(Samples) > 0) {
+              sprintf("%.1f%%", Samples / sum(Samples) * 100)
+            } else {
+              "0.0%"
+            }
+          ) %>%
+          transmute(
+            CallA,
+            CallB,
+            `Number of Samples` = Samples,
+            `Percent of Retests`
+          )
+
+        names(transition_table)[1:2] <- col_names
+
+        top_change_row <- transition_raw %>%
+          filter(CallA != CallB) %>%
+          slice_head(n = 1)
+
+        top_change <- if (nrow(top_change_row)) {
+          list(
+            earlier = top_change_row$CallA[1],
+            later = top_change_row$CallB[1],
+            samples = top_change_row$Samples[1]
+          )
+        } else {
+          NULL
+        }
+
+        ordinal_counts <- NULL
+        if (mode == "latest") {
+          ordinal_counts <- scoped %>%
+            group_by(SampleKey) %>%
+            summarise(LatestOrdinal = max(TestNumber, na.rm = TRUE), .groups = "drop") %>%
+            count(LatestOrdinal, name = "Samples") %>%
+            arrange(LatestOrdinal)
+        }
+
+        list(
+          table = transition_table,
+          total_retests = n_distinct(scoped$SampleKey),
+          total_pairs = nrow(valid_pairs),
+          changed_pairs = nrow(changed_pairs),
+          change_percent = if (nrow(valid_pairs)) {
+            round(100 * nrow(changed_pairs) / nrow(valid_pairs), 1)
+          } else {
+            0
+          },
+          missing_pairs = n_distinct(retest_wide$SampleKey) - nrow(valid_pairs),
+          top_change = top_change,
+          column_names = col_names,
+          view_label = view_label,
+          mode = mode,
+          ordinal_counts = ordinal_counts
+        )
+      }
+
+      transition_info <- list(
+        primary = NULL,
+        latest = NULL
+      )
+
+      if (length(repeated_keys)) {
+        sample_history <- sample_base %>%
+          filter(SampleKey %in% repeated_keys) %>%
+          distinct(SampleKey, RunKey, .keep_all = TRUE) %>%
+          mutate(
+            RunDateTimeParsed = if ("RunDateTime" %in% names(.)) {
+              suppressWarnings(lubridate::ymd_hms(as.character(RunDateTime), tz = "UTC"))
+            } else {
+              as.POSIXct(NA)
+            },
+            RunDateParsed = if ("RunDate" %in% names(.)) {
+              suppressWarnings(lubridate::ymd(as.character(RunDate)))
+            } else {
+              as.Date(NA)
+            }
+          ) %>%
+          arrange(SampleKey, RunDateTimeParsed, RunDateParsed, RunKey) %>%
+          group_by(SampleKey) %>%
+          mutate(TestNumber = dplyr::row_number()) %>%
+          ungroup()
+
+        transition_info$primary <- build_transition_payload(sample_history, "primary")
+        transition_info$latest <- build_transition_payload(sample_history, "latest")
+      }
+
       list(
         table = distribution %>%
           transmute(
@@ -528,7 +698,13 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
           ),
         total_samples = nrow(sample_counts),
         total_instances = nrow(sample_runs),
-        repeated_samples = sum(sample_counts$TimesTested > 1)
+        repeated_samples = sum(sample_counts$TimesTested > 1),
+        retest_rate = if (nrow(sample_counts)) {
+          mean(sample_counts$TimesTested > 1)
+        } else {
+          NA_real_
+        },
+        transitions = transition_info
       )
     })
 
@@ -543,7 +719,13 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         return(tibble(Message = summary$message))
       }
 
-      summary$table
+      table_data <- summary$table
+
+      if (is.null(table_data)) {
+        return(tibble(`Times Tested` = integer(), `Number of Samples` = integer(), `Percent of Samples` = character()))
+      }
+
+      table_data
     },
     striped = TRUE,
     bordered = TRUE,
@@ -563,17 +745,213 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         return(summary$message)
       }
 
+      total_samples <- summary$total_samples
+      total_instances <- summary$total_instances
       repeated <- summary$repeated_samples
+      rate <- summary$retest_rate
+
+      if (is.null(total_samples) || !length(total_samples)) {
+        total_samples <- 0L
+      }
+
+      if (is.null(total_instances) || !length(total_instances)) {
+        total_instances <- 0L
+      }
+
+      if (is.null(repeated) || !length(repeated)) {
+        repeated <- 0L
+      }
+
+      rate_available <- !is.null(rate) && length(rate) == 1 && !is.na(rate)
+
+      repeated_text <- if (!is.na(repeated) && repeated == 1) {
+        " sample was"
+      } else {
+        " samples were"
+      }
+
+      retest_text <- if (rate_available && total_samples > 0 && repeated >= 0) {
+        paste0(
+          " Retest rate: ",
+          scales::percent(rate, accuracy = 0.1),
+          " (",
+          format(repeated, big.mark = ","),
+          " of ",
+          format(total_samples, big.mark = ","),
+          ")."
+        )
+      } else {
+        ""
+      }
 
       paste0(
-        format(summary$total_samples, big.mark = ","),
+        format(total_samples, big.mark = ","),
         " unique samples covering ",
-        format(summary$total_instances, big.mark = ","),
+        format(total_instances, big.mark = ","),
         " run-sample combinations. ",
         format(repeated, big.mark = ","),
-        if (repeated == 1) " sample was" else " samples were",
-        " tested more than once."
+        repeated_text,
+        " tested more than once.",
+        retest_text
       )
+    })
+
+      output$sample_transition_table <- renderTable({
+        summary <- sample_repeat_summary()
+
+        if (is.null(summary)) {
+          return(tibble(`Primary Call` = character(), `Secondary Call` = character(), `Number of Samples` = integer(), `Percent of Retests` = character()))
+        }
+
+        if (!is.null(summary$message)) {
+          return(tibble(Message = summary$message))
+        }
+
+        transitions <- summary$transitions
+        selected_mode <- if (isTRUE(input$show_latest_followup)) "latest" else "primary"
+
+        if (is.null(transitions) || !is.list(transitions)) {
+          table_data <- NULL
+        } else {
+          table_data <- transitions[[selected_mode]]
+        }
+
+        if (is.null(table_data)) {
+          message_text <- if (isTRUE(input$show_latest_followup)) {
+            "No samples have enough completed runs to compare the latest follow-up against the prior run."
+          } else {
+            "No samples required both a primary and secondary MIC run within the filtered data."
+          }
+          return(tibble(Message = message_text))
+        }
+
+        table_data$table
+      },
+    striped = TRUE,
+    bordered = TRUE,
+    hover = TRUE,
+    spacing = "s",
+    align = "c",
+    rownames = FALSE)
+
+    output$sample_transition_caption <- renderText({
+      summary <- sample_repeat_summary()
+
+      if (is.null(summary)) {
+        return("No sample data available for the current filters.")
+      }
+
+      if (!is.null(summary$message)) {
+        return(summary$message)
+      }
+
+        transitions <- summary$transitions
+        selected_mode <- if (isTRUE(input$show_latest_followup)) "latest" else "primary"
+
+        selected_transition <- if (is.null(transitions)) NULL else transitions[[selected_mode]]
+
+        if (is.null(selected_transition)) {
+          if (isTRUE(input$show_latest_followup)) {
+            return("No samples progressed far enough to generate a later follow-up run to compare against the prior run.")
+          }
+          return("No samples required both a primary and secondary MIC run within the filtered data.")
+        }
+
+        total_retests <- selected_transition$total_retests
+        total_pairs <- selected_transition$total_pairs
+        changed_pairs <- selected_transition$changed_pairs
+
+        if (is.null(total_retests) || !length(total_retests)) {
+          total_retests <- 0L
+        }
+
+        if (is.null(total_pairs) || !length(total_pairs)) {
+          total_pairs <- 0L
+        }
+
+        if (is.null(changed_pairs) || !length(changed_pairs)) {
+          changed_pairs <- 0L
+        }
+
+        if (total_retests == 0) {
+          if (isTRUE(input$show_latest_followup)) {
+            return("No samples had a complete pair of later runs to evaluate their latest follow-up.")
+          }
+          return("No samples required both a primary and secondary MIC run within the filtered data.")
+        }
+
+        view_text <- if (selected_mode == "latest") {
+          "their latest follow-up could be compared with the immediately preceding run"
+        } else {
+          "primary and secondary results were recorded"
+        }
+
+        base_text <- paste0(
+          format(total_retests, big.mark = ","),
+          " retested samples had enough data so ",
+          view_text,
+          "."
+        )
+
+        if (total_pairs == 0) {
+          return(paste(base_text, "However, Final Call information was missing for at least one side of each pair."))
+        }
+
+        change_text <- paste0(
+          format(changed_pairs, big.mark = ","),
+          " (",
+          scales::percent(
+            if (total_pairs > 0) changed_pairs / total_pairs else 0,
+            accuracy = 0.1
+          ),
+          ") changed their Final Call between the two runs being compared."
+        )
+
+        top_change_text <- NULL
+        if (!is.null(selected_transition$top_change)) {
+          tc <- selected_transition$top_change
+          top_change_text <- paste0(
+            " Most common change: ",
+            tc$earlier,
+            " → ",
+            tc$later,
+            " (",
+            format(tc$samples, big.mark = ","),
+            " samples)."
+          )
+        }
+
+        ordinal_text <- NULL
+        if (selected_mode == "latest" && !is.null(selected_transition$ordinal_counts) &&
+            nrow(selected_transition$ordinal_counts)) {
+          ordinal_parts <- selected_transition$ordinal_counts %>%
+            mutate(
+              Label = case_when(
+                LatestOrdinal == 2 ~ "secondary",
+                LatestOrdinal == 3 ~ "tertiary",
+                LatestOrdinal == 4 ~ "4th run",
+                TRUE ~ paste0(LatestOrdinal, "th run")
+              ),
+              Text = paste0(format(Samples, big.mark = ","), " ", Label)
+            )
+
+          ordinal_text <- paste0(
+            " Latest follow-up mix: ",
+            paste(ordinal_parts$Text, collapse = ", "),
+            "."
+          )
+        }
+
+        run_invalid_text <- " RunInvalid calls remain listed as their own Final Call so invalid runs stay visible in this comparison."
+
+        paste0(
+          base_text,
+          " ",
+          change_text,
+          if (!is.null(top_change_text)) paste0(" ", top_change_text) else "",
+          if (!is.null(ordinal_text)) paste0(" ", ordinal_text) else "",
+          run_invalid_text
+        )
     })
 
     # === NEW: Replicate Concordance Heatmap ===

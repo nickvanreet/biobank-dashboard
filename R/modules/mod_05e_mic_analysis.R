@@ -649,6 +649,9 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         }
       }
 
+      total_samples <- nrow(sample_counts)
+      repeated_samples <- sum(sample_counts$TimesTested > 1)
+
       list(
         table = distribution %>%
           transmute(
@@ -656,9 +659,14 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
             `Number of Samples` = NumberOfSamples,
             `Percent of Samples` = Percent
           ),
-        total_samples = nrow(sample_counts),
+        total_samples = total_samples,
         total_instances = nrow(sample_runs),
-        repeated_samples = sum(sample_counts$TimesTested > 1),
+        repeated_samples = repeated_samples,
+        retest_rate = if (total_samples > 0) {
+          repeated_samples / total_samples
+        } else {
+          NA_real_
+        },
         transitions = transition_info
       )
     })

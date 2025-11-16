@@ -108,8 +108,19 @@ mod_mic_analysis_ui <- function(id) {
         card_header("Sample Testing Frequency"),
         card_body(
           div(
-            class = "mb-3",
-            textOutput(ns("sample_repeat_caption"))
+            class = "d-flex flex-column flex-lg-row gap-2 align-items-lg-center justify-content-lg-between mb-3",
+            div(
+              class = "flex-grow-1",
+              textOutput(ns("sample_repeat_caption"))
+            ),
+            div(
+              class = "ms-lg-3",
+              checkboxInput(
+                ns("show_latest_followup"),
+                "Focus on the latest follow-up when a sample was retested",
+                value = FALSE
+              )
+            )
           ),
           tableOutput(ns("sample_repeat_table")),
           hr(),

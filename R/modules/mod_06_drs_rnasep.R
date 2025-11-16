@@ -218,15 +218,16 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, filters) {
         mutate(
           volume_category = case_when(
             is.na(drs_volume_ml) ~ "No volume",
-            drs_volume_ml < 0.05 ~ "< 50 μL",
-            drs_volume_ml >= 0.05 & drs_volume_ml < 0.1 ~ "50-100 μL",
-            drs_volume_ml >= 0.1 & drs_volume_ml < 0.15 ~ "100-150 μL",
-            drs_volume_ml >= 0.15 ~ "≥ 150 μL",
+            drs_volume_ml < 1 ~ "< 1000 μL",
+            drs_volume_ml >= 1 & drs_volume_ml <= 1.5 ~ "1000-1500 μL",
+            drs_volume_ml > 1.5 & drs_volume_ml <= 2 ~ "1501-2000 μL",
+            drs_volume_ml > 2 & drs_volume_ml <= 2.5 ~ "2000-2500 μL",
+            drs_volume_ml > 2.5 ~ "> 2500 μL",
             TRUE ~ "Unknown"
           ),
           volume_category = factor(
             volume_category,
-            levels = c("< 50 μL", "50-100 μL", "100-150 μL", "≥ 150 μL", "No volume", "Unknown")
+            levels = c("< 1000 μL", "1000-1500 μL", "1501-2000 μL", "2000-2500 μL", "> 2500 μL", "No volume", "Unknown")
           )
         )
 

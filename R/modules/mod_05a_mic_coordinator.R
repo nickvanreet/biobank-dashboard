@@ -25,15 +25,7 @@ mod_mic_qpcr_coordinator_ui <- function(id) {
       mod_mic_samples_ui(ns("samples"))
     ),
 
-    # Module 3: Quality Control
-    nav_panel(
-      title = "MIC - QC & Controls",
-      icon = icon("chart-line"),
-      value = "mic_qc",
-      mod_mic_qc_ui(ns("qc"))
-    ),
-
-    # Module 4: Analysis
+    # Module 3: Analysis
     nav_panel(
       title = "MIC - Analysis",
       icon = icon("chart-area"),
@@ -41,7 +33,7 @@ mod_mic_qpcr_coordinator_ui <- function(id) {
       mod_mic_analysis_ui(ns("analysis"))
     ),
 
-    # Module 5: Export
+    # Module 4: Export
     nav_panel(
       title = "MIC - Export",
       icon = icon("download"),
@@ -232,9 +224,6 @@ mod_mic_qpcr_coordinator_server <- function(id, biobank_df, extractions_df, filt
     
     # Samples module - Main results table
     mod_mic_samples_server("samples", filtered_base, processed_data)
-    
-    # QC module - Controls and Levey-Jennings
-    mod_mic_qc_server("qc", processed_data)
     
     # Analysis module - Scatter plots
     mod_mic_analysis_server("analysis", filtered_base, filtered_replicates)

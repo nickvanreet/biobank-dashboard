@@ -1358,6 +1358,41 @@ mod_mic_qpcr_ui <- function(id) {
           showcase = icon("star"),
           theme = "info"
         )
+      ),
+
+      # Levey-Jennings quality trends (moved from QC panel)
+      div(
+        class = "mt-4",
+        layout_columns(
+          col_widths = c(12),
+          gap = "16px",
+          card(
+            card_header("177T Positive Control", class = "bg-light"),
+            plotlyOutput(ns("lj_177t"), height = "800px", width = "100%")
+          ),
+          card(
+            card_header("18S2 Positive Control", class = "bg-light"),
+            plotlyOutput(ns("lj_18s2"), height = "800px", width = "100%")
+          ),
+          card(
+            card_header("RNAseP-DNA Positive Control", class = "bg-light"),
+            plotlyOutput(ns("lj_rnp_dna"), height = "800px", width = "100%")
+          ),
+          card(
+            card_header("RNAseP-RNA Positive Control", class = "bg-light"),
+            plotlyOutput(ns("lj_rnp_rna"), height = "800px", width = "100%")
+          )
+        )
+      ),
+
+      # Control status table
+      card(
+        class = "mt-3",
+        card_header("Control Status by Run"),
+        card_body(
+          DTOutput(ns("tbl_controls")),
+          class = "p-3"
+        )
       )
     ),
 
@@ -1385,47 +1420,7 @@ mod_mic_qpcr_ui <- function(id) {
     ),
 
     # =========================================================================
-    # PANEL 3: MIC - QC & CONTROLS
-    # =========================================================================
-    nav_panel(
-      title = "MIC - QC & Controls",
-      icon = icon("chart-line"),
-
-      # Levey-Jennings plots - each displayed independently
-      layout_columns(
-        col_widths = c(12),
-        gap = "16px",
-        card(
-          card_header("177T Positive Control", class = "bg-light"),
-          plotlyOutput(ns("lj_177t"), height = "800px", width = "100%")
-        ),
-        card(
-          card_header("18S2 Positive Control", class = "bg-light"),
-          plotlyOutput(ns("lj_18s2"), height = "800px", width = "100%")
-        ),
-        card(
-          card_header("RNAseP-DNA Positive Control", class = "bg-light"),
-          plotlyOutput(ns("lj_rnp_dna"), height = "800px", width = "100%")
-        ),
-        card(
-          card_header("RNAseP-RNA Positive Control", class = "bg-light"),
-          plotlyOutput(ns("lj_rnp_rna"), height = "800px", width = "100%")
-        )
-      ),
-
-      # Control status table BELOW
-      card(
-        class = "mt-3",
-        card_header("Control Status by Run"),
-        card_body(
-          DTOutput(ns("tbl_controls")),
-          class = "p-3"
-        )
-      )
-    ),
-
-    # =========================================================================
-    # PANEL 4: MIC - ANALYSIS
+    # PANEL 3: MIC - ANALYSIS
     # =========================================================================
     nav_panel(
       title = "MIC - Analysis",
@@ -1453,7 +1448,7 @@ mod_mic_qpcr_ui <- function(id) {
     ),
 
     # =========================================================================
-    # PANEL 5: MIC - EXPORT
+    # PANEL 4: MIC - EXPORT
     # =========================================================================
     nav_panel(
       title = "MIC - Export",

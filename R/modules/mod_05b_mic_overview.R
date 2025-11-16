@@ -16,7 +16,7 @@ mod_mic_overview_ui <- function(id) {
       card_body(
         class = "py-2",
         layout_columns(
-          col_widths = c(8, 4),
+          col_widths = c(6, 3, 3),
           textInput(
             parent_ns("mic_dir"),
             NULL,
@@ -25,7 +25,7 @@ mod_mic_overview_ui <- function(id) {
             width = "100%"
           ),
           div(
-            class = "d-flex gap-2 align-items-end",
+            class = "d-flex gap-2 align-items-end justify-content-end",
             actionButton(
               parent_ns("refresh"),
               "Refresh",
@@ -38,122 +38,71 @@ mod_mic_overview_ui <- function(id) {
               icon = icon("sliders"),
               class = "btn-outline-secondary"
             )
+          ),
+          div(
+            class = "d-flex flex-column justify-content-end",
+            checkboxInput(
+              parent_ns("exclude_invalid_runs"),
+              "Exclude invalid runs",
+              value = TRUE
+            ),
+            tags$small(
+              class = "text-muted",
+              "Removes failed runs from all downstream analyses"
+            )
           )
         )
       )
     ),
 
-    # KPI Dashboard - Reorganized with clear focus on TNA detection
-    # Row 1: Sample Counts
+    # KPI Dashboard
+    # Row 1: Run Metrics
     layout_column_wrap(
       width = 1/4,
       heights_equal = "row",
       gap = "12px",
 
       value_box(
-        title = "Total Samples",
-        value = textOutput(ns("kpi_samples")),
-        showcase = icon("vial"),
+        title = "Total Files",
+        value = textOutput(ns("kpi_total_files")),
+        showcase = icon("folder-open"),
         theme = "primary"
       ),
 
       value_box(
-        title = "Valid Samples",
-        value = textOutput(ns("kpi_valid_samples")),
-        showcase = icon("check"),
+        title = "Total Runs",
+        value = textOutput(ns("kpi_total_runs")),
+        showcase = icon("microscope"),
+        theme = "info"
+      ),
+
+      value_box(
+        title = "Valid Runs",
+        value = textOutput(ns("kpi_runs_valid")),
+        showcase = icon("check-circle"),
         theme = "success"
       ),
 
       value_box(
-        title = "Invalid (QC Fail)",
-        value = textOutput(ns("kpi_invalid")),
-        showcase = icon("exclamation-triangle"),
+        title = "Invalid Runs",
+        value = textOutput(ns("kpi_runs_invalid")),
+        showcase = icon("triangle-exclamation"),
         theme = "danger"
-      ),
-
-      value_box(
-        title = "Indeterminate",
-        value = textOutput(ns("kpi_indeterminate")),
-        showcase = icon("question-circle"),
-        theme = "warning"
       )
     ),
 
-    # Row 2: Trypanosoma Detection
+    # Row 2: RNA/DNA Quality
     layout_column_wrap(
       width = 1/4,
       heights_equal = "row",
       gap = "12px",
 
       value_box(
-        title = "TNA Positive",
-        value = textOutput(ns("kpi_tna_positive")),
+        title = "DNA QC Passing",
+        value = textOutput(ns("kpi_dna_quality")),
         showcase = icon("dna"),
-        theme = "success"
-      ),
-
-      value_box(
-        title = "DNA Only Positive",
-        value = textOutput(ns("kpi_dna_only")),
-        showcase = icon("circle-half-stroke"),
         theme = "info"
       ),
-
-      value_box(
-        title = "RNA Only Positive",
-        value = textOutput(ns("kpi_rna_only")),
-        showcase = icon("circle-half-stroke"),
-        theme = "info"
-      ),
-
-      value_box(
-        title = "Negative",
-        value = textOutput(ns("kpi_negative")),
-        showcase = icon("times-circle"),
-        theme = "secondary"
-      )
-    ),
-
-    # Row 3: Detection Quality
-    layout_column_wrap(
-      width = 1/4,
-      heights_equal = "row",
-      gap = "12px",
-
-      value_box(
-        title = "Strong Positive (Cq<35)",
-        value = textOutput(ns("kpi_strong_positive")),
-        showcase = icon("signal"),
-        theme = "success"
-      ),
-
-      value_box(
-        title = "Late Positive (35-40)",
-        value = textOutput(ns("kpi_late_positive")),
-        showcase = icon("clock"),
-        theme = "warning"
-      ),
-
-      value_box(
-        title = "Prevalence",
-        value = textOutput(ns("kpi_prevalence")),
-        showcase = icon("percent"),
-        theme = "primary"
-      ),
-
-      value_box(
-        title = "Replicate Positivity",
-        value = textOutput(ns("kpi_replicate_positivity")),
-        showcase = icon("flask"),
-        theme = "info"
-      )
-    ),
-
-    # Row 4: RNA Preservation & QC
-    layout_column_wrap(
-      width = 1/4,
-      heights_equal = "row",
-      gap = "12px",
 
       value_box(
         title = "Good RNA (ΔCq ≤5)",
@@ -176,14 +125,8 @@ mod_mic_overview_ui <- function(id) {
         theme = "danger"
       ),
 
-      value_box(
-        title = "Valid Runs",
-        value = textOutput(ns("kpi_valid_runs")),
-        showcase = icon("check-square"),
-        theme = "success"
-      )
     ),
-    
+
     # Run summary table
     card(
       full_screen = TRUE,
@@ -199,103 +142,62 @@ mod_mic_overview_ui <- function(id) {
 mod_mic_overview_server <- function(id, processed_data, filtered_base) {
   moduleServer(id, function(input, output, session) {
 
-    # Row 1: Sample Counts
-    output$kpi_samples <- renderText({
-      df <- filtered_base()
-      if (!nrow(df) || !"ControlType" %in% names(df)) return("0")
-      df %>% filter(ControlType == "Sample") %>% nrow() %>% scales::comma()
+    # Row 1: Run metrics
+    output$kpi_total_files <- renderText({
+      files <- processed_data()$files
+      if (is.null(files) || !nrow(files)) return("0")
+      scales::comma(nrow(files))
     })
 
-    output$kpi_valid_samples <- renderText({
-      df <- filtered_base()
-      if (!nrow(df) || !"ControlType" %in% names(df)) return("0")
-      df %>% filter(ControlType == "Sample", !FinalCall %in% c("Invalid", "Invalid_NoDNA")) %>%
-        nrow() %>% scales::comma()
+    output$kpi_total_runs <- renderText({
+      runs <- processed_data()$runs
+      if (!nrow(runs)) return("0")
+      scales::comma(nrow(runs))
     })
 
-    output$kpi_invalid <- renderText({
-      df <- filtered_base()
-      if (!nrow(df) || !"ControlType" %in% names(df)) return("0")
-      df %>% filter(ControlType == "Sample", FinalCall %in% c("Invalid", "Invalid_NoDNA")) %>%
-        nrow() %>% scales::comma()
-    })
+    output$kpi_runs_valid <- renderText({
+      runs <- processed_data()$runs
+      if (!nrow(runs) || !"RunValid" %in% names(runs)) return("0")
 
-    output$kpi_indeterminate <- renderText({
-      df <- filtered_base()
-      if (!nrow(df) || !"ControlType" %in% names(df)) return("0")
-      df %>% filter(ControlType == "Sample", FinalCall == "Indeterminate") %>%
-        nrow() %>% scales::comma()
-    })
+      valid <- sum(runs$RunValid, na.rm = TRUE)
+      pct <- if (nrow(runs)) round(100 * valid / nrow(runs), 1) else NA
 
-    # Row 2: Trypanosoma Detection
-    output$kpi_tna_positive <- renderText({
-      df <- filtered_base()
-      if (!nrow(df) || !"ControlType" %in% names(df)) return("0")
-      df %>% filter(ControlType == "Sample", FinalCall == "Positive") %>%
-        nrow() %>% scales::comma()
-    })
-
-    output$kpi_dna_only <- renderText({
-      df <- filtered_base()
-      if (!nrow(df) || !"ControlType" %in% names(df)) return("0")
-      df %>% filter(ControlType == "Sample", FinalCall == "Positive_DNA") %>%
-        nrow() %>% scales::comma()
-    })
-
-    output$kpi_rna_only <- renderText({
-      df <- filtered_base()
-      if (!nrow(df) || !"ControlType" %in% names(df)) return("0")
-      df %>% filter(ControlType == "Sample", FinalCall == "Positive_RNA") %>%
-        nrow() %>% scales::comma()
-    })
-
-    output$kpi_negative <- renderText({
-      df <- filtered_base()
-      if (!nrow(df) || !"ControlType" %in% names(df)) return("0")
-      df %>% filter(ControlType == "Sample", FinalCall == "Negative") %>%
-        nrow() %>% scales::comma()
-    })
-
-    # Row 3: Detection Quality
-    output$kpi_strong_positive <- renderText({
-      df <- filtered_base()
-      if (!nrow(df) || !"ControlType" %in% names(df)) return("0")
-      df %>% filter(ControlType == "Sample", FinalCall == "Positive") %>%
-        nrow() %>% scales::comma()
-    })
-
-    output$kpi_late_positive <- renderText({
-      df <- filtered_base()
-      if (!nrow(df) || !"ControlType" %in% names(df)) return("0")
-      df %>% filter(ControlType == "Sample", FinalCall == "LatePositive") %>%
-        nrow() %>% scales::comma()
-    })
-
-    output$kpi_prevalence <- renderText({
-      df <- filtered_base() %>% filter(ControlType == "Sample")
-      if (!nrow(df)) return("0%")
-      n_pos <- sum(df$FinalCall %in% c("Positive", "Positive_DNA", "Positive_RNA"), na.rm = TRUE)
-      pct <- round(100 * n_pos / nrow(df), 1)
-      paste0(pct, "%")
-    })
-
-    output$kpi_replicate_positivity <- renderText({
-      df <- filtered_base()
-      if (!nrow(df) || !all(c("ControlType", "Wells_TNA_Positive", "ReplicatesTotal") %in% names(df))) {
-        return("0%")
+      if (is.na(pct)) {
+        return(scales::comma(valid))
       }
 
-      df <- df %>% filter(ControlType == "Sample")
-      if (!nrow(df)) return("0%")
-
-      total_wells <- sum(df$ReplicatesTotal, na.rm = TRUE)
-      positive_wells <- sum(df$Wells_TNA_Positive, na.rm = TRUE)
-
-      if (total_wells == 0) return("0%")
-      paste0(round(100 * positive_wells / total_wells, 1), "%")
+      glue::glue("{scales::comma(valid)} ({pct}%)")
     })
 
-    # Row 4: RNA Preservation & QC
+    output$kpi_runs_invalid <- renderText({
+      runs <- processed_data()$runs
+      if (!nrow(runs) || !"RunValid" %in% names(runs)) return("0")
+
+      invalid <- sum(!runs$RunValid, na.rm = TRUE)
+      total <- nrow(runs)
+      if (!total) return("0")
+
+      suffix <- if (isTRUE(input$exclude_invalid_runs) && invalid > 0) " (excluded)" else ""
+      glue::glue("{scales::comma(invalid)}{suffix}")
+    })
+
+    # Row 2: RNA Preservation & QC
+    output$kpi_dna_quality <- renderText({
+      df <- filtered_base()
+      required_cols <- c("ControlType", "Call_RNAseP_DNA")
+      if (!nrow(df) || !all(required_cols %in% names(df))) return("N/A")
+
+      df <- df %>% filter(ControlType == "Sample")
+      if (!nrow(df)) return("N/A")
+
+      total <- sum(!is.na(df$Call_RNAseP_DNA))
+      if (!total) return("N/A")
+
+      good <- sum(df$Call_RNAseP_DNA %in% c("Positive", "LatePositive"), na.rm = TRUE)
+      paste0(round(100 * good / total), "%")
+    })
+
+    # Row 2 (continued): RNA Preservation & QC
     output$kpi_rna_good <- renderText({
       df <- filtered_base()
       if (!nrow(df) || !all(c("ControlType", "RNA_Preservation_Delta") %in% names(df))) {
@@ -346,17 +248,10 @@ mod_mic_overview_server <- function(id, processed_data, filtered_base) {
       paste0(poor, " (", round(100 * poor / total), "%)")
     })
 
-    output$kpi_valid_runs <- renderText({
-      runs <- processed_data()$runs
-      if (!nrow(runs)) return("0/0")
-      valid <- sum(runs$RunValid, na.rm = TRUE)
-      glue::glue("{valid}/{nrow(runs)}")
-    })
-    
     # Runs table
     output$tbl_runs <- renderDT({
       runs <- processed_data()$runs
-      
+
       if (!nrow(runs)) {
         return(datatable(
           tibble(Message = "No runs found"),
@@ -366,14 +261,22 @@ mod_mic_overview_server <- function(id, processed_data, filtered_base) {
       }
       
       display <- runs %>%
-        select(-any_of(c("FilePath", "FileName", "FileMTime", "RunID", "ThresholdsJSON"))) %>%
         mutate(
           RunDateTime = as.character(RunDateTime),
           RunValid = if_else(RunValid, "✓", "✗")
         )
 
+      available_cols <- intersect(
+        c(
+          "RunID", "FileName", "RunDateTime", "WellCount", "TotalSamples",
+          "TotalControls", "Positives", "Negatives", "Indeterminate",
+          "InvalidNoDNA", "Flagged", "RunValid"
+        ),
+        names(display)
+      )
+
       datatable(
-        display,
+        display %>% select(all_of(available_cols)),
         options = list(
           pageLength = 15,
           autoWidth = TRUE,

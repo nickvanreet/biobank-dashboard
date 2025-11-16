@@ -6,6 +6,125 @@ mod_mic_samples_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
+    card(
+      class = "mb-3",
+      card_header(
+        class = "d-flex justify-content-between align-items-center",
+        span("Sample KPIs"),
+        div(
+          class = "d-flex align-items-center gap-2",
+          checkboxInput(ns("secondary_only"), NULL, value = FALSE),
+          tags$span(
+            "Use secondary result when available",
+            class = "text-muted small"
+          )
+        )
+      ),
+      card_body(
+        layout_column_wrap(
+          width = 1/4,
+          heights_equal = "row",
+          gap = "12px",
+
+          value_box(
+            title = "Total Samples",
+            value = textOutput(ns("kpi_samples_total")),
+            showcase = icon("vial"),
+            theme = "primary"
+          ),
+
+          value_box(
+            title = "Unique Samples",
+            value = textOutput(ns("kpi_samples_unique")),
+            showcase = icon("id-card"),
+            theme = "info"
+          ),
+
+          value_box(
+            title = "Tested Once",
+            value = textOutput(ns("kpi_samples_once")),
+            showcase = icon("circle-check"),
+            theme = "success"
+          ),
+
+          value_box(
+            title = "Retested",
+            value = textOutput(ns("kpi_samples_multiple")),
+            showcase = icon("redo"),
+            theme = "warning"
+          )
+        ),
+
+        layout_column_wrap(
+          width = 1/4,
+          heights_equal = "row",
+          gap = "12px",
+
+          value_box(
+            title = "TNA Positive",
+            value = textOutput(ns("kpi_samples_tna")),
+            showcase = icon("dna"),
+            theme = "success"
+          ),
+
+          value_box(
+            title = "DNA Positive",
+            value = textOutput(ns("kpi_samples_dna")),
+            showcase = icon("circle-plus"),
+            theme = "info"
+          ),
+
+          value_box(
+            title = "RNA Positive",
+            value = textOutput(ns("kpi_samples_rna")),
+            showcase = icon("wave-square"),
+            theme = "info"
+          ),
+
+          value_box(
+            title = "Indeterminate",
+            value = textOutput(ns("kpi_samples_indeterminate")),
+            showcase = icon("question-circle"),
+            theme = "warning"
+          ),
+
+          value_box(
+            title = "Negative",
+            value = textOutput(ns("kpi_samples_negative")),
+            showcase = icon("circle-minus"),
+            theme = "secondary"
+          ),
+
+          value_box(
+            title = "TNA Prevalence",
+            value = textOutput(ns("kpi_samples_tna_prev")),
+            showcase = icon("percent"),
+            theme = "primary"
+          ),
+
+          value_box(
+            title = "Any Positive Prevalence",
+            value = textOutput(ns("kpi_samples_any_prev")),
+            showcase = icon("chart-pie"),
+            theme = "primary"
+          )
+        )
+      )
+    ),
+
+    card(
+      class = "mb-3",
+      full_screen = TRUE,
+      card_header("Final Call vs RNA Preservation"),
+      card_body(
+        plotOutput(ns("plot_finalcall_rna"), height = "350px"),
+        tags$small(
+          class = "text-muted",
+          "Each point represents the RNA preservation ΔCq for a single sample after applying the secondary-result option."
+        )
+      )
+    ),
+
     # Results table - filters are applied from sidebar
     card(
       full_screen = TRUE,
@@ -24,6 +143,204 @@ mod_mic_samples_ui <- function(id) {
 
 mod_mic_samples_server <- function(id, filtered_base, processed_data) {
   moduleServer(id, function(input, output, session) {
+
+    sample_metrics <- reactive({
+      df <- filtered_base()
+      if (!nrow(df) || !"ControlType" %in% names(df)) return(NULL)
+
+      df <- df %>% filter(ControlType == "Sample")
+      if (!nrow(df)) return(NULL)
+
+      total_instances <- nrow(df)
+      has_id <- "SampleID" %in% names(df)
+      has_name <- "SampleName" %in% names(df)
+
+      df <- df %>%
+        mutate(
+          SampleKey = dplyr::coalesce(
+            if (has_id) as.character(SampleID) else NA_character_,
+            if (has_name) as.character(SampleName) else NA_character_,
+            paste0("row_", dplyr::row_number())
+          ),
+          RunKey = dplyr::coalesce(
+            if ("RunID" %in% names(.)) as.character(RunID) else NA_character_,
+            paste0("run_", dplyr::row_number())
+          ),
+          RunDateTimeParsed = if ("RunDateTime" %in% names(.)) {
+            suppressWarnings(lubridate::ymd_hms(as.character(RunDateTime), tz = "UTC"))
+          } else {
+            as.POSIXct(NA)
+          },
+          RunDateParsed = if ("RunDate" %in% names(.)) {
+            suppressWarnings(lubridate::ymd(as.character(RunDate)))
+          } else {
+            as.Date(NA)
+          }
+        )
+
+      sample_counts <- df %>% count(SampleKey, name = "TimesTested")
+
+      deduped <- df %>%
+        arrange(SampleKey, RunDateTimeParsed, RunDateParsed, RunKey) %>%
+        group_by(SampleKey) %>%
+        mutate(
+          TestNumber = dplyr::row_number(),
+          TargetTest = if_else(
+            isTRUE(input$secondary_only) & max(TestNumber) >= 2,
+            2L,
+            max(TestNumber)
+          )
+        ) %>%
+        filter(TestNumber == TargetTest) %>%
+        slice_head(n = 1) %>%
+        ungroup()
+
+      unique_samples <- nrow(sample_counts)
+      tested_once <- sum(sample_counts$TimesTested == 1)
+      tested_multiple <- sum(sample_counts$TimesTested > 1)
+      deduped_total <- nrow(deduped)
+
+      final_calls <- if ("FinalCall" %in% names(deduped)) {
+        deduped$FinalCall
+      } else {
+        rep(NA_character_, deduped_total)
+      }
+
+      tna <- sum(final_calls == "Positive", na.rm = TRUE)
+      dna <- sum(final_calls == "Positive_DNA", na.rm = TRUE)
+      rna <- sum(final_calls == "Positive_RNA", na.rm = TRUE)
+      indeterminate <- sum(final_calls == "Indeterminate", na.rm = TRUE)
+      negative <- sum(final_calls == "Negative", na.rm = TRUE)
+      any_positive <- sum(final_calls %in% c("Positive", "Positive_DNA", "Positive_RNA"), na.rm = TRUE)
+
+      tna_prev <- if (deduped_total) round(100 * tna / deduped_total, 1) else NA_real_
+      any_prev <- if (deduped_total) round(100 * any_positive / deduped_total, 1) else NA_real_
+
+      list(
+        total_instances = total_instances,
+        unique_samples = unique_samples,
+        tested_once = tested_once,
+        tested_multiple = tested_multiple,
+        deduped_total = deduped_total,
+        tna = tna,
+        dna = dna,
+        rna = rna,
+        indeterminate = indeterminate,
+        negative = negative,
+        tna_prev = tna_prev,
+        any_prev = any_prev,
+        deduped = deduped
+      )
+    })
+
+    deduped_samples <- reactive({
+      metrics <- sample_metrics()
+      if (is.null(metrics) || !"deduped" %in% names(metrics)) return(NULL)
+      metrics$deduped
+    })
+
+    output$kpi_samples_total <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics)) return("0")
+      scales::comma(metrics$total_instances)
+    })
+
+    output$kpi_samples_unique <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics)) return("0")
+      scales::comma(metrics$unique_samples)
+    })
+
+    output$kpi_samples_once <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics)) return("0")
+      scales::comma(metrics$tested_once)
+    })
+
+    output$kpi_samples_multiple <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics)) return("0")
+      suffix <- if (isTRUE(input$secondary_only) && metrics$tested_multiple > 0) " (secondary applied)" else ""
+      paste0(scales::comma(metrics$tested_multiple), suffix)
+    })
+
+    output$kpi_samples_tna <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics)) return("0")
+      scales::comma(metrics$tna)
+    })
+
+    output$kpi_samples_dna <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics)) return("0")
+      scales::comma(metrics$dna)
+    })
+
+    output$kpi_samples_rna <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics)) return("0")
+      scales::comma(metrics$rna)
+    })
+
+    output$kpi_samples_indeterminate <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics)) return("0")
+      scales::comma(metrics$indeterminate)
+    })
+
+    output$kpi_samples_negative <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics)) return("0")
+      scales::comma(metrics$negative)
+    })
+
+    output$kpi_samples_tna_prev <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics) || is.na(metrics$tna_prev)) return("0%")
+      sprintf("%.1f%%", metrics$tna_prev)
+    })
+
+    output$kpi_samples_any_prev <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics) || is.na(metrics$any_prev)) return("0%")
+      sprintf("%.1f%%", metrics$any_prev)
+    })
+
+    output$plot_finalcall_rna <- renderPlot({
+      df <- deduped_samples()
+      validate(need(!is.null(df), "No samples available"))
+
+      required_cols <- c("FinalCall", "RNA_Preservation_Delta")
+      if (!all(required_cols %in% names(df))) {
+        plot.new()
+        text(0.5, 0.5, "RNA preservation metrics unavailable")
+        return()
+      }
+
+      df <- df %>%
+        filter(!is.na(FinalCall), !is.na(RNA_Preservation_Delta))
+
+      validate(need(nrow(df) > 0, "No RNA preservation values to display"))
+
+      call_levels <- c("Positive", "Positive_DNA", "Positive_RNA", "Indeterminate", "Negative")
+      df <- df %>% mutate(FinalCall = factor(FinalCall, levels = call_levels))
+
+      ggplot(df, aes(x = FinalCall, y = RNA_Preservation_Delta)) +
+        geom_violin(fill = "#e0ecf8", color = NA, alpha = 0.8, na.rm = TRUE) +
+        geom_boxplot(width = 0.15, outlier.shape = NA, alpha = 0.8) +
+        geom_jitter(width = 0.15, alpha = 0.4, size = 1, color = "#1f78b4") +
+        geom_hline(yintercept = 5, linetype = "dashed", color = "#28a745") +
+        geom_hline(yintercept = 8, linetype = "dashed", color = "#dc3545") +
+        labs(
+          x = "Final Call",
+          y = "RNA Preservation ΔCq",
+          caption = "Dashed lines mark ΔCq = 5 (good) and 8 (poor) preservation thresholds"
+        ) +
+        theme_minimal(base_size = 12) +
+        theme(
+          axis.text.x = element_text(angle = 20, hjust = 1)
+        )
+    })
 
     # Main samples table
     output$tbl_samples <- renderDT({

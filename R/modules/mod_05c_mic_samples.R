@@ -131,18 +131,28 @@ mod_mic_samples_ui <- function(id) {
 mod_mic_samples_server <- function(id, filtered_base, processed_data) {
   moduleServer(id, function(input, output, session) {
 
-    sample_metrics <- reactive({
-      df <- filtered_base()
-      if (!nrow(df) || !"ControlType" %in% names(df)) return(NULL)
+    ordinal_label <- function(n) {
+      n <- as.integer(n)
+      suffix <- ifelse(
+        n %% 100L %in% c(11L, 12L, 13L), "th",
+        ifelse(
+          n %% 10L == 1L, "st",
+          ifelse(n %% 10L == 2L, "nd",
+                 ifelse(n %% 10L == 3L, "rd", "th"))
+        )
+      )
+      paste0(n, suffix)
+    }
 
-      df <- df %>% filter(ControlType == "Sample")
-      if (!nrow(df)) return(NULL)
+    append_test_order <- function(df, drop_helper_cols = TRUE) {
+      if (!nrow(df)) return(df)
 
-      total_instances <- nrow(df)
       has_id <- "SampleID" %in% names(df)
       has_name <- "SampleName" %in% names(df)
 
-      df <- df %>%
+      if (!has_id && !has_name) return(df)
+
+      result <- df %>%
         mutate(
           SampleKey = dplyr::coalesce(
             if (has_id) as.character(SampleID) else NA_character_,
@@ -163,7 +173,39 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
           } else {
             as.Date(NA)
           }
-        )
+        ) %>%
+        arrange(SampleKey, RunDateTimeParsed, RunDateParsed, RunKey) %>%
+        group_by(SampleKey) %>%
+        mutate(
+          TestNumber = dplyr::row_number(),
+          TestOrderLabel = dplyr::case_when(
+            TestNumber == 1L ~ "Primary",
+            TestNumber == 2L ~ "Secondary",
+            TestNumber == 3L ~ "Tertiary",
+            TRUE ~ paste(ordinal_label(TestNumber), "Test")
+          )
+        ) %>%
+        ungroup()
+
+      if (isTRUE(drop_helper_cols)) {
+        result <- result %>% select(-SampleKey, -RunKey, -RunDateTimeParsed, -RunDateParsed)
+      }
+
+      result
+    }
+
+    sample_metrics <- reactive({
+      df <- filtered_base()
+      if (!nrow(df) || !"ControlType" %in% names(df)) return(NULL)
+
+      df <- df %>% filter(ControlType == "Sample")
+      if (!nrow(df)) return(NULL)
+
+      total_instances <- nrow(df)
+      has_id <- "SampleID" %in% names(df)
+      has_name <- "SampleName" %in% names(df)
+
+      df <- append_test_order(df, drop_helper_cols = FALSE)
 
       sample_counts <- df %>% count(SampleKey, name = "TimesTested")
 
@@ -302,7 +344,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       if ("ControlType" %in% names(df)) {
         df <- df %>% filter(ControlType == "Sample")
       }
-      
+
       if (!nrow(df)) {
         return(datatable(
           tibble(Message = "No samples found (only controls)"),
@@ -311,9 +353,11 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         ))
       }
       
+      df <- append_test_order(df)
+
       # Round numeric columns
       numeric_cols <- intersect(
-        c("Cq_median_177T", "Cq_median_18S2", "Cq_median_RNAseP_DNA", 
+        c("Cq_median_177T", "Cq_median_18S2", "Cq_median_RNAseP_DNA",
           "Cq_median_RNAseP_RNA", "Delta_18S2_177T", "Delta_RP"),
         names(df)
       )
@@ -324,7 +368,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       
       # Select columns to display - including Barcode and replicate counts
       available_cols <- intersect(
-        c("RunID", "SampleName", "Barcode", "FinalCall",
+        c("RunID", "SampleName", "Barcode", "TestOrderLabel", "TestNumber", "FinalCall",
           "Wells_TNA_Positive", "Wells_DNA_Positive", "Wells_RNA_Positive",
           "ReplicatesTotal", "Replicates_Positive", "Replicates_Negative", "Replicates_Failed",
           "Cq_median_177T", "Cq_median_18S2",
@@ -362,7 +406,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
     output$dl_filtered <- downloadHandler(
       filename = function() sprintf("mic_samples_filtered_%s.csv", format(Sys.Date(), "%Y%m%d")),
       content = function(file) {
-        df <- filtered_base() %>% filter(ControlType == "Sample")
+        df <- filtered_base() %>% filter(ControlType == "Sample") %>% append_test_order()
         write_csv(df, file)
       }
     )

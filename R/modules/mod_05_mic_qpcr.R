@@ -1185,9 +1185,16 @@ apply_global_filters <- function(df, filters) {
     df <- df %>% filter(is.na(HealthZone) | HealthZone %in% filters$zone)
   }
 
-  # Structure filter
+  # Structure filter (normalized to match sidebar dropdown keys)
   if (!is.null(filters$structure) && !identical(filters$structure, "all") && "Structure" %in% names(df)) {
-    df <- df %>% filter(is.na(Structure) | Structure %in% filters$structure)
+    target <- normalize_structure_value(filters$structure)
+
+    if (!all(is.na(target))) {
+      df <- df %>%
+        mutate(`__Structure_norm` = normalize_structure_value(Structure)) %>%
+        filter(is.na(`__Structure_norm`) | `__Structure_norm` %in% target) %>%
+        select(-`__Structure_norm`)
+    }
   }
 
   # Cohort filter

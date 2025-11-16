@@ -648,11 +648,6 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         total_samples = nrow(sample_counts),
         total_instances = nrow(sample_runs),
         repeated_samples = sum(sample_counts$TimesTested > 1),
-        retest_rate = if (nrow(sample_counts)) {
-          mean(sample_counts$TimesTested > 1)
-        } else {
-          NA_real_
-        },
         transitions = transition_info
       )
     })

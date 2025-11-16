@@ -577,33 +577,27 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
           mutate(TestNumber = dplyr::row_number()) %>%
           ungroup()
 
-        retest_pairs <- sample_history %>%
-          filter(TestNumber <= 2) %>%
+        consecutive_pairs <- sample_history %>%
+          arrange(SampleKey, TestNumber) %>%
           group_by(SampleKey) %>%
-          filter(n() == 2) %>%
-          ungroup()
+          mutate(
+            NextCall = lead(FinalCall),
+            NextTestNumber = lead(TestNumber)
+          ) %>%
+          ungroup() %>%
+          filter(!is.na(NextTestNumber))
 
-        if (nrow(retest_pairs)) {
-          retest_wide <- retest_pairs %>%
-            select(SampleKey, TestNumber, FinalCall) %>%
-            tidyr::pivot_wider(
-              names_from = TestNumber,
-              values_from = FinalCall,
-              names_prefix = "Test",
-              values_fn = list(FinalCall = dplyr::first),
-              values_fill = list(FinalCall = NA_character_)
-            )
-
-          valid_pairs <- retest_wide %>%
-            filter(!is.na(Test1) & !is.na(Test2))
+        if (nrow(consecutive_pairs)) {
+          valid_pairs <- consecutive_pairs %>%
+            filter(!is.na(FinalCall) & !is.na(NextCall))
 
           changed_pairs <- valid_pairs %>%
-            filter(Test1 != Test2)
+            filter(FinalCall != NextCall)
 
-          transition_raw <- retest_wide %>%
+          transition_raw <- consecutive_pairs %>%
             transmute(
-              `Primary Call` = tidyr::replace_na(Test1, "No Result"),
-              `Secondary Call` = tidyr::replace_na(Test2, "No Result")
+              `Primary Call` = tidyr::replace_na(FinalCall, "No Result"),
+              `Secondary Call` = tidyr::replace_na(NextCall, "No Result")
             ) %>%
             count(`Primary Call`, `Secondary Call`, name = "Samples") %>%
             arrange(desc(Samples))
@@ -627,28 +621,28 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
             filter(`Primary Call` != `Secondary Call`) %>%
             slice_head(n = 1)
 
-            top_change <- if (nrow(top_change_row)) {
-              list(
-                primary = top_change_row$`Primary Call`[1],
-                secondary = top_change_row$`Secondary Call`[1],
-                samples = top_change_row$Samples[1]
+          top_change <- if (nrow(top_change_row)) {
+            list(
+              primary = top_change_row$`Primary Call`[1],
+              secondary = top_change_row$`Secondary Call`[1],
+              samples = top_change_row$Samples[1]
             )
           } else {
             NULL
           }
 
-            transition_info <- list(
-              table = transition_table,
-              raw = transition_raw,
-              total_retests = nrow(retest_wide),
-              total_pairs = nrow(valid_pairs),
-              changed_pairs = nrow(changed_pairs),
+          transition_info <- list(
+            table = transition_table,
+            raw = transition_raw,
+            total_retests = length(unique(consecutive_pairs$SampleKey)),
+            total_pairs = nrow(valid_pairs),
+            changed_pairs = nrow(changed_pairs),
             change_percent = if (nrow(valid_pairs)) {
               round(100 * nrow(changed_pairs) / nrow(valid_pairs), 1)
             } else {
               0
             },
-            missing_pairs = nrow(retest_wide) - nrow(valid_pairs),
+            missing_pairs = nrow(consecutive_pairs) - nrow(valid_pairs),
             top_change = top_change
           )
         }
@@ -785,9 +779,14 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         return("No samples required both a primary and secondary MIC run within the filtered data.")
       }
 
+      total_comparisons <- transitions$total_pairs + transitions$missing_pairs
+
       base_text <- paste0(
         format(transitions$total_retests, big.mark = ","),
-        " retested samples had both primary and secondary results."
+        " samples had multiple tests, contributing ",
+        format(total_comparisons, big.mark = ","),
+        if (total_comparisons == 1) " consecutive pair" else " consecutive pairs",
+        "."
       )
 
       if (transitions$total_pairs == 0) {
@@ -798,7 +797,7 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         format(transitions$changed_pairs, big.mark = ","),
         " (",
         scales::percent(transitions$changed_pairs / transitions$total_pairs, accuracy = 0.1),
-        ") changed their Final Call between the first two runs."
+        ") changed their Final Call between sequential runs."
       )
 
       top_change_text <- NULL

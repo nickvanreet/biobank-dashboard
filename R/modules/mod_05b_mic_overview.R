@@ -10,57 +10,59 @@ mod_mic_overview_ui <- function(id) {
   parent_ns <- function(x) paste0(gsub("-overview$", "", id), "-", x)
 
   tagList(
-    # Action bar for MIC controls
-    card(
-      class = "mb-3",
-      card_body(
-        class = "py-2",
-        layout_columns(
-          col_widths = c(6, 3, 3),
-          textInput(
-            parent_ns("mic_dir"),
-            NULL,
-            value = "data/MIC",
-            placeholder = "Path to MIC Excel files",
-            width = "100%"
-          ),
-          div(
-            class = "d-flex gap-2 align-items-end justify-content-end",
-            actionButton(
-              parent_ns("refresh"),
-              "Refresh",
-              icon = icon("sync"),
-              class = "btn-primary"
+    div(
+      class = "mic-overview-panel",
+      # Action bar for MIC controls
+      card(
+        class = "mb-3",
+        card_body(
+          class = "py-2",
+          layout_columns(
+            col_widths = c(6, 3, 3),
+            textInput(
+              parent_ns("mic_dir"),
+              NULL,
+              value = "data/MIC",
+              placeholder = "Path to MIC Excel files",
+              width = "100%"
             ),
-            actionButton(
-              parent_ns("settings"),
-              "Settings",
-              icon = icon("sliders"),
-              class = "btn-outline-secondary"
-            )
-          ),
-          div(
-            class = "d-flex flex-column justify-content-end",
-            checkboxInput(
-              parent_ns("exclude_invalid_runs"),
-              "Exclude invalid runs",
-              value = TRUE
+            div(
+              class = "d-flex gap-2 align-items-end justify-content-end",
+              actionButton(
+                parent_ns("refresh"),
+                "Refresh",
+                icon = icon("sync"),
+                class = "btn-primary"
+              ),
+              actionButton(
+                parent_ns("settings"),
+                "Settings",
+                icon = icon("sliders"),
+                class = "btn-outline-secondary"
+              )
             ),
-            tags$small(
-              class = "text-muted",
-              "Removes failed runs from all downstream analyses"
+            div(
+              class = "d-flex flex-column justify-content-end",
+              checkboxInput(
+                parent_ns("exclude_invalid_runs"),
+                "Exclude invalid runs",
+                value = TRUE
+              ),
+              tags$small(
+                class = "text-muted",
+                "Removes failed runs from all downstream analyses"
+              )
             )
           )
         )
-      )
-    ),
+      ),
 
-    # KPI Dashboard
-    # Row 1: Run Metrics
-    layout_column_wrap(
-      width = 1/4,
-      heights_equal = "row",
-      gap = "12px",
+      # KPI Dashboard
+      # Row 1: Run Metrics
+      layout_column_wrap(
+        width = 1/4,
+        heights_equal = "row",
+        gap = "12px",
 
       value_box(
         title = "Total Files",
@@ -181,6 +183,7 @@ mod_mic_overview_ui <- function(id) {
         DTOutput(ns("tbl_controls"), width = "100%"),
         class = "p-3"
       )
+    )
     )
   )
 }

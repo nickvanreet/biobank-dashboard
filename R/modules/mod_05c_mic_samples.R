@@ -112,19 +112,6 @@ mod_mic_samples_ui <- function(id) {
       )
     ),
 
-    card(
-      class = "mb-3",
-      full_screen = TRUE,
-      card_header("Final Call vs RNA Preservation"),
-      card_body(
-        plotOutput(ns("plot_finalcall_rna"), height = "350px"),
-        tags$small(
-          class = "text-muted",
-          "Each point represents the RNA preservation ΔCq for a single sample after applying the secondary-result option."
-        )
-      )
-    ),
-
     # Results table - filters are applied from sidebar
     card(
       full_screen = TRUE,
@@ -228,15 +215,8 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         indeterminate = indeterminate,
         negative = negative,
         tna_prev = tna_prev,
-        any_prev = any_prev,
-        deduped = deduped
+        any_prev = any_prev
       )
-    })
-
-    deduped_samples <- reactive({
-      metrics <- sample_metrics()
-      if (is.null(metrics) || !"deduped" %in% names(metrics)) return(NULL)
-      metrics$deduped
     })
 
     output$kpi_samples_total <- renderText({
@@ -304,42 +284,6 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       metrics <- sample_metrics()
       if (is.null(metrics) || is.na(metrics$any_prev)) return("0%")
       sprintf("%.1f%%", metrics$any_prev)
-    })
-
-    output$plot_finalcall_rna <- renderPlot({
-      df <- deduped_samples()
-      validate(need(!is.null(df), "No samples available"))
-
-      required_cols <- c("FinalCall", "RNA_Preservation_Delta")
-      if (!all(required_cols %in% names(df))) {
-        plot.new()
-        text(0.5, 0.5, "RNA preservation metrics unavailable")
-        return()
-      }
-
-      df <- df %>%
-        filter(!is.na(FinalCall), !is.na(RNA_Preservation_Delta))
-
-      validate(need(nrow(df) > 0, "No RNA preservation values to display"))
-
-      call_levels <- c("Positive", "Positive_DNA", "Positive_RNA", "Indeterminate", "Negative")
-      df <- df %>% mutate(FinalCall = factor(FinalCall, levels = call_levels))
-
-      ggplot(df, aes(x = FinalCall, y = RNA_Preservation_Delta)) +
-        geom_violin(fill = "#e0ecf8", color = NA, alpha = 0.8, na.rm = TRUE) +
-        geom_boxplot(width = 0.15, outlier.shape = NA, alpha = 0.8) +
-        geom_jitter(width = 0.15, alpha = 0.4, size = 1, color = "#1f78b4") +
-        geom_hline(yintercept = 5, linetype = "dashed", color = "#28a745") +
-        geom_hline(yintercept = 8, linetype = "dashed", color = "#dc3545") +
-        labs(
-          x = "Final Call",
-          y = "RNA Preservation ΔCq",
-          caption = "Dashed lines mark ΔCq = 5 (good) and 8 (poor) preservation thresholds"
-        ) +
-        theme_minimal(base_size = 12) +
-        theme(
-          axis.text.x = element_text(angle = 20, hjust = 1)
-        )
     })
 
     # Main samples table

@@ -684,6 +684,7 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
       }
 
       repeated <- summary$repeated_samples
+      rate <- summary$retest_rate
 
       paste0(
         format(summary$total_samples, big.mark = ","),
@@ -692,7 +693,20 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         " run-sample combinations. ",
         format(repeated, big.mark = ","),
         if (repeated == 1) " sample was" else " samples were",
-        " tested more than once."
+        " tested more than once.",
+        if (!is.na(rate)) {
+          paste0(
+            " Retest rate: ",
+            scales::percent(rate, accuracy = 0.1),
+            " (",
+            format(repeated, big.mark = ","),
+            " of ",
+            format(summary$total_samples, big.mark = ","),
+            ")."
+          )
+        } else {
+          ""
+        }
       )
     })
 

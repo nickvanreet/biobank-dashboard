@@ -132,14 +132,15 @@ mod_mic_overview_ui <- function(id) {
       full_screen = TRUE,
       card_header("Run Metadata"),
       card_body(
-        DTOutput(ns("tbl_runs")),
+        DTOutput(ns("tbl_runs"), width = "100%"),
         class = "p-3"
       )
     ),
 
     # Levey-Jennings QC trends (moved from QC panel)
-    layout_columns(
-      col_widths = c(6, 6),
+    layout_column_wrap(
+      width = 1/2,
+      heights_equal = "row",
       gap = "16px",
       card(
         full_screen = TRUE,
@@ -177,7 +178,7 @@ mod_mic_overview_ui <- function(id) {
       full_screen = TRUE,
       card_header("Control Status by Run"),
       card_body(
-        DTOutput(ns("tbl_controls")),
+        DTOutput(ns("tbl_controls"), width = "100%"),
         class = "p-3"
       )
     )

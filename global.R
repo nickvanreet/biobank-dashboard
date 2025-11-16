@@ -152,11 +152,25 @@ app_theme <- bslib::bs_add_rules(
     overflow: visible !important;
   }
 
-  /* Allow MIC nav panels to scroll instead of forcing tables to scroll */
-  .bslib-nav-content {
-    max-height: calc(100vh - 60px);
+  /* Let the navbar fill the viewport but keep each nav panel independently scrollable */
+  .navs-page-container {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .navs-page-container > .bslib-nav-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: calc(100vh - 64px);
     overflow-y: auto;
     padding-bottom: 1rem;
+  }
+
+  @media (max-width: 991.98px) {
+    .navs-page-container > .bslib-nav-content {
+      height: auto;
+    }
   }
   "
 )

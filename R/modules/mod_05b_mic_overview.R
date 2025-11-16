@@ -127,19 +127,6 @@ mod_mic_overview_ui <- function(id) {
 
     ),
 
-    card(
-      class = "mb-3",
-      full_screen = TRUE,
-      card_header("Final Call vs RNA Preservation"),
-      card_body(
-        plotOutput(ns("plot_finalcall_rna_overview"), height = "350px"),
-        tags$small(
-          class = "text-muted",
-          "Compares RNA preservation ΔCq across final calls using the filtered sample set."
-        )
-      )
-    ),
-
     # Run summary table
     card(
       full_screen = TRUE,
@@ -154,45 +141,6 @@ mod_mic_overview_ui <- function(id) {
 
 mod_mic_overview_server <- function(id, processed_data, filtered_base) {
   moduleServer(id, function(input, output, session) {
-
-    dedupe_samples_for_plot <- function(df) {
-      if (!nrow(df) || !"ControlType" %in% names(df)) {
-        return(tibble())
-      }
-
-      df <- df %>% filter(ControlType == "Sample")
-      if (!nrow(df)) return(tibble())
-
-      has_id <- "SampleID" %in% names(df)
-      has_name <- "SampleName" %in% names(df)
-
-      df %>%
-        mutate(
-          SampleKey = dplyr::coalesce(
-            if (has_id) as.character(SampleID) else NA_character_,
-            if (has_name) as.character(SampleName) else NA_character_,
-            paste0("row_", dplyr::row_number())
-          ),
-          RunKey = dplyr::coalesce(
-            if ("RunID" %in% names(.)) as.character(RunID) else NA_character_,
-            paste0("run_", dplyr::row_number())
-          ),
-          RunDateTimeParsed = if ("RunDateTime" %in% names(.)) {
-            suppressWarnings(lubridate::ymd_hms(as.character(RunDateTime), tz = "UTC"))
-          } else {
-            as.POSIXct(NA)
-          },
-          RunDateParsed = if ("RunDate" %in% names(.)) {
-            suppressWarnings(lubridate::ymd(as.character(RunDate)))
-          } else {
-            as.Date(NA)
-          }
-        ) %>%
-        arrange(SampleKey, desc(RunDateTimeParsed), desc(RunDateParsed), desc(RunKey)) %>%
-        group_by(SampleKey) %>%
-        slice_head(n = 1) %>%
-        ungroup()
-    }
 
     # Row 1: Run metrics
     output$kpi_total_files <- renderText({
@@ -298,39 +246,6 @@ mod_mic_overview_server <- function(id, processed_data, filtered_base) {
       if (total == 0) return("N/A")
 
       paste0(poor, " (", round(100 * poor / total), "%)")
-    })
-
-    output$plot_finalcall_rna_overview <- renderPlot({
-      df <- filtered_base()
-      validate(need(nrow(df), "No samples available"))
-
-      deduped <- dedupe_samples_for_plot(df)
-      validate(need(nrow(deduped), "No samples available"))
-
-      required_cols <- c("FinalCall", "RNA_Preservation_Delta")
-      validate(need(all(required_cols %in% names(deduped)),
-                    "RNA preservation metrics unavailable"))
-
-      deduped <- deduped %>%
-        filter(!is.na(FinalCall), !is.na(RNA_Preservation_Delta))
-      validate(need(nrow(deduped) > 0, "No RNA preservation values to display"))
-
-      call_levels <- c("Positive", "Positive_DNA", "Positive_RNA", "Indeterminate", "Negative")
-      deduped <- deduped %>% mutate(FinalCall = factor(FinalCall, levels = call_levels))
-
-      ggplot(deduped, aes(x = FinalCall, y = RNA_Preservation_Delta)) +
-        geom_violin(fill = "#e0ecf8", color = NA, alpha = 0.8, na.rm = TRUE) +
-        geom_boxplot(width = 0.15, outlier.shape = NA, alpha = 0.8) +
-        geom_jitter(width = 0.15, alpha = 0.4, size = 1, color = "#1f78b4") +
-        geom_hline(yintercept = 5, linetype = "dashed", color = "#28a745") +
-        geom_hline(yintercept = 8, linetype = "dashed", color = "#dc3545") +
-        labs(
-          x = "Final Call",
-          y = "RNA Preservation ΔCq",
-          caption = "Dashed lines mark ΔCq = 5 (good) and 8 (poor) preservation thresholds"
-        ) +
-        theme_minimal(base_size = 12) +
-        theme(axis.text.x = element_text(angle = 20, hjust = 1))
     })
 
     # Runs table

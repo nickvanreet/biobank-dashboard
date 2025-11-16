@@ -663,7 +663,13 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         return(tibble(Message = summary$message))
       }
 
-      summary$table
+      table_data <- summary$table
+
+      if (is.null(table_data)) {
+        return(tibble(`Times Tested` = integer(), `Number of Samples` = integer(), `Percent of Samples` = character()))
+      }
+
+      table_data
     },
     striped = TRUE,
     bordered = TRUE,
@@ -683,13 +689,15 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         return(summary$message)
       }
 
+      total_samples <- summary$total_samples
+      total_instances <- summary$total_instances
       repeated <- summary$repeated_samples
       rate <- summary$retest_rate
 
       paste0(
-        format(summary$total_samples, big.mark = ","),
+        format(total_samples, big.mark = ","),
         " unique samples covering ",
-        format(summary$total_instances, big.mark = ","),
+        format(total_instances, big.mark = ","),
         " run-sample combinations. ",
         format(repeated, big.mark = ","),
         if (repeated == 1) " sample was" else " samples were",

@@ -121,17 +121,21 @@ mod_mic_analysis_ui <- function(id) {
                 value = FALSE
               )
             )
-          ),
-          tableOutput(ns("sample_repeat_table")),
-          hr(),
-          div(
-            class = "mt-3 mb-2",
-            textOutput(ns("sample_transition_caption"))
-          ),
-          tableOutput(ns("sample_transition_table")),
-          class = "p-3"
-        )
-      ),
+            ),
+            tableOutput(ns("sample_repeat_table")),
+            hr(),
+            div(
+              class = "mt-3 mb-2",
+              textOutput(ns("sample_transition_caption"))
+            ),
+            div(
+              class = "mb-3",
+              plotlyOutput(ns("sample_transition_sankey"), height = "360px")
+            ),
+            tableOutput(ns("sample_transition_table")),
+            class = "p-3"
+          )
+        ),
 
       # === SECTION 4: Quality Metrics ===
       h4("Quality Control Metrics", class = "mt-4 mb-3"),
@@ -623,21 +627,22 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
             filter(`Primary Call` != `Secondary Call`) %>%
             slice_head(n = 1)
 
-          top_change <- if (nrow(top_change_row)) {
-            list(
-              primary = top_change_row$`Primary Call`[1],
-              secondary = top_change_row$`Secondary Call`[1],
-              samples = top_change_row$Samples[1]
+            top_change <- if (nrow(top_change_row)) {
+              list(
+                primary = top_change_row$`Primary Call`[1],
+                secondary = top_change_row$`Secondary Call`[1],
+                samples = top_change_row$Samples[1]
             )
           } else {
             NULL
           }
 
-          transition_info <- list(
-            table = transition_table,
-            total_retests = nrow(retest_wide),
-            total_pairs = nrow(valid_pairs),
-            changed_pairs = nrow(changed_pairs),
+            transition_info <- list(
+              table = transition_table,
+              raw = transition_raw,
+              total_retests = nrow(retest_wide),
+              total_pairs = nrow(valid_pairs),
+              changed_pairs = nrow(changed_pairs),
             change_percent = if (nrow(valid_pairs)) {
               round(100 * nrow(changed_pairs) / nrow(valid_pairs), 1)
             } else {
@@ -763,8 +768,8 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
     align = "c",
     rownames = FALSE)
 
-    output$sample_transition_caption <- renderText({
-      summary <- sample_repeat_summary()
+      output$sample_transition_caption <- renderText({
+        summary <- sample_repeat_summary()
 
       if (is.null(summary)) {
         return("No sample data available for the current filters.")
@@ -810,11 +815,71 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         )
       }
 
-      paste0(base_text, " ", change_text, if (!is.null(top_change_text)) top_change_text else "")
-    })
+        paste0(base_text, " ", change_text, if (!is.null(top_change_text)) top_change_text else "")
+      })
 
-    # === NEW: Replicate Concordance Heatmap ===
-    output$heatmap_replicates <- renderPlotly({
+      output$sample_transition_sankey <- renderPlotly({
+        summary <- sample_repeat_summary()
+
+        if (is.null(summary)) {
+          return(NULL)
+        }
+
+        if (!is.null(summary$message)) {
+          return(
+            plotly_empty(type = "sankey") %>%
+              layout(
+                annotations = list(
+                  text = summary$message,
+                  showarrow = FALSE,
+                  x = 0.5,
+                  y = 0.5,
+                  xref = "paper",
+                  yref = "paper"
+                )
+              )
+          )
+        }
+
+        transitions <- summary$transitions
+
+        if (is.null(transitions) || is.null(transitions$raw) || !nrow(transitions$raw)) {
+          return(NULL)
+        }
+
+        raw <- transitions$raw
+
+        labels <- sort(unique(c(raw$`Primary Call`, raw$`Secondary Call`)))
+        label_lookup <- setNames(seq_along(labels) - 1, labels)
+
+        sankey_data <- raw %>%
+          mutate(
+            source = label_lookup[`Primary Call`],
+            target = label_lookup[`Secondary Call`],
+            value = Samples
+          )
+
+        plot_ly(
+          type = "sankey",
+          arrangement = "snap",
+          node = list(
+            label = labels,
+            pad = 15,
+            thickness = 18,
+            color = "#4F46E5"
+          ),
+          link = list(
+            source = sankey_data$source,
+            target = sankey_data$target,
+            value = sankey_data$value,
+            color = "rgba(79, 70, 229, 0.4)"
+          )
+        ) %>%
+          layout(margin = list(t = 10, b = 10, l = 10, r = 10))
+      })
+
+      # === NEW: Replicate Concordance Heatmap ===
+      output$heatmap_replicates <- renderPlotly({
       replicates <- if (is.null(filtered_replicates)) tibble() else filtered_replicates()
 
       if (!nrow(replicates)) {

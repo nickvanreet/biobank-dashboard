@@ -6,123 +6,140 @@ mod_mic_samples_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
-    card(
-      class = "mb-3",
-      card_header(
-        class = "d-flex justify-content-between align-items-center",
-        span("Sample KPIs"),
-        div(
-          class = "d-flex align-items-center gap-2",
-          checkboxInput(ns("secondary_only"), NULL, value = FALSE),
-          tags$span(
-            "Use secondary result when available",
-            class = "text-muted small"
-          )
-        )
-      ),
-      card_body(
-        layout_column_wrap(
-          width = 1/4,
-          heights_equal = "row",
-          gap = "12px",
+    tags$style(HTML(
+      "
+      .mic-samples-panel {
+        padding-bottom: 1.5rem;
+      }
 
-          value_box(
-            title = "Total Samples",
-            value = textOutput(ns("kpi_samples_total")),
-            showcase = icon("vial"),
-            theme = "primary"
-          ),
+      .mic-samples-panel .mic-samples-table-body {
+        overflow: visible;
+      }
 
-          value_box(
-            title = "Unique Samples",
-            value = textOutput(ns("kpi_samples_unique")),
-            showcase = icon("id-card"),
-            theme = "info"
-          ),
-
-          value_box(
-            title = "Tested Once",
-            value = textOutput(ns("kpi_samples_once")),
-            showcase = icon("circle-check"),
-            theme = "success"
-          ),
-
-          value_box(
-            title = "Retested",
-            value = textOutput(ns("kpi_samples_multiple")),
-            showcase = icon("redo"),
-            theme = "warning"
+      .mic-samples-panel .mic-samples-table-body > .dataTables_wrapper {
+        overflow: visible;
+      }
+      "
+    )),
+    div(
+      class = "mic-samples-panel container-fluid",
+      card(
+        class = "mb-3",
+        card_header(
+          class = "d-flex justify-content-between align-items-center",
+          span("Sample KPIs"),
+          div(
+            class = "d-flex align-items-center gap-2",
+            checkboxInput(ns("secondary_only"), NULL, value = FALSE),
+            tags$span(
+              "Use secondary result when available",
+              class = "text-muted small"
+            )
           )
         ),
+        card_body(
+          layout_column_wrap(
+            width = 1/4,
+            heights_equal = "row",
+            gap = "12px",
 
-        layout_column_wrap(
-          width = 1/4,
-          heights_equal = "row",
-          gap = "12px",
+            value_box(
+              title = "Total Samples",
+              value = textOutput(ns("kpi_samples_total")),
+              showcase = icon("vial"),
+              theme = "primary"
+            ),
 
-          value_box(
-            title = "TNA Positive",
-            value = textOutput(ns("kpi_samples_tna")),
-            showcase = icon("dna"),
-            theme = "success"
+            value_box(
+              title = "Unique Samples",
+              value = textOutput(ns("kpi_samples_unique")),
+              showcase = icon("id-card"),
+              theme = "info"
+            ),
+
+            value_box(
+              title = "Tested Once",
+              value = textOutput(ns("kpi_samples_once")),
+              showcase = icon("circle-check"),
+              theme = "success"
+            ),
+
+            value_box(
+              title = "Retested",
+              value = textOutput(ns("kpi_samples_multiple")),
+              showcase = icon("redo"),
+              theme = "warning"
+            )
           ),
 
-          value_box(
-            title = "DNA Positive",
-            value = textOutput(ns("kpi_samples_dna")),
-            showcase = icon("circle-plus"),
-            theme = "info"
-          ),
+          layout_column_wrap(
+            width = 1/4,
+            heights_equal = "row",
+            gap = "12px",
 
-          value_box(
-            title = "RNA Positive",
-            value = textOutput(ns("kpi_samples_rna")),
-            showcase = icon("wave-square"),
-            theme = "info"
-          ),
+            value_box(
+              title = "TNA Positive",
+              value = textOutput(ns("kpi_samples_tna")),
+              showcase = icon("dna"),
+              theme = "success"
+            ),
 
-          value_box(
-            title = "Indeterminate",
-            value = textOutput(ns("kpi_samples_indeterminate")),
-            showcase = icon("question-circle"),
-            theme = "warning"
-          ),
+            value_box(
+              title = "DNA Positive",
+              value = textOutput(ns("kpi_samples_dna")),
+              showcase = icon("circle-plus"),
+              theme = "info"
+            ),
 
-          value_box(
-            title = "Negative",
-            value = textOutput(ns("kpi_samples_negative")),
-            showcase = icon("circle-minus"),
-            theme = "secondary"
-          ),
+            value_box(
+              title = "RNA Positive",
+              value = textOutput(ns("kpi_samples_rna")),
+              showcase = icon("wave-square"),
+              theme = "info"
+            ),
 
-          value_box(
-            title = "TNA Prevalence",
-            value = textOutput(ns("kpi_samples_tna_prev")),
-            showcase = icon("percent"),
-            theme = "primary"
-          ),
+            value_box(
+              title = "Indeterminate",
+              value = textOutput(ns("kpi_samples_indeterminate")),
+              showcase = icon("question-circle"),
+              theme = "warning"
+            ),
 
-          value_box(
-            title = "Any Positive Prevalence",
-            value = textOutput(ns("kpi_samples_any_prev")),
-            showcase = icon("chart-pie"),
-            theme = "primary"
+            value_box(
+              title = "Negative",
+              value = textOutput(ns("kpi_samples_negative")),
+              showcase = icon("circle-minus"),
+              theme = "secondary"
+            ),
+
+            value_box(
+              title = "TNA Prevalence",
+              value = textOutput(ns("kpi_samples_tna_prev")),
+              showcase = icon("percent"),
+              theme = "primary"
+            ),
+
+            value_box(
+              title = "Any Positive Prevalence",
+              value = textOutput(ns("kpi_samples_any_prev")),
+              showcase = icon("chart-pie"),
+              theme = "primary"
+            )
           )
         )
-      )
-    ),
-
-    # Results table - filters are applied from sidebar
-    card(
-      full_screen = TRUE,
-      card_header(
-        class = "d-flex justify-content-between align-items-center",
-        span("Sample Results"),
-        downloadButton(ns("dl_filtered"), "Download", class = "btn-sm btn-outline-primary")
       ),
-      card_body(
-        DTOutput(ns("tbl_samples")),
-        class = "p-3"
+
+      # Results table - filters are applied from sidebar
+      card(
+        card_header(
+          class = "d-flex justify-content-between align-items-center",
+          span("Sample Results"),
+          downloadButton(ns("dl_filtered"), "Download", class = "btn-sm btn-outline-primary")
+        ),
+        card_body(
+          DTOutput(ns("tbl_samples")),
+          class = "p-3 mic-samples-table-body"
+        )
       )
     )
   )

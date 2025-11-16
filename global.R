@@ -148,9 +148,15 @@ app_theme <- bslib::bs_add_rules(
     max-height: 100vh;
   }
 
-  .bslib-sidebar-layout > .bslib-main,
-  .bslib-nav-content {
+  .bslib-sidebar-layout > .bslib-main {
     overflow: visible !important;
+  }
+
+  /* Allow MIC nav panels to scroll instead of forcing tables to scroll */
+  .bslib-nav-content {
+    max-height: calc(100vh - 60px);
+    overflow-y: auto;
+    padding-bottom: 1rem;
   }
   "
 )

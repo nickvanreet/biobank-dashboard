@@ -17,9 +17,9 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
       defaults <- list(
         th_177t_pos = 35, th_177t_neg = 40,
         th_18s2_pos = 35, th_18s2_neg = 40,
-        th_rnp_dna_pos = 32, th_rnp_dna_neg = 45,
-        th_rnp_rna_pos = 30, th_rnp_rna_neg = 45,
-        late_min = 38, late_max = 40,
+        th_rnp_dna_pos = 28, th_rnp_dna_neg = 40,
+        th_rnp_rna_pos = 35, th_rnp_rna_neg = 40,
+        late_min = 35, late_max = 40,
         delta_rp_limit = 8,
         allow_review = FALSE
       )
@@ -36,10 +36,10 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
         thresholds = list(
           `177T` = list(positive = input$th_177t_pos %||% 35, negative = input$th_177t_neg %||% 40),
           `18S2` = list(positive = input$th_18s2_pos %||% 35, negative = input$th_18s2_neg %||% 40),
-          RNAseP_DNA = list(positive = input$th_rnp_dna_pos %||% 32, negative = input$th_rnp_dna_neg %||% 45),
-          RNAseP_RNA = list(positive = input$th_rnp_rna_pos %||% 30, negative = input$th_rnp_rna_neg %||% 45)
+          RNAseP_DNA = list(positive = input$th_rnp_dna_pos %||% 28, negative = input$th_rnp_dna_neg %||% 40),
+          RNAseP_RNA = list(positive = input$th_rnp_rna_pos %||% 35, negative = input$th_rnp_rna_neg %||% 40)
         ),
-        late_window = c(input$late_min %||% 38, input$late_max %||% 40),
+        late_window = c(input$late_min %||% 35, input$late_max %||% 40),
         delta_rp_limit = input$delta_rp_limit %||% 8,
         allow_review_controls = isTRUE(input$allow_review),
         pc_aliases = c("PC", "POS", "POSITIVE", "CP"),
@@ -126,7 +126,7 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
                 numericInput(
                   session$ns("th_rnp_dna_pos"),
                   "Positive ≤",
-                  value = isolate(input$th_rnp_dna_pos) %||% 32,
+                  value = isolate(input$th_rnp_dna_pos) %||% 28,
                   min = 0,
                   max = 50,
                   step = 0.5,
@@ -135,7 +135,7 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
                 numericInput(
                   session$ns("th_rnp_dna_neg"),
                   "Negative >",
-                  value = isolate(input$th_rnp_dna_neg) %||% 45,
+                  value = isolate(input$th_rnp_dna_neg) %||% 40,
                   min = 0,
                   max = 50,
                   step = 0.5,
@@ -149,7 +149,7 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
                 numericInput(
                   session$ns("th_rnp_rna_pos"),
                   "Positive ≤",
-                  value = isolate(input$th_rnp_rna_pos) %||% 30,
+                  value = isolate(input$th_rnp_rna_pos) %||% 35,
                   min = 0,
                   max = 50,
                   step = 0.5,
@@ -158,7 +158,7 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
                 numericInput(
                   session$ns("th_rnp_rna_neg"),
                   "Negative >",
-                  value = isolate(input$th_rnp_rna_neg) %||% 45,
+                  value = isolate(input$th_rnp_rna_neg) %||% 40,
                   min = 0,
                   max = 50,
                   step = 0.5,
@@ -179,12 +179,13 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
 
               div(
                 h6("Late Positive Window"),
+                p(class = "small text-muted mb-2", "Cq values inside this range are labelled LatePositive during classification."),
                 layout_columns(
                   col_widths = c(6, 6),
                   numericInput(
                     session$ns("late_min"),
                     "Min",
-                    value = isolate(input$late_min) %||% 38,
+                    value = isolate(input$late_min) %||% 35,
                     min = 0,
                     max = 50,
                     step = 0.5,

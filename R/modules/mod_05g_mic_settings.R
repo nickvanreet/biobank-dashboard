@@ -73,20 +73,20 @@ mod_mic_settings_ui <- function(id) {
           layout_columns(
             col_widths = c(6, 6),
             numericInput(
-              ns("th_rnp_dna_pos"), 
-              "Positive ≤", 
-              value = 32, 
-              min = 0, 
-              max = 50, 
+              ns("th_rnp_dna_pos"),
+              "Positive ≤",
+              value = 28,
+              min = 0,
+              max = 50,
               step = 0.5,
               width = "100%"
             ),
             numericInput(
-              ns("th_rnp_dna_neg"), 
-              "Negative >", 
-              value = 45, 
-              min = 0, 
-              max = 50, 
+              ns("th_rnp_dna_neg"),
+              "Negative >",
+              value = 40,
+              min = 0,
+              max = 50,
               step = 0.5,
               width = "100%"
             )
@@ -96,20 +96,20 @@ mod_mic_settings_ui <- function(id) {
           layout_columns(
             col_widths = c(6, 6),
             numericInput(
-              ns("th_rnp_rna_pos"), 
-              "Positive ≤", 
-              value = 30, 
-              min = 0, 
-              max = 50, 
+              ns("th_rnp_rna_pos"),
+              "Positive ≤",
+              value = 35,
+              min = 0,
+              max = 50,
               step = 0.5,
               width = "100%"
             ),
             numericInput(
-              ns("th_rnp_rna_neg"), 
-              "Negative >", 
-              value = 45, 
-              min = 0, 
-              max = 50, 
+              ns("th_rnp_rna_neg"),
+              "Negative >",
+              value = 40,
+              min = 0,
+              max = 50,
               step = 0.5,
               width = "100%"
             )
@@ -128,12 +128,13 @@ mod_mic_settings_ui <- function(id) {
 
           div(
             h6("Late Positive Window"),
+            p(class = "small text-muted mb-2", "Cq values falling inside this range are flagged as LatePositive for downstream calling."),
             layout_columns(
               col_widths = c(6, 6),
               numericInput(
                 ns("late_min"),
                 "Min",
-                value = 38,
+                value = 35,
                 min = 0,
                 max = 50,
                 step = 0.5,
@@ -279,11 +280,11 @@ mod_mic_settings_server <- function(id, current_settings) {
       updateNumericInput(session, "th_177t_neg", value = 40)
       updateNumericInput(session, "th_18s2_pos", value = 35)
       updateNumericInput(session, "th_18s2_neg", value = 40)
-      updateNumericInput(session, "th_rnp_dna_pos", value = 32)
-      updateNumericInput(session, "th_rnp_dna_neg", value = 45)
-      updateNumericInput(session, "th_rnp_rna_pos", value = 30)
-      updateNumericInput(session, "th_rnp_rna_neg", value = 45)
-      updateNumericInput(session, "late_min", value = 38)
+      updateNumericInput(session, "th_rnp_dna_pos", value = 28)
+      updateNumericInput(session, "th_rnp_dna_neg", value = 40)
+      updateNumericInput(session, "th_rnp_rna_pos", value = 35)
+      updateNumericInput(session, "th_rnp_rna_neg", value = 40)
+      updateNumericInput(session, "late_min", value = 35)
       updateNumericInput(session, "late_max", value = 40)
       updateNumericInput(session, "delta_rp_limit", value = 8)
       updateCheckboxInput(session, "allow_review", value = FALSE)

@@ -1740,8 +1740,17 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
     })
 
     observeEvent(input$apply_settings, {
+      # Clear cached parses so new thresholds are applied immediately
+      cache_state(list())
       removeModal()
-      showNotification("Settings applied. Refresh data to reprocess.", type = "message")
+
+      # Reprocess MIC files with the updated settings
+      raw_data()
+      showNotification(
+        "Settings applied. MIC data reprocessed with new thresholds.",
+        type = "message",
+        duration = 5
+      )
     })
 
     # =========================================================================

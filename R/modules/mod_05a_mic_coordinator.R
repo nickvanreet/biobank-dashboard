@@ -11,7 +11,7 @@ mod_mic_qpcr_coordinator_ui <- function(id) {
   list(
     # Module 1: Overview
     nav_panel(
-      title = "MIC Overview",
+      title = "MIC - Run",
       icon = icon("dashboard"),
       value = "mic_overview",
       mod_mic_overview_ui(ns("overview"))

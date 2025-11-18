@@ -786,7 +786,19 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       filename = function() sprintf("mic_samples_filtered_%s.csv", format(Sys.Date(), "%Y%m%d")),
       content = function(file) {
         df <- selected_results() %>% drop_helper_columns()
-        write_csv(df, file)
+
+        # Respect current table filters/search terms by using the visible rows
+        visible_rows <- input$tbl_samples_rows_all
+        if (!is.null(visible_rows) && length(visible_rows)) {
+          df <- df[visible_rows, , drop = FALSE]
+        }
+
+        # Use a semicolon delimiter and comma decimal mark so numbers open correctly in
+        # Belgian/French versions of Excel.
+        df <- df %>%
+          mutate(across(where(is.numeric), ~ format(.x, trim = TRUE, scientific = FALSE, decimal.mark = ",")))
+
+        write_delim(df, file, delim = ";", na = "")
       }
     )
     

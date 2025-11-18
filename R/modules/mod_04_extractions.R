@@ -53,6 +53,12 @@ mod_extractions_ui <- function(id) {
           value = textOutput(ns("kpi_rsc_run_count")),
           showcase = icon("gauge"),
           theme = "secondary"
+        ),
+        value_box(
+          title = "CN Mentions",
+          value = textOutput(ns("kpi_cn")),
+          showcase = icon("comment-medical"),
+          theme = "danger"
         )
       ),
 
@@ -466,6 +472,17 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           "--"
         } else {
           scales::comma(m$rsc_run_count)
+        }
+      })
+
+      output$kpi_cn <- renderText({
+        m <- metrics()
+        if (is.null(m$cn_total) || is.null(m$cn_pct) || is.na(m$cn_total)) {
+          "--"
+        } else if (is.na(m$cn_pct)) {
+          scales::comma(m$cn_total)
+        } else {
+          paste0(scales::comma(m$cn_total), " (", scales::percent(m$cn_pct, accuracy = 0.1), ")")
         }
       })
 

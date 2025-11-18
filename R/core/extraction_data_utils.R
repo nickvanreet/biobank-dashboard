@@ -24,6 +24,55 @@ list_extraction_files <- function(directory) {
   files
 }
 
+
+#' Determine whether an extraction row is empty
+#' @param df Tibble of extraction data
+.is_empty_extraction_row <- function(df) {
+  if (!nrow(df)) return(logical())
+
+  blank_to_na <- function(x) {
+    if (is.null(x)) return(rep(NA, nrow(df)))
+    out <- trimws(as.character(x))
+    out[out == ""] <- NA_character_
+    out
+  }
+
+  core_cols <- dplyr::tibble(
+    barcode = blank_to_na(df$barcode),
+    numero = blank_to_na(df$numero),
+    sample_id = blank_to_na(df$sample_id),
+    record_number = blank_to_na(df$record_number),
+    extraction_date = df$extraction_date,
+    drs_volume_ml = df$drs_volume_ml,
+    rack = blank_to_na(df$rack),
+    rack_row = blank_to_na(df$rack_row),
+    rack_column = blank_to_na(df$rack_column),
+    freezer_position = blank_to_na(df$freezer_position)
+  )
+
+  all_na <- apply(as.data.frame(df), 1, function(row) all(is.na(row) | row == ""))
+  core_empty <- apply(core_cols, 1, function(row) all(is.na(row)))
+
+  all_na | core_empty
+}
+
+#' Parse extraction datetime with time support
+#' @param x Vector to parse
+.parse_extraction_datetime <- function(x) {
+  if (inherits(x, c("POSIXct", "POSIXt"))) return(lubridate::as_datetime(x))
+  suppressWarnings({
+    dt <- suppressWarnings(lubridate::ymd_hms(x))
+    bad <- is.na(dt)
+    if (any(bad)) {
+      dt[bad] <- suppressWarnings(lubridate::dmy_hms(as.character(x[bad])))
+    }
+    if (any(is.na(dt))) {
+      dt[is.na(dt)] <- suppressWarnings(lubridate::as_datetime(as.character(x[is.na(dt)])))
+    }
+    dt
+  })
+}
+
 # ---- Internal helpers ------------------------------------------------------
 
 .parse_extraction_date <- function(x) {
@@ -133,6 +182,8 @@ load_extraction_file <- function(filepath) {
       "sample_id", "extraction_id", "numero", "lab_id", "code", "barcode",
       "code_barres", "code_barres_kps", "code_barre"
     ),
+    barcode = c("barcode", "code_barres", "code_barres_kps", "code_barre"),
+    numero = c("numero", "num", "numéro"),
     record_number = c("numero", "record", "sample_number"),
     extraction_date = c("extraction_date", "date_extraction", "date", "extractiondate"),
     health_structure = c(
@@ -158,6 +209,7 @@ load_extraction_file <- function(filepath) {
     batch = c("batch", "lot", "extraction_batch"),
     rsc_run = c("rsc_run"),
     rsc_position = c("rsc_position"),
+    freezer_position = c("freezer_position", "position_congelateur", "position_freezer"),
     rack = c("rack"),
     rack_row = c("rangee", "row"),
     rack_column = c("position", "col"),
@@ -173,14 +225,22 @@ load_extraction_file <- function(filepath) {
     }
   }
 
+  extraction_datetime_raw <- df$extraction_date
+
   file_date <- .infer_date_from_filename(basename(filepath))
 
   df <- df %>%
     dplyr::transmute(
       source_file = basename(filepath),
       sample_id = as.character(sample_id),
+      barcode = as.character(barcode),
+      numero = as.character(numero),
       record_number = as.character(record_number),
-      extraction_date = .parse_extraction_date(extraction_date),
+      extraction_datetime = .parse_extraction_datetime(extraction_datetime_raw),
+      extraction_date = dplyr::coalesce(
+        .parse_extraction_date(extraction_date),
+        as.Date(extraction_datetime)
+      ),
       health_structure = stringr::str_to_title(trimws(as.character(health_structure))),
       drs_state = .normalize_categories(
         drs_state,
@@ -222,14 +282,16 @@ load_extraction_file <- function(filepath) {
       rsc_run = as.character(rsc_run),
       rsc_position = as.character(rsc_position),
       # Freezer storage location fields
+      freezer_position = as.character(freezer_position),
       rack = as.character(rack),
       rack_row = as.character(rack_row),
       rack_column = as.character(rack_column),
       remarks = as.character(remarks)
     ) %>%
     dplyr::mutate(
-      sample_id = dplyr::coalesce(sample_id, record_number),
+      sample_id = dplyr::coalesce(sample_id, barcode, numero, record_number),
       extraction_date = dplyr::coalesce(extraction_date, file_date),
+      extraction_datetime = dplyr::coalesce(extraction_datetime, as.POSIXct(extraction_date)),
       health_structure = dplyr::if_else(is.na(health_structure) | health_structure == "", "Unspecified", health_structure),
       drs_state = dplyr::if_else(is.na(drs_state) | drs_state == "", "Unknown", drs_state),
       extract_quality = dplyr::if_else(is.na(extract_quality) | extract_quality == "", "Unknown", extract_quality),
@@ -343,22 +405,24 @@ remove_duplicates <- function(df, keep_first = FALSE) {
   df_dedup
 }
 
-#' Load and combine all extraction data sets
+#' Load and combine extraction spreadsheets from a directory
 #' @param directory Path to extraction data directory
-#' @param remove_dups Should duplicates be removed? (default: TRUE)
-#' @param validate Should data be validated? (default: TRUE)
+#' @param validate Should validation flags be added?
 #' @return Tibble with combined extraction records
 #' @export
-load_extraction_dataset <- function(directory = config$paths$extractions_dir,
-                                   remove_dups = TRUE,
-                                   validate = TRUE) {
+load_all_extractions <- function(directory = config$paths$extractions_dir,
+                                 validate = TRUE) {
   files <- list_extraction_files(directory)
+  files <- files[grepl("\.(xlsx|xls)$", files, ignore.case = TRUE)]
   if (!length(files)) {
     message("No extraction files found; returning empty dataset")
     return(tibble::tibble(
       source_file = character(),
+      barcode = character(),
+      numero = character(),
       sample_id = character(),
       record_number = character(),
+      extraction_datetime = as.POSIXct(character()),
       extraction_date = as.Date(character()),
       health_structure = character(),
       drs_state = character(),
@@ -367,10 +431,15 @@ load_extraction_dataset <- function(directory = config$paths$extractions_dir,
       technician = character(),
       rsc_run = character(),
       rsc_position = character(),
+      freezer_position = character(),
       rack = character(),
       rack_row = character(),
       rack_column = character(),
       remarks = character(),
+      has_cn = logical(),
+      is_duplicate = logical(),
+      dup_group = integer(),
+      most_recent = logical(),
       flag_issue = logical(),
       ready_for_freezer = logical(),
       valid_sample_id = logical(),
@@ -388,7 +457,8 @@ load_extraction_dataset <- function(directory = config$paths$extractions_dir,
     quiet = TRUE
   )
 
-  loaded_files <- purrr::map(files, safe_loader)
+  named_files <- stats::setNames(files, basename(files))
+  loaded_files <- purrr::map(named_files, safe_loader)
 
   purrr::walk2(files, loaded_files, function(path, result) {
     if (!is.null(result$error)) {
@@ -400,18 +470,75 @@ load_extraction_dataset <- function(directory = config$paths$extractions_dir,
     }
   })
 
-  df <- purrr::map_dfr(loaded_files, "result")
+  df <- purrr::map_dfr(loaded_files, function(res) {
+    out <- res$result
+    out$source_file <- NULL
+    out
+  }, .id = "source_file") %>%
+    dplyr::mutate(source_file = basename(.data$source_file))
 
-  # Remove duplicates if requested
-  if (remove_dups && nrow(df) > 0) {
-    df <- remove_duplicates(df)
+  if (!nrow(df)) {
+    return(df)
   }
 
-  # Add validation flags if requested
+  df <- df %>%
+    dplyr::mutate(
+      dplyr::across(where(is.character), ~stringr::str_squish(.x))
+    ) %>%
+    dplyr::filter(!.is_empty_extraction_row(.))
+
+  df <- df %>%
+    dplyr::mutate(
+      identifier_for_dup = dplyr::coalesce(
+        dplyr::na_if(barcode, ""),
+        dplyr::na_if(numero, ""),
+        dplyr::na_if(sample_id, ""),
+        dplyr::na_if(record_number, "")
+      )
+    ) %>%
+    dplyr::group_by(identifier_for_dup) %>%
+    dplyr::mutate(
+      dup_group = dplyr::if_else(
+        !is.na(identifier_for_dup),
+        dplyr::cur_group_id(),
+        NA_integer_
+      ),
+      latest_date = suppressWarnings(max(extraction_date, na.rm = TRUE)),
+      latest_date = dplyr::if_else(is.infinite(latest_date), as.Date(NA), latest_date),
+      is_duplicate = dplyr::if_else(
+        !is.na(identifier_for_dup) & dplyr::n() > 1,
+        TRUE,
+        FALSE,
+        FALSE
+      ),
+      most_recent = dplyr::if_else(
+        !is.na(identifier_for_dup) & !is.na(extraction_date) &
+          extraction_date == latest_date,
+        TRUE,
+        FALSE,
+        FALSE
+      )
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(-identifier_for_dup, -latest_date)
+
+  text_fields <- df %>% dplyr::select(where(is.character))
+  if (!ncol(text_fields)) {
+    df$has_cn <- rep(FALSE, nrow(df))
+  } else {
+    df$has_cn <- apply(
+      text_fields,
+      1,
+      function(row) {
+        matches <- stringr::str_detect(row, stringr::regex("\bcn\b", ignore_case = TRUE))
+        any(matches, na.rm = TRUE)
+      }
+    )
+  }
+
   if (validate && nrow(df) > 0) {
     df <- validate_sample_ids(df)
   } else if (nrow(df) > 0) {
-    # Add empty validation columns
     df <- df %>%
       dplyr::mutate(
         valid_sample_id = TRUE,
@@ -423,6 +550,15 @@ load_extraction_dataset <- function(directory = config$paths$extractions_dir,
 
   message(sprintf("Loaded %d extraction records", nrow(df)))
   df
+}
+
+#' Load extraction dataset (backwards compatible wrapper)
+#' @inheritParams load_all_extractions
+#' @export
+load_extraction_dataset <- function(directory = config$paths$extractions_dir,
+                                   remove_dups = FALSE,
+                                   validate = TRUE) {
+  load_all_extractions(directory = directory, validate = validate)
 }
 
 #' Summarise extraction metrics for KPI displays
@@ -447,6 +583,8 @@ summarise_extraction_metrics <- function(df) {
       volume_min = NA_real_,
       volume_max = NA_real_,
       rsc_run_count = 0,
+      cn_total = 0,
+      cn_pct = NA_real_,
       linked_total = 0
     ))
   }
@@ -465,7 +603,6 @@ summarise_extraction_metrics <- function(df) {
     mean(x)
   }
 
-  # Check if validation columns exist
   has_validation <- all(c("valid_sample_id", "duplicate_sample_id", "barcode_suspicious") %in% names(df))
 
   has_column <- function(column) {
@@ -510,6 +647,8 @@ summarise_extraction_metrics <- function(df) {
     NA_integer_
   }
 
+  cn_total <- if (has_column("has_cn")) sum(df$has_cn, na.rm = TRUE) else 0
+
   list(
     total = nrow(df),
     files_with_barcodes = files_with_barcodes,
@@ -538,23 +677,21 @@ summarise_extraction_metrics <- function(df) {
     } else {
       NA_real_
     },
-    flagged = if (has_column("flag_issue")) {
-      sum(df$flag_issue, na.rm = TRUE)
-    } else {
-      NA_integer_
-    },
+    flagged = if (has_column("flag_issue")) sum(df$flag_issue, na.rm = TRUE) else NA_integer_,
     valid_ids = if (has_validation) sum(df$valid_sample_id, na.rm = TRUE) else NA_integer_,
     duplicates = if (has_validation) sum(df$duplicate_sample_id, na.rm = TRUE) else NA_integer_,
     suspicious_barcodes = if (has_validation) sum(df$barcode_suspicious, na.rm = TRUE) else NA_integer_,
-    validation_rate = if (has_validation) safe_pct(df$validation_status == "Valid") else NA_real_,
-    linked_total = if (has_column("biobank_matched")) {
-      sum(dplyr::coalesce(df$biobank_matched, FALSE))
-    } else {
-      NA_real_
-    },
+    validation_rate = if (has_validation) mean(df$valid_sample_id, na.rm = TRUE) else NA_real_,
     volume_min = volume_min,
     volume_max = volume_max,
-    rsc_run_count = rsc_runs
+    rsc_run_count = rsc_runs,
+    cn_total = cn_total,
+    cn_pct = if (nrow(df) > 0) cn_total / nrow(df) else NA_real_,
+    linked_total = if (has_column("biobank_matched")) {
+      sum(df$biobank_matched, na.rm = TRUE)
+    } else {
+      NA_integer_
+    }
   )
 }
 

@@ -128,7 +128,7 @@ mod_data_manager_server <- function(id) {
 
         # Step 3b: Load extraction quality data and link to biobank
         extraction_df <- tryCatch({
-          load_extraction_dataset(config$paths$extractions_dir)
+          load_all_extractions(config$paths$extractions_dir)
         }, error = function(e) {
           message("Failed to load extraction dataset: ", e$message)
           tibble::tibble()

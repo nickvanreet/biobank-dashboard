@@ -781,6 +781,90 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       )
     })
 
+    output$decision_tree_calls_plot <- plotly::renderPlotly({
+      df <- selected_results()
+
+      if (!nrow(df)) {
+        return(plotly::plotly_empty(type = "bar", hoverinfo = "none") %>%
+                 plotly::layout(title = "No data available"))
+      }
+
+      missing_required <- setdiff(c("FinalCall", "DecisionStep"), names(df))
+      if (length(missing_required)) {
+        return(plotly::plotly_empty(type = "bar", hoverinfo = "none") %>%
+                 plotly::layout(title = "Call or decision data not available"))
+      }
+
+      if (!"ConfidenceScore" %in% names(df)) {
+        df$ConfidenceScore <- NA_character_
+      }
+
+      call_levels <- c(
+        "Positive", "Positive_DNA", "Positive_RNA", "LatePositive",
+        "Negative", "Indeterminate", "Invalid_NoDNA", "Invalid",
+        "RunInvalid", "Control", "Control_Fail"
+      )
+
+      plot_data <- df %>%
+        mutate(
+          FinalCall = case_when(
+            is.na(FinalCall) ~ "Unknown",
+            FinalCall %in% call_levels ~ FinalCall,
+            TRUE ~ "Other"
+          ),
+          ConfidenceScore = case_when(
+            is.na(ConfidenceScore) ~ "Not specified",
+            ConfidenceScore %in% c("High", "Medium", "Low") ~ ConfidenceScore,
+            TRUE ~ "Other"
+          ),
+          DecisionStep = if_else(is.na(DecisionStep) | DecisionStep == "", "Unknown step", as.character(DecisionStep))
+        ) %>%
+        count(DecisionStep, FinalCall, ConfidenceScore, name = "Count")
+
+      if (!nrow(plot_data)) {
+        return(plotly::plotly_empty(type = "bar", hoverinfo = "none") %>%
+                 plotly::layout(title = "No call data available"))
+      }
+
+      plot_data <- plot_data %>%
+        mutate(
+          FinalCall = factor(FinalCall, levels = c(call_levels, "Other", "Unknown")),
+          ConfidenceScore = factor(ConfidenceScore, levels = c("High", "Medium", "Low", "Not specified", "Other")),
+          DecisionStep = factor(DecisionStep, levels = sort(unique(DecisionStep)))
+        )
+
+      chart <- ggplot2::ggplot(
+        plot_data,
+        ggplot2::aes(
+          x = FinalCall,
+          y = Count,
+          fill = ConfidenceScore,
+          text = paste0(
+            "Decision step: ", DecisionStep,
+            "<br>Final call: ", FinalCall,
+            "<br>Confidence: ", ConfidenceScore,
+            "<br>Samples: ", Count
+          )
+        )
+      ) +
+        ggplot2::geom_col(position = "stack") +
+        ggplot2::facet_wrap(~DecisionStep, scales = "free_y") +
+        ggplot2::labs(
+          x = "Final Call",
+          y = "Samples",
+          fill = "Confidence",
+          title = "Calls and Confidence by Decision Step"
+        ) +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+          plot.title = ggplot2::element_text(size = 12, face = "bold")
+        )
+
+      plotly::ggplotly(chart, tooltip = "text") %>%
+        plotly::layout(legend = list(title = list(text = "Confidence")))
+    })
+
     # Main samples table
     output$tbl_samples <- renderDT({
       df <- selected_results()

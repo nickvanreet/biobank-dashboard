@@ -253,9 +253,21 @@ mod_mic_samples_ui <- function(id) {
           class = "d-flex justify-content-between align-items-center",
           div(
             span("Sample Results"),
-            tags$small("One row per sample using primary/secondary toggle", class = "text-muted d-block")
+            tags$small("Showing all available tests; toggle to view primary only", class = "text-muted d-block")
           ),
-          downloadButton(ns("dl_filtered"), "Download", class = "btn-sm btn-outline-primary")
+          div(
+            class = "d-flex align-items-center gap-3",
+            div(
+              class = "form-check form-switch m-0",
+              checkboxInput(
+                ns("primary_only"),
+                label = tags$span("Primary results only", class = "text-muted small"),
+                value = FALSE,
+                width = "auto"
+              )
+            ),
+            downloadButton(ns("dl_filtered"), "Download", class = "btn-sm btn-outline-primary")
+          )
         ),
         card_body(
           DTOutput(ns("tbl_samples")),
@@ -344,6 +356,18 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       df %>%
         filter(ControlType == "Sample") %>%
         append_test_order(drop_helper_cols = FALSE)
+    })
+
+    table_results <- reactive({
+      df <- samples_with_order()
+
+      if (!nrow(df)) return(df)
+
+      if (isTRUE(input$primary_only)) {
+        df <- df %>% filter(TestNumber == 1L)
+      }
+
+      df
     })
 
     selected_results <- reactive({
@@ -992,7 +1016,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
 
     # Main samples table
     output$tbl_samples <- renderDT({
-      df <- selected_results()
+      df <- table_results()
 
       if (!nrow(df)) {
         return(datatable(
@@ -1080,7 +1104,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
     output$dl_filtered <- downloadHandler(
       filename = function() sprintf("mic_samples_filtered_%s.csv", format(Sys.Date(), "%Y%m%d")),
       content = function(file) {
-        df <- selected_results() %>% drop_helper_columns()
+        df <- table_results() %>% drop_helper_columns()
 
         # Respect current table filters/search terms by using the visible rows
         visible_rows <- input$tbl_samples_rows_all

@@ -726,7 +726,9 @@ summarise_extraction_metrics <- function(df) {
       rsc_run_count = 0,
       cn_total = 0,
       cn_pct = NA_real_,
-      linked_total = 0
+      linked_total = 0,
+      matched_total = 0,
+      mismatched_total = 0
     ))
   }
 
@@ -830,6 +832,16 @@ summarise_extraction_metrics <- function(df) {
     cn_pct = if (nrow(df) > 0) cn_total / nrow(df) else NA_real_,
     linked_total = if (has_column("biobank_matched")) {
       sum(df$biobank_matched, na.rm = TRUE)
+    } else {
+      NA_integer_
+    },
+    matched_total = if (has_column("numero_match")) {
+      sum(df$numero_match == TRUE, na.rm = TRUE)
+    } else {
+      NA_integer_
+    },
+    mismatched_total = if (has_column("numero_match")) {
+      sum(df$numero_match == FALSE, na.rm = TRUE)
     } else {
       NA_integer_
     }

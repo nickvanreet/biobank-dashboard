@@ -786,6 +786,13 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       filename = function() sprintf("mic_samples_filtered_%s.csv", format(Sys.Date(), "%Y%m%d")),
       content = function(file) {
         df <- selected_results() %>% drop_helper_columns()
+
+        # Respect current table filters/search terms by using the visible rows
+        visible_rows <- input$tbl_samples_rows_all
+        if (!is.null(visible_rows) && length(visible_rows)) {
+          df <- df[visible_rows, , drop = FALSE]
+        }
+
         write_csv(df, file)
       }
     )

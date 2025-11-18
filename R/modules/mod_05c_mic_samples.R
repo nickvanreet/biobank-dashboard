@@ -210,7 +210,7 @@ mod_mic_samples_ui <- function(id) {
         ),
         card_body(
           layout_column_wrap(
-            width = 1/2,
+            width = 1/3,
             gap = "12px",
 
             card(
@@ -219,8 +219,20 @@ mod_mic_samples_ui <- function(id) {
             ),
 
             card(
-              card_header("Confidence & Quality Metrics"),
-              card_body(DTOutput(ns("tbl_confidence_quality")))
+              card_header("Confidence Distribution"),
+              card_body(DTOutput(ns("tbl_confidence_metrics")))
+            ),
+
+            card(
+              card_header("Quality Metrics"),
+              card_body(DTOutput(ns("tbl_quality_metrics")))
+            ),
+
+            card(
+              card_header("Calls, Confidence, and Decision Steps"),
+              card_body(
+                plotly::plotlyOutput(ns("decision_tree_calls_plot"), height = "420px")
+              )
             )
           )
         )
@@ -608,7 +620,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       )
     })
 
-    output$tbl_confidence_quality <- renderDT({
+    output$tbl_confidence_metrics <- renderDT({
       df <- selected_results()
 
       if (!nrow(df)) {
@@ -619,31 +631,62 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         ))
       }
 
-      # Build quality summary
-      quality_rows <- list()
-
-      # Confidence distribution
-      if ("ConfidenceScore" %in% names(df)) {
-        conf_summary <- df %>%
-          filter(!is.na(ConfidenceScore)) %>%
-          group_by(ConfidenceScore) %>%
-          summarise(n = n(), .groups = "drop")
-
-        total_conf <- sum(conf_summary$n)
-
-        for (i in seq_len(nrow(conf_summary))) {
-          quality_rows <- append(quality_rows, list(tibble(
-            Metric = paste0(conf_summary$ConfidenceScore[i], " Confidence"),
-            Count = conf_summary$n[i],
-            Percentage = sprintf("%.1f%%", 100 * conf_summary$n[i] / total_conf)
-          )))
-        }
+      if (!"ConfidenceScore" %in% names(df)) {
+        return(datatable(
+          tibble(Message = "No confidence scores available"),
+          options = list(dom = 't'),
+          rownames = FALSE
+        ))
       }
 
-      # Conflicts
+      conf_summary <- df %>%
+        filter(!is.na(ConfidenceScore)) %>%
+        count(ConfidenceScore, name = "Count")
+
+      total_conf <- sum(conf_summary$Count)
+
+      if (!total_conf) {
+        return(datatable(
+          tibble(Message = "No confidence scores available"),
+          options = list(dom = 't'),
+          rownames = FALSE
+        ))
+      }
+
+      conf_summary <- conf_summary %>%
+        mutate(
+          Percentage = sprintf("%.1f%%", 100 * Count / total_conf)
+        ) %>%
+        arrange(desc(Count))
+
+      datatable(
+        conf_summary,
+        options = list(
+          pageLength = 15,
+          dom = 't',
+          ordering = FALSE
+        ),
+        rownames = FALSE,
+        class = "display compact stripe"
+      )
+    })
+
+    output$tbl_quality_metrics <- renderDT({
+      df <- selected_results()
+
+      if (!nrow(df)) {
+        return(datatable(
+          tibble(Message = "No data available"),
+          options = list(dom = 't'),
+          rownames = FALSE
+        ))
+      }
+
+      quality_rows <- list()
+      total_samples <- nrow(df)
+
       if ("WellAggregateConflict" %in% names(df)) {
         conflict_count <- sum(df$WellAggregateConflict == TRUE, na.rm = TRUE)
-        total_samples <- nrow(df)
 
         quality_rows <- append(quality_rows, list(tibble(
           Metric = "Samples with Conflicts",
@@ -652,11 +695,9 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         )))
       }
 
-      # Indeterminate results
       if ("FinalCall" %in% names(df)) {
         invalid_count <- sum(df$FinalCall %in% c("Invalid", "Invalid_NoDNA", "RunInvalid"), na.rm = TRUE)
         indet_count <- sum(df$FinalCall == "Indeterminate", na.rm = TRUE)
-        total_samples <- nrow(df)
 
         if (invalid_count > 0) {
           quality_rows <- append(quality_rows, list(tibble(
@@ -693,6 +734,90 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         rownames = FALSE,
         class = "display compact stripe"
       )
+    })
+
+    output$decision_tree_calls_plot <- plotly::renderPlotly({
+      df <- selected_results()
+
+      if (!nrow(df)) {
+        return(plotly::plotly_empty(type = "bar", hoverinfo = "none") %>%
+                 plotly::layout(title = "No data available"))
+      }
+
+      missing_required <- setdiff(c("FinalCall", "DecisionStep"), names(df))
+      if (length(missing_required)) {
+        return(plotly::plotly_empty(type = "bar", hoverinfo = "none") %>%
+                 plotly::layout(title = "Call or decision data not available"))
+      }
+
+      if (!"ConfidenceScore" %in% names(df)) {
+        df$ConfidenceScore <- NA_character_
+      }
+
+      call_levels <- c(
+        "Positive", "Positive_DNA", "Positive_RNA", "LatePositive",
+        "Negative", "Indeterminate", "Invalid_NoDNA", "Invalid",
+        "RunInvalid", "Control", "Control_Fail"
+      )
+
+      plot_data <- df %>%
+        mutate(
+          FinalCall = case_when(
+            is.na(FinalCall) ~ "Unknown",
+            FinalCall %in% call_levels ~ FinalCall,
+            TRUE ~ "Other"
+          ),
+          ConfidenceScore = case_when(
+            is.na(ConfidenceScore) ~ "Not specified",
+            ConfidenceScore %in% c("High", "Medium", "Low") ~ ConfidenceScore,
+            TRUE ~ "Other"
+          ),
+          DecisionStep = if_else(is.na(DecisionStep) | DecisionStep == "", "Unknown step", as.character(DecisionStep))
+        ) %>%
+        count(DecisionStep, FinalCall, ConfidenceScore, name = "Count")
+
+      if (!nrow(plot_data)) {
+        return(plotly::plotly_empty(type = "bar", hoverinfo = "none") %>%
+                 plotly::layout(title = "No call data available"))
+      }
+
+      plot_data <- plot_data %>%
+        mutate(
+          FinalCall = factor(FinalCall, levels = c(call_levels, "Other", "Unknown")),
+          ConfidenceScore = factor(ConfidenceScore, levels = c("High", "Medium", "Low", "Not specified", "Other")),
+          DecisionStep = factor(DecisionStep, levels = sort(unique(DecisionStep)))
+        )
+
+      chart <- ggplot2::ggplot(
+        plot_data,
+        ggplot2::aes(
+          x = FinalCall,
+          y = Count,
+          fill = ConfidenceScore,
+          text = paste0(
+            "Decision step: ", DecisionStep,
+            "<br>Final call: ", FinalCall,
+            "<br>Confidence: ", ConfidenceScore,
+            "<br>Samples: ", Count
+          )
+        )
+      ) +
+        ggplot2::geom_col(position = "stack") +
+        ggplot2::facet_wrap(~DecisionStep, scales = "free_y") +
+        ggplot2::labs(
+          x = "Final Call",
+          y = "Samples",
+          fill = "Confidence",
+          title = "Calls and Confidence by Decision Step"
+        ) +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+          plot.title = ggplot2::element_text(size = 12, face = "bold")
+        )
+
+      plotly::ggplotly(chart, tooltip = "text") %>%
+        plotly::layout(legend = list(title = list(text = "Confidence")))
     })
 
     # Main samples table

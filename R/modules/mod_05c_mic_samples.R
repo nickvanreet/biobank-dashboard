@@ -794,25 +794,9 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         }
 
         # Use a semicolon delimiter and comma decimal mark so numbers open correctly in
-        # Belgian/French versions of Excel. Format numerics as strings to avoid locale
-        # issues in environments with older readr versions, and write with base R to keep
-        # dependencies simple.
-        df <- df %>%
-          mutate(across(where(is.numeric), ~ format(.x, trim = TRUE, scientific = FALSE, decimal.mark = ",")))
-
-        utils::write.table(
-          df,
-          file = file,
-          sep = ";",
-          dec = ",",
-          row.names = FALSE,
-          col.names = TRUE,
-          na = "",
-          qmethod = "double",
-          fileEncoding = "UTF-8"
-        )
-      },
-      contentType = "text/csv;charset=UTF-8"
+        # Belgian/French versions of Excel.
+        write_csv2(df, file, locale = locale(decimal_mark = ","))
+      }
     )
     
   })

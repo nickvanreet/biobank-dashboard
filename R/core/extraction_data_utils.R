@@ -515,7 +515,7 @@ load_all_extractions <- function(directory = config$paths$extractions_dir,
       dplyr::across(where(is.character), ~stringr::str_squish(.x))
     )
 
-  # Filter empty rows
+  # First pass: Filter empty rows BEFORE duplicate detection
   df <- df %>%
     dplyr::filter(!.is_empty_extraction_row(.))
 
@@ -586,6 +586,22 @@ load_all_extractions <- function(directory = config$paths$extractions_dir,
     dplyr::ungroup() %>%
     dplyr::select(-identifier_for_dup, -latest_date, -group_size, -row_id)
 
+  # REMOVE duplicates: keep only the most recent record for each duplicate group
+  rows_before_dedup <- nrow(df)
+  df <- df %>%
+    dplyr::filter(!is_duplicate | most_recent)
+
+  rows_after_dedup <- nrow(df)
+  duplicates_removed <- rows_before_dedup - rows_after_dedup
+
+  if (duplicates_removed > 0) {
+    message(sprintf(
+      "Removed %d duplicate rows (kept most recent; %d records remain)",
+      duplicates_removed,
+      rows_after_dedup
+    ))
+  }
+
   text_fields <- df %>% dplyr::select(where(is.character))
   if (!ncol(text_fields)) {
     df$has_cn <- rep(FALSE, nrow(df))
@@ -612,16 +628,32 @@ load_all_extractions <- function(directory = config$paths$extractions_dir,
       )
   }
 
+  # Second pass: Filter empty rows AFTER metadata additions
+  # This catches any rows that might have only metadata but no actual data
+  rows_before_final_filter <- nrow(df)
+  df <- df %>%
+    dplyr::filter(!.is_empty_extraction_row(.))
+
+  rows_after_final_filter <- nrow(df)
+  final_empty_rows_removed <- rows_before_final_filter - rows_after_final_filter
+
+  if (final_empty_rows_removed > 0) {
+    message(sprintf(
+      "Removed %d additional empty rows after processing (%d records remain)",
+      final_empty_rows_removed,
+      rows_after_final_filter
+    ))
+  }
+
   # Final summary statistics
   n_duplicates <- sum(df$is_duplicate, na.rm = TRUE)
   n_unique_dup_groups <- length(unique(df$dup_group[!is.na(df$dup_group)]))
   n_cn <- sum(df$has_cn, na.rm = TRUE)
 
   message(sprintf(
-    "Loaded %d extraction records (%d duplicates in %d groups, %d with CN)",
+    "Loaded %d extraction records (%d remaining duplicates, %d with CN)",
     nrow(df),
     n_duplicates,
-    n_unique_dup_groups,
     n_cn
   ))
 

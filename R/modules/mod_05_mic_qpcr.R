@@ -2551,6 +2551,10 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
         ))
       }
 
+      # Remove any duplicate RunIDs (safety check)
+      runs <- runs %>%
+        distinct(RunID, .keep_all = TRUE)
+
       display_runs <- runs %>%
         mutate(
           RunDateTime = as.character(RunDateTime),
@@ -2601,7 +2605,10 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
         ))
       }
 
-      df <- df %>% filter(ControlType == "Sample")
+      df <- df %>%
+        filter(ControlType == "Sample") %>%
+        # Remove any duplicate rows (safety check)
+        distinct(RunID, SampleID, .keep_all = TRUE)
 
       if (!nrow(df)) {
         return(datatable(
@@ -2674,6 +2681,10 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
           rownames = FALSE
         ))
       }
+
+      # Remove any duplicate controls (safety check)
+      ctrl <- ctrl %>%
+        distinct(RunID, SampleID, .keep_all = TRUE)
 
       available_cols <- intersect(
         c("RunID", "SampleName", "ControlType", "ControlPass", "ControlFlag"),

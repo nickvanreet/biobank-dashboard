@@ -127,10 +127,12 @@ mod_mic_qpcr_coordinator_server <- function(id, biobank_df, extractions_df, filt
           link_to_biobank(if (is.null(biobank_df)) NULL else biobank_df()) %>%
           link_to_extractions(if (is.null(extractions_df)) NULL else extractions_df())
         
-        # Apply control flags
+        # Apply control flags (deduplicate control_status first to prevent duplicate rows)
         samples_linked <- samples_linked %>%
           left_join(
-            control_status %>% select(RunID, SampleID, ControlFlag),
+            control_status %>%
+              select(RunID, SampleID, ControlFlag) %>%
+              distinct(RunID, SampleID, .keep_all = TRUE),
             by = c("RunID", "SampleID")
           ) %>%
           mutate(
@@ -175,6 +177,11 @@ mod_mic_qpcr_coordinator_server <- function(id, biobank_df, extractions_df, filt
           RNAseP_DNA = compute_levey_jennings(replicates_df, "RNAseP_DNA"),
           RNAseP_RNA = compute_levey_jennings(replicates_df, "RNAseP_RNA")
         )
+
+        # Final deduplication safety check - remove any duplicate rows
+        # Keep the first occurrence of each unique RunID+SampleID combination
+        samples_linked <- samples_linked %>%
+          distinct(RunID, SampleID, .keep_all = TRUE)
 
         list(
           runs = runs_summary,

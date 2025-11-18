@@ -304,7 +304,11 @@ mod_mic_overview_server <- function(id, processed_data, filtered_base) {
           rownames = FALSE
         ))
       }
-      
+
+      # Remove any duplicate RunIDs (safety check)
+      runs <- runs %>%
+        distinct(RunID, .keep_all = TRUE)
+
       display <- runs %>%
         mutate(
           RunDateTime = as.character(RunDateTime),

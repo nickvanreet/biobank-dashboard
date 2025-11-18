@@ -530,7 +530,7 @@ load_all_extractions <- function(directory = config$paths$extractions_dir,
     ))
   }
 
-  # Duplicate detection: identify rows with the same identifier
+  # Duplicate detection: identify rows with the same identifier AND freezer position
   # Normalize identifiers first (trim, lowercase for comparison)
   df <- df %>%
     dplyr::mutate(
@@ -544,15 +544,48 @@ load_all_extractions <- function(directory = config$paths$extractions_dir,
       record_number_norm = stringr::str_trim(tolower(as.character(record_number))),
       record_number_norm = dplyr::na_if(record_number_norm, ""),
 
-      # Create composite identifier for duplicate detection
-      identifier_for_dup = dplyr::coalesce(
+      # Normalize freezer position fields
+      freezer_position_norm = stringr::str_trim(tolower(as.character(freezer_position))),
+      freezer_position_norm = dplyr::na_if(freezer_position_norm, ""),
+      rack_norm = stringr::str_trim(tolower(as.character(rack))),
+      rack_norm = dplyr::na_if(rack_norm, ""),
+      rack_row_norm = stringr::str_trim(tolower(as.character(rack_row))),
+      rack_row_norm = dplyr::na_if(rack_row_norm, ""),
+      rack_column_norm = stringr::str_trim(tolower(as.character(rack_column))),
+      rack_column_norm = dplyr::na_if(rack_column_norm, ""),
+
+      # Create composite sample identifier
+      sample_identifier = dplyr::coalesce(
         barcode_norm,
         numero_norm,
         sample_id_norm,
         record_number_norm
+      ),
+
+      # Create composite position identifier from available fields
+      # This allows different freezer positions to be treated as separate samples (replicates)
+      position_identifier = paste(
+        dplyr::coalesce(freezer_position_norm, ""),
+        dplyr::coalesce(rack_norm, ""),
+        dplyr::coalesce(rack_row_norm, ""),
+        dplyr::coalesce(rack_column_norm, ""),
+        sep = "_"
+      ),
+      position_identifier = dplyr::na_if(position_identifier, "___"),
+      position_identifier = dplyr::na_if(position_identifier, ""),
+
+      # Final identifier for duplicate detection: sample + position
+      # Same sample at different positions = replicates (kept)
+      # Same sample at same position = duplicates (removed)
+      identifier_for_dup = paste(
+        dplyr::coalesce(sample_identifier, "NA"),
+        dplyr::coalesce(position_identifier, "NA"),
+        sep = "|"
       )
     ) %>%
-    dplyr::select(-barcode_norm, -numero_norm, -sample_id_norm, -record_number_norm)
+    dplyr::select(-barcode_norm, -numero_norm, -sample_id_norm, -record_number_norm,
+                  -freezer_position_norm, -rack_norm, -rack_row_norm, -rack_column_norm,
+                  -sample_identifier, -position_identifier)
 
   # Group by identifier and detect duplicates
   # Important: only group rows that have a valid identifier
@@ -596,7 +629,7 @@ load_all_extractions <- function(directory = config$paths$extractions_dir,
 
   if (duplicates_removed > 0) {
     message(sprintf(
-      "Removed %d duplicate rows (kept most recent; %d records remain)",
+      "Removed %d duplicate rows (same sample + position, kept most recent; %d records remain)",
       duplicates_removed,
       rows_after_dedup
     ))

@@ -1265,11 +1265,17 @@ create_run_summary <- function(samples_df, runs_df, control_status) {
   control_summary <- control_status %>%
     group_by(RunID) %>%
     summarise(
+      ControlRecords = n(),
       ControlsPassing = all(ControlPass, na.rm = TRUE),
-      FailedControls = paste(na.omit(ControlFlag), collapse = "; "),
+      ControlsPassed = sum(ControlPass, na.rm = TRUE),
+      ControlsFailed = sum(!ControlPass, na.rm = TRUE),
+      ControlPassRate = if_else(ControlRecords > 0,
+                                ControlsPassed / ControlRecords,
+                                NA_real_),
+      FailedControls = paste(unique(na.omit(ControlFlag)), collapse = "; "),
       .groups = "drop"
     )
-  
+
   runs_df %>%
     left_join(sample_counts, by = "RunID") %>%
     left_join(control_summary, by = "RunID") %>%
@@ -1281,7 +1287,12 @@ create_run_summary <- function(samples_df, runs_df, control_status) {
       LatePositives = replace_na(LatePositives, 0),
       InvalidNoDNA = replace_na(InvalidNoDNA, 0),
       Indeterminate = replace_na(Indeterminate, 0),
-      Flagged = replace_na(Flagged, 0)
+      Flagged = replace_na(Flagged, 0),
+      ControlsPassed = replace_na(ControlsPassed, 0),
+      ControlsFailed = replace_na(ControlsFailed, 0),
+      ControlPassRate = if_else(is.nan(ControlPassRate), NA_real_, ControlPassRate),
+      FailedControls = na_if(FailedControls, ""),
+      ControlRecords = replace_na(ControlRecords, 0)
     )
 }
 
@@ -1472,7 +1483,10 @@ compute_levey_jennings <- function(replicates_long, target, control_type = "PC")
         Mean = NA_real_,
         SD = NA_real_,
         N = 0,
-        FallbackUsed = FALSE
+        FallbackUsed = FALSE,
+        Within2SD_pct = NA_real_,
+        LatestRunID = NA_character_,
+        LatestCq = NA_real_
       ),
       fallback = FALSE,
       control_type_used = control_type
@@ -1540,7 +1554,10 @@ compute_levey_jennings <- function(replicates_long, target, control_type = "PC")
         Mean = NA_real_,
         SD = NA_real_,
         N = 0,
-        FallbackUsed = fallback
+        FallbackUsed = fallback,
+        Within2SD_pct = NA_real_,
+        LatestRunID = NA_character_,
+        LatestCq = NA_real_
       ),
       fallback = fallback,
       control_type_used = control_type_used
@@ -1567,6 +1584,27 @@ compute_levey_jennings <- function(replicates_long, target, control_type = "PC")
       minus3 = mu - 3 * sdv
     )
 
+  within_limits <- if (nrow(plot_data)) {
+    valid <- !is.na(plot_data$Cq_mean)
+    total <- sum(valid)
+    if (!total) NA_real_ else round(100 * sum(plot_data$Cq_mean[valid] >= plot_data$minus2[valid] &
+                                              plot_data$Cq_mean[valid] <= plot_data$plus2[valid]) / total, 1)
+  } else {
+    NA_real_
+  }
+
+  latest_cq <- if (nrow(plot_data) && any(!is.na(plot_data$Cq_mean))) {
+    tail(na.omit(plot_data$Cq_mean), 1)
+  } else {
+    NA_real_
+  }
+
+  latest_run <- if (nrow(plot_data) && any(!is.na(plot_data$Cq_mean))) {
+    tail(plot_data$RunID[!is.na(plot_data$Cq_mean)], 1)
+  } else {
+    NA_character_
+  }
+
   list(
     data = plot_data,
     summary = tibble(
@@ -1575,7 +1613,10 @@ compute_levey_jennings <- function(replicates_long, target, control_type = "PC")
       Mean = mu,
       SD = sdv,
       N = nrow(ctrl_df),
-      FallbackUsed = fallback
+      FallbackUsed = fallback,
+      Within2SD_pct = within_limits,
+      LatestRunID = latest_run,
+      LatestCq = latest_cq
     ),
     fallback = fallback,
     control_type_used = control_type_used

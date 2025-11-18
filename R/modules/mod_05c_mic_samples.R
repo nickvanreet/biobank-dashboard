@@ -348,6 +348,17 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       df %>% select(-any_of(c("SampleKey", "RunKey", "RunDateTimeParsed", "RunDateParsed", "TargetTest")))
     }
 
+    quality_metric_label <- function(conflict_col, final_call_col) {
+      invalid_calls <- c("Invalid_NoDNA", "Invalid", "RunInvalid")
+
+      case_when(
+        conflict_col %in% TRUE ~ "Conflict",
+        final_call_col %in% invalid_calls ~ "Invalid",
+        final_call_col == "Indeterminate" ~ "Indeterminate",
+        TRUE ~ "Clean"
+      )
+    }
+
     samples_with_order <- reactive({
       df <- filtered_base()
 
@@ -367,7 +378,8 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         df <- df %>% filter(TestNumber == 1L)
       }
 
-      df
+      df %>%
+        mutate(QualityMetric = quality_metric_label(WellAggregateConflict, FinalCall))
     })
 
     selected_results <- reactive({
@@ -398,6 +410,9 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         ))
       }
 
+      df <- df %>%
+        mutate(QualityMetric = quality_metric_label(WellAggregateConflict, FinalCall))
+
       confidence <- if ("ConfidenceScore" %in% names(df)) {
         df %>%
           filter(!is.na(ConfidenceScore)) %>%
@@ -414,38 +429,23 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       }
 
       total_samples <- nrow(df)
-      quality_rows <- list()
-
-      if ("WellAggregateConflict" %in% names(df)) {
-        conflict_count <- sum(df$WellAggregateConflict == TRUE, na.rm = TRUE)
-
-        quality_rows <- append(quality_rows, list(tibble(
-          Metric = "Samples with Conflicts",
-          Count = conflict_count,
-          Percentage = round(100 * conflict_count / total_samples, 1)
-        )))
-      }
-
-      if ("FinalCall" %in% names(df)) {
-        invalid_count <- sum(df$FinalCall %in% c("Invalid", "Invalid_NoDNA", "RunInvalid"), na.rm = TRUE)
-        indet_count <- sum(df$FinalCall == "Indeterminate", na.rm = TRUE)
-
-        if (invalid_count > 0) {
-          quality_rows <- append(quality_rows, list(tibble(
-            Metric = "Invalid Results",
-            Count = invalid_count,
-            Percentage = round(100 * invalid_count / total_samples, 1)
-          )))
-        }
-
-        quality_rows <- append(quality_rows, list(tibble(
-          Metric = "Indeterminate Results",
-          Count = indet_count,
-          Percentage = round(100 * indet_count / total_samples, 1)
-        )))
-      }
-
-      quality_summary <- if (length(quality_rows)) bind_rows(quality_rows) else tibble()
+      quality_summary <- df %>%
+        mutate(
+          QualityMetric = factor(QualityMetric, levels = c("Conflict", "Invalid", "Indeterminate", "Clean"))
+        ) %>%
+        count(QualityMetric, name = "Count") %>%
+        tidyr::complete(QualityMetric = c("Conflict", "Invalid", "Indeterminate"), fill = list(Count = 0)) %>%
+        filter(QualityMetric %in% c("Conflict", "Invalid", "Indeterminate")) %>%
+        mutate(
+          Metric = dplyr::recode(
+            QualityMetric,
+            Conflict = "Samples with Conflicts",
+            Invalid = "Invalid Results",
+            Indeterminate = "Indeterminate Results"
+          ),
+          Percentage = round(100 * Count / total_samples, 1)
+        ) %>%
+        select(Metric, Count, Percentage)
 
       list(
         total = total_samples,
@@ -1042,7 +1042,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       # Select columns to display - including Barcode, replicate counts, and decision tree columns
       available_cols <- intersect(
         c("RunID", "SampleName", "Barcode", "TestOrderLabel", "TestNumber", "FinalCall",
-          "DecisionStep", "DecisionReason", "ConfidenceScore", "WellSummary", "WellAggregateConflict",
+          "QualityMetric", "DecisionStep", "DecisionReason", "ConfidenceScore", "WellSummary", "WellAggregateConflict",
           "Wells_TNA_Positive", "Wells_DNA_Positive", "Wells_RNA_Positive",
           "ReplicatesTotal", "Replicates_Positive", "Replicates_Negative", "Replicates_Failed",
           "Cq_median_177T", "Cq_median_18S2",
@@ -1063,7 +1063,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
           buttons = c('copy', 'csv', 'excel'),
           lengthMenu = list(c(10, 25, 50, 100, -1), c('10', '25', '50', '100', 'All')),
           columnDefs = list(
-            list(className = 'dt-center', targets = c('FinalCall', 'BiobankMatched', 'ExtractionMatched'))
+            list(className = 'dt-center', targets = c('FinalCall', 'QualityMetric', 'BiobankMatched', 'ExtractionMatched'))
           )
         ),
         rownames = FALSE,
@@ -1074,6 +1074,11 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
                     backgroundColor = styleEqual(
                       c('Positive', 'Positive_DNA', 'Positive_RNA', 'LatePositive', 'Negative', 'Indeterminate', 'Invalid_NoDNA', 'Invalid', 'RunInvalid', 'Control', 'Control_Fail'),
                       c('#d4edda', '#b3e0f2', '#d4b3f2', '#ffe8a1', '#f8f9fa', '#fff3cd', '#f8d7da', '#f8d7da', '#f8d7da', '#dbe9ff', '#f5c6cb')
+                    )) %>%
+        formatStyle('QualityMetric',
+                    backgroundColor = styleEqual(
+                      c('Conflict', 'Invalid', 'Indeterminate', 'Clean'),
+                      c('#f8d7da', '#f8d7da', '#fff3cd', '#d4edda')
                     )) %>%
         {
           if ("ConfidenceScore" %in% available_cols) {

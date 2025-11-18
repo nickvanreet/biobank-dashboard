@@ -200,6 +200,22 @@ mod_mic_samples_ui <- function(id) {
         )
       ),
 
+      card(
+        class = "mb-3",
+        card_header(
+          class = "d-flex justify-content-between align-items-center",
+          span("Decision & Confidence Heatmap"),
+          tags$small("Hover to see quality context", class = "text-muted")
+        ),
+        card_body(
+          plotlyOutput(ns("decision_confidence_heatmap"), height = "420px"),
+          tags$small(
+            "Tile intensity reflects sample counts. Labels show conflicts or invalid rates when present.",
+            class = "text-muted"
+          )
+        )
+      ),
+
       # Decision Tree Summary
       card(
         class = "mb-3",
@@ -413,6 +429,69 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         confidence_total = confidence_total,
         quality = quality_summary
       )
+    })
+
+    decision_confidence_data <- reactive({
+      df <- selected_results()
+
+      if (!nrow(df)) return(tibble())
+
+      call_levels <- c(
+        "Positive", "Positive_DNA", "Positive_RNA", "LatePositive",
+        "Negative", "Indeterminate", "Invalid_NoDNA", "Invalid",
+        "RunInvalid", "Control", "Control_Fail", "Other", "Unknown"
+      )
+
+      conf_levels <- c("High", "Medium", "Low", "Not specified", "Other")
+      invalid_calls <- c("Invalid_NoDNA", "Invalid", "RunInvalid")
+
+      df %>%
+        mutate(
+          FinalCall = case_when(
+            is.na(FinalCall) ~ "Unknown",
+            FinalCall %in% call_levels ~ FinalCall,
+            TRUE ~ "Other"
+          ),
+          ConfidenceScore = case_when(
+            is.na(ConfidenceScore) ~ "Not specified",
+            ConfidenceScore %in% c("High", "Medium", "Low") ~ ConfidenceScore,
+            TRUE ~ "Other"
+          ),
+          QualityFlag = case_when(
+            "WellAggregateConflict" %in% names(df) & WellAggregateConflict ~ "Conflict",
+            FinalCall %in% invalid_calls ~ "Invalid",
+            FinalCall == "Indeterminate" ~ "Indeterminate",
+            TRUE ~ "Clean"
+          )
+        ) %>%
+        group_by(FinalCall, ConfidenceScore) %>%
+        summarise(
+          Samples = n(),
+          Conflicts = sum(if ("WellAggregateConflict" %in% names(df)) WellAggregateConflict == TRUE else FALSE, na.rm = TRUE),
+          Invalids = sum(FinalCall %in% invalid_calls, na.rm = TRUE),
+          DominantQuality = names(sort(table(QualityFlag), decreasing = TRUE))[1],
+          .groups = "drop"
+        ) %>%
+        mutate(
+          FinalCall = factor(FinalCall, levels = call_levels),
+          ConfidenceScore = factor(ConfidenceScore, levels = conf_levels),
+          ConflictRate = if_else(Samples > 0, round(100 * Conflicts / Samples, 1), NA_real_),
+          InvalidRate = if_else(Samples > 0, round(100 * Invalids / Samples, 1), NA_real_),
+          TileLabel = dplyr::case_when(
+            !is.na(ConflictRate) & ConflictRate > 0 ~ paste0(Samples, " (", ConflictRate, "% conflicts)"),
+            !is.na(InvalidRate) & InvalidRate > 0 ~ paste0(Samples, " (", InvalidRate, "% invalid)"),
+            TRUE ~ as.character(Samples)
+          ),
+          Tooltip = paste0(
+            "Final call: ", FinalCall,
+            "<br>Confidence: ", ConfidenceScore,
+            "<br>Samples: ", Samples,
+            ifelse(Conflicts > 0, paste0("<br>Conflicts: ", Conflicts, " (", ConflictRate, "%)"), ""),
+            ifelse(Invalids > 0, paste0("<br>Invalid/RunInvalid: ", Invalids, " (", InvalidRate, "%)"), ""),
+            "<br>Dominant quality: ", DominantQuality
+          )
+        ) %>%
+        arrange(FinalCall, ConfidenceScore)
     })
 
     format_count_pct <- function(count, total, percentage = NULL) {
@@ -779,6 +858,52 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         rownames = FALSE,
         class = "display compact stripe"
       )
+    })
+
+    output$decision_confidence_heatmap <- plotly::renderPlotly({
+      df <- decision_confidence_data()
+
+      if (!nrow(df)) {
+        return(
+          plotly::plotly_empty(type = "heatmap", hoverinfo = "none") %>%
+            plotly::layout(title = "No decision data available")
+        )
+      }
+
+      df <- df %>% filter(!is.na(FinalCall), !is.na(ConfidenceScore))
+
+      heatmap_plot <- ggplot2::ggplot(
+        df,
+        ggplot2::aes(
+          x = ConfidenceScore,
+          y = FinalCall,
+          fill = Samples,
+          text = Tooltip,
+          label = TileLabel
+        )
+      ) +
+        ggplot2::geom_tile(color = "#f8fafc") +
+        ggplot2::geom_text(size = 3, color = "#111827") +
+        ggplot2::scale_fill_gradient(
+          low = "#e0ecf4",
+          high = "#1d4ed8",
+          na.value = "#f8fafc",
+          name = "Samples"
+        ) +
+        ggplot2::labs(
+          x = "Confidence",
+          y = "Final call",
+          title = "Decision confidence matrix"
+        ) +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(
+          axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+          plot.title = ggplot2::element_text(size = 12, face = "bold"),
+          legend.position = "right"
+        )
+
+      plotly::ggplotly(heatmap_plot, tooltip = "text") %>%
+        plotly::layout(margin = list(l = 60, r = 40, b = 80, t = 60))
     })
 
     output$decision_tree_calls_plot <- plotly::renderPlotly({

@@ -337,21 +337,15 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
       Call_RNAseP_RNA = character(),
       Delta_18S2_177T = numeric(),
       Delta_RP = numeric(),
-      FinalCall = character(),
       Flags = character(),
       AnyFlag = logical(),
-      Sample_DNA_Positive = logical(),
-      Sample_DNA_Suspect = logical(),
-      Sample_RNA_Positive = logical(),
-      Sample_RNA_Suspect = logical(),
-      Sample_TNA_Positive = logical(),
-      Sample_TNA_Suspect = logical(),
-      Wells_DNA_Positive = numeric(),
-      Wells_DNA_Suspect = numeric(),
-      Wells_RNA_Positive = numeric(),
-      Wells_RNA_Suspect = numeric(),
-      Wells_TNA_Positive = numeric(),
-      Wells_TNA_Suspect = numeric(),
+      FinalCall = character(),
+      DecisionStep = character(),
+      DecisionReason = character(),
+      ConfidenceScore = character(),
+      WellSummary = character(),
+      WellAggregateConflict = logical(),
+      ConflictDetails = character(),
       PipelineCategory = character(),
       PipelineDecision = character(),
       PipelineQualityFlag = character(),
@@ -367,7 +361,19 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
       RNA_Preservation_Status = character(),
       RNA_Preservation_Delta = numeric(),
       Avg_177T_Positive_Cq = numeric(),
-      Avg_18S2_Positive_Cq = numeric()
+      Avg_18S2_Positive_Cq = numeric(),
+      Sample_DNA_Positive = logical(),
+      Sample_DNA_Suspect = logical(),
+      Sample_RNA_Positive = logical(),
+      Sample_RNA_Suspect = logical(),
+      Sample_TNA_Positive = logical(),
+      Sample_TNA_Suspect = logical(),
+      Wells_DNA_Positive = numeric(),
+      Wells_DNA_Suspect = numeric(),
+      Wells_RNA_Positive = numeric(),
+      Wells_RNA_Suspect = numeric(),
+      Wells_TNA_Positive = numeric(),
+      Wells_TNA_Suspect = numeric()
     ))
   }
 
@@ -576,7 +582,7 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
           !(Call_177T == "Positive" & Call_18S2 == "Positive")
       ),
 
-      # Enhanced final call using clear decision tree
+      # Enhanced final call using clear decision tree with detailed reasoning
       FinalCall = case_when(
         # Step 0: Handle controls first
         ControlType %in% c("PC", "NC") & PipelineCategoryLower == "control_fail" ~ "Control_Fail",
@@ -598,7 +604,11 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
         # Step 5: Late positives (TNA suspect with sufficient replicates)
         Wells_TNA_Suspect >= min_tna_reps ~ "LatePositive",
 
-        # Step 6: Mixed weak signals (1 replicate with DNA or RNA)
+        # Step 6a: Single weak signal but strong negative evidence
+        Wells_DNA_Positive == 1 & Wells_RNA_Positive == 0 & NegativeReplicates >= 2 ~ "Negative",
+        Wells_RNA_Positive == 1 & Wells_DNA_Positive == 0 & NegativeReplicates >= 2 ~ "Negative",
+
+        # Step 6b: Mixed weak signals (1 replicate with DNA or RNA)
         Wells_DNA_Positive == 1 | Wells_RNA_Positive == 1 ~ "Indeterminate",
         Wells_TNA_Suspect == 1 ~ "Indeterminate",
 
@@ -608,11 +618,135 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
         # Step 8: Insufficient valid replicates
         TRUE ~ "Indeterminate"
       ),
+
+      # Capture which step made the decision
+      DecisionStep = case_when(
+        ControlType %in% c("PC", "NC") & PipelineCategoryLower == "control_fail" ~ "Step0",
+        ControlType %in% c("PC", "NC") ~ "Step0",
+        QC_Pass_Count == 0 ~ "Step1",
+        Wells_TNA_Positive >= min_tna_reps ~ "Step2",
+        Wells_TNA_Positive == 1 ~ "Step3",
+        Wells_DNA_Positive >= min_tna_reps & Wells_RNA_Positive == 0 ~ "Step4a",
+        Wells_RNA_Positive >= min_tna_reps & Wells_DNA_Positive == 0 ~ "Step4b",
+        Wells_TNA_Suspect >= min_tna_reps ~ "Step5",
+        Wells_DNA_Positive == 1 & Wells_RNA_Positive == 0 & NegativeReplicates >= 2 ~ "Step6a",
+        Wells_RNA_Positive == 1 & Wells_DNA_Positive == 0 & NegativeReplicates >= 2 ~ "Step6a",
+        Wells_DNA_Positive == 1 | Wells_RNA_Positive == 1 ~ "Step6b",
+        Wells_TNA_Suspect == 1 ~ "Step6b",
+        NegativeReplicates >= 3 ~ "Step7",
+        TRUE ~ "Step8"
+      ),
+
+      # Detailed explanation of the decision
+      DecisionReason = case_when(
+        ControlType %in% c("PC", "NC") & PipelineCategoryLower == "control_fail" ~
+          "Control sample failed quality checks",
+        ControlType %in% c("PC", "NC") ~
+          "Control sample passed quality checks",
+        QC_Pass_Count == 0 ~
+          "All replicates failed QC (no RNAseP-DNA detected)",
+        Wells_TNA_Positive >= min_tna_reps ~
+          sprintf("Strong TNA positive: %d/%d wells with both DNA+RNA positive", Wells_TNA_Positive, coalesce(ReplicatesTotal, 4)),
+        Wells_TNA_Positive == 1 ~
+          sprintf("Weak TNA signal: only 1/%d well with both DNA+RNA positive", coalesce(ReplicatesTotal, 4)),
+        Wells_DNA_Positive >= min_tna_reps & Wells_RNA_Positive == 0 ~
+          sprintf("DNA-only positive: %d/%d wells DNA+, no RNA detected", Wells_DNA_Positive, coalesce(ReplicatesTotal, 4)),
+        Wells_RNA_Positive >= min_tna_reps & Wells_DNA_Positive == 0 ~
+          sprintf("RNA-only positive: %d/%d wells RNA+, no DNA detected", Wells_RNA_Positive, coalesce(ReplicatesTotal, 4)),
+        Wells_TNA_Suspect >= min_tna_reps ~
+          sprintf("Late/weak TNA signal: %d/%d wells with late detection", Wells_TNA_Suspect, coalesce(ReplicatesTotal, 4)),
+        Wells_DNA_Positive == 1 & Wells_RNA_Positive == 0 & NegativeReplicates >= 2 ~
+          sprintf("Single DNA outlier with %d negative replicates", NegativeReplicates),
+        Wells_RNA_Positive == 1 & Wells_DNA_Positive == 0 & NegativeReplicates >= 2 ~
+          sprintf("Single RNA outlier with %d negative replicates", NegativeReplicates),
+        Wells_DNA_Positive == 1 | Wells_RNA_Positive == 1 ~
+          sprintf("Single weak signal: DNA=%d, RNA=%d", Wells_DNA_Positive, Wells_RNA_Positive),
+        Wells_TNA_Suspect == 1 ~
+          "Single well with late/suspect TNA detection",
+        NegativeReplicates >= 3 ~
+          sprintf("Clear negative: %d/%d replicates negative", NegativeReplicates, coalesce(ReplicatesTotal, 4)),
+        TRUE ~
+          sprintf("Insufficient valid replicates (QC passed: %d)", QC_Pass_Count)
+      ),
+
+      # Create well-level summary text
+      WellSummary = if_else(
+        ControlType %in% c("PC", "NC"),
+        "Control sample",
+        sprintf("DNA:%d+/%ds, RNA:%d+/%ds, TNA:%d+/%ds",
+                Wells_DNA_Positive, Wells_DNA_Suspect,
+                Wells_RNA_Positive, Wells_RNA_Suspect,
+                Wells_TNA_Positive, Wells_TNA_Suspect)
+      ),
+
+      # Calculate confidence score based on replicate agreement
+      ConfidenceScore = case_when(
+        ControlType %in% c("PC", "NC") ~ "Control",
+        QC_Pass_Count == 0 ~ "Invalid",
+
+        # High confidence: strong agreement
+        Wells_TNA_Positive >= 3 ~ "High",
+        NegativeReplicates >= 3 ~ "High",
+        Wells_DNA_Positive >= 3 & Wells_RNA_Positive == 0 ~ "High",
+        Wells_RNA_Positive >= 3 & Wells_DNA_Positive == 0 ~ "High",
+
+        # Medium confidence: minimum consensus
+        Wells_TNA_Positive == 2 ~ "Medium",
+        Wells_TNA_Suspect >= 2 ~ "Medium",
+        Wells_DNA_Positive == 2 | Wells_RNA_Positive == 2 ~ "Medium",
+
+        # Low confidence: weak or conflicting signals
+        Wells_TNA_Positive == 1 ~ "Low",
+        Wells_DNA_Positive == 1 | Wells_RNA_Positive == 1 ~ "Low",
+        Wells_TNA_Suspect == 1 ~ "Low",
+        QC_Pass_Count <= 2 ~ "Low",
+
+        TRUE ~ "Low"
+      ),
+
+      # Detect conflicts between well-level and aggregate-level calls
+      WellAggregateConflict = case_when(
+        ControlType %in% c("PC", "NC") ~ FALSE,
+
+        # Well-level says TNA positive but aggregate doesn't
+        Wells_TNA_Positive >= min_tna_reps & !Sample_TNA_Positive ~ TRUE,
+
+        # Well-level says DNA/RNA positive but aggregate doesn't
+        Wells_DNA_Positive >= min_tna_reps & !Sample_DNA_Positive ~ TRUE,
+        Wells_RNA_Positive >= min_tna_reps & !Sample_RNA_Positive ~ TRUE,
+
+        # Aggregate says positive but well-level doesn't
+        Sample_TNA_Positive & Wells_TNA_Positive < min_tna_reps ~ TRUE,
+        Sample_DNA_Positive & Wells_DNA_Positive < min_tna_reps ~ TRUE,
+        Sample_RNA_Positive & Wells_RNA_Positive < min_tna_reps ~ TRUE,
+
+        TRUE ~ FALSE
+      ),
+
+      # Detailed conflict explanation
+      ConflictDetails = case_when(
+        !WellAggregateConflict ~ NA_character_,
+        Wells_TNA_Positive >= min_tna_reps & !Sample_TNA_Positive ~
+          "Well-level TNA+ but aggregate Cqs don't confirm TNA+",
+        Wells_DNA_Positive >= min_tna_reps & !Sample_DNA_Positive ~
+          "Well-level DNA+ but aggregate Cq suggests negative/late",
+        Wells_RNA_Positive >= min_tna_reps & !Sample_RNA_Positive ~
+          "Well-level RNA+ but aggregate Cq suggests negative/late",
+        Sample_TNA_Positive & Wells_TNA_Positive < min_tna_reps ~
+          "Aggregate TNA+ but well-level doesn't meet threshold",
+        Sample_DNA_Positive & Wells_DNA_Positive < min_tna_reps ~
+          "Aggregate DNA+ but well-level doesn't meet threshold",
+        Sample_RNA_Positive & Wells_RNA_Positive < min_tna_reps ~
+          "Aggregate RNA+ but well-level doesn't meet threshold",
+        TRUE ~ NA_character_
+      ),
       Flags = {
         flags <- character()
         if (Flag_SampleDecay) flags <- c(flags, "SampleDecay")
         if (HostFailed) flags <- c(flags, "NoDNA")
         if (is.na(Delta_18S2_177T) && PositiveTryp) flags <- c(flags, "IncompleteTargets")
+        if (WellAggregateConflict) flags <- c(flags, "WellAggregateConflict")
+        if (ConfidenceScore == "Low" && !ControlType %in% c("PC", "NC")) flags <- c(flags, "LowConfidence")
         if (!is.na(PipelineQualityFlagClean)) flags <- c(flags, PipelineQualityFlagClean)
         if (!is.na(PipelineDecisionFlag)) flags <- c(flags, PipelineDecisionFlag)
         flags <- unique(flags)
@@ -639,6 +773,14 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
 
   samples_wide <- samples_wide %>%
     relocate(
+      # Decision tree outputs - most important columns first
+      FinalCall, DecisionStep, DecisionReason,
+      ConfidenceScore, WellSummary,
+      WellAggregateConflict, ConflictDetails,
+      .after = AnyFlag
+    ) %>%
+    relocate(
+      # Pipeline data
       PipelineCategory, PipelineDecision, PipelineQualityFlag,
       ReplicatesTotal, Replicates_Positive, Replicates_Negative,
       Replicates_Failed, Replicates_Inconclusive,
@@ -646,16 +788,262 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
       RNA_Quality, DNA_Quality, RNA_Preservation_Status,
       RNA_Preservation_Delta, Avg_177T_Positive_Cq,
       Avg_18S2_Positive_Cq,
+      .after = ConflictDetails
+    ) %>%
+    relocate(
+      # Well-level and Sample-level detection details
       Sample_DNA_Positive, Sample_DNA_Suspect,
       Sample_RNA_Positive, Sample_RNA_Suspect,
       Sample_TNA_Positive, Sample_TNA_Suspect,
       Wells_DNA_Positive, Wells_DNA_Suspect,
       Wells_RNA_Positive, Wells_RNA_Suspect,
       Wells_TNA_Positive, Wells_TNA_Suspect,
-      .after = AnyFlag
+      .after = Avg_18S2_Positive_Cq
     )
 
   samples_wide
+}
+
+# =============================================================================
+# DECISION TREE VISUALIZATION
+# =============================================================================
+
+#' Visualize the decision tree path for a sample
+#'
+#' @param sample_data A single row from the aggregated samples data
+#' @param settings The qPCR settings used for classification
+#' @return A character string with the decision tree visualization
+#' @export
+visualize_decision_path <- function(sample_data, settings = NULL) {
+  if (nrow(sample_data) == 0) {
+    return("No sample data provided")
+  }
+
+  # Extract key values
+  sample_name <- sample_data$SampleName
+  final_call <- sample_data$FinalCall
+  decision_step <- sample_data$DecisionStep
+  decision_reason <- sample_data$DecisionReason
+  confidence <- sample_data$ConfidenceScore
+  well_summary <- sample_data$WellSummary
+  conflict <- sample_data$WellAggregateConflict
+  conflict_details <- sample_data$ConflictDetails
+
+  # Build the decision path visualization
+  output <- c(
+    "═══════════════════════════════════════════════════════════════",
+    sprintf("SAMPLE: %s", sample_name),
+    "═══════════════════════════════════════════════════════════════",
+    "",
+    "DECISION TREE PATH:",
+    "───────────────────────────────────────────────────────────────"
+  )
+
+  # Add step-by-step evaluation
+  steps <- list(
+    "Step0" = "Controls",
+    "Step1" = "QC Validity Check",
+    "Step2" = "TNA Positive (>=2 wells)",
+    "Step3" = "Single TNA Well",
+    "Step4a" = "DNA-only Pattern",
+    "Step4b" = "RNA-only Pattern",
+    "Step5" = "Late Positive TNA",
+    "Step6a" = "Single Outlier + Negatives",
+    "Step6b" = "Weak Mixed Signals",
+    "Step7" = "Clear Negative (>=3 reps)",
+    "Step8" = "Insufficient Data"
+  )
+
+  for (step_id in names(steps)) {
+    step_name <- steps[[step_id]]
+    if (step_id == decision_step) {
+      output <- c(output, sprintf("  ✓ %s: %s → MATCHED", step_id, step_name))
+    } else {
+      output <- c(output, sprintf("  ○ %s: %s", step_id, step_name))
+    }
+  }
+
+  output <- c(
+    output,
+    "",
+    "RESULT:",
+    "───────────────────────────────────────────────────────────────",
+    sprintf("  Final Call:   %s", final_call),
+    sprintf("  Confidence:   %s", confidence),
+    sprintf("  Reason:       %s", decision_reason),
+    "",
+    "WELL-LEVEL SUMMARY:",
+    "───────────────────────────────────────────────────────────────",
+    sprintf("  %s", well_summary)
+  )
+
+  # Add sample-level calls
+  if (!is.null(sample_data$Sample_TNA_Positive)) {
+    output <- c(
+      output,
+      "",
+      "AGGREGATE VS WELL-LEVEL:",
+      "───────────────────────────────────────────────────────────────",
+      sprintf("  Sample TNA+:  %s  |  Wells TNA+:  %d",
+              ifelse(sample_data$Sample_TNA_Positive, "YES", "NO"),
+              sample_data$Wells_TNA_Positive),
+      sprintf("  Sample DNA+:  %s  |  Wells DNA+:  %d",
+              ifelse(sample_data$Sample_DNA_Positive, "YES", "NO"),
+              sample_data$Wells_DNA_Positive),
+      sprintf("  Sample RNA+:  %s  |  Wells RNA+:  %d",
+              ifelse(sample_data$Sample_RNA_Positive, "YES", "NO"),
+              sample_data$Wells_RNA_Positive)
+    )
+  }
+
+  # Add conflict warning if present
+  if (!is.na(conflict) && conflict) {
+    output <- c(
+      output,
+      "",
+      "⚠ CONFLICT WARNING:",
+      "───────────────────────────────────────────────────────────────",
+      sprintf("  %s", conflict_details)
+    )
+  }
+
+  # Add Cq values if available
+  if (!is.null(sample_data$Cq_mean_177T)) {
+    output <- c(
+      output,
+      "",
+      "Cq VALUES (Mean):",
+      "───────────────────────────────────────────────────────────────",
+      sprintf("  177T (DNA):      %.2f  →  %s",
+              ifelse(is.na(sample_data$Cq_mean_177T), NA, sample_data$Cq_mean_177T),
+              sample_data$Call_177T),
+      sprintf("  18S2 (RNA):      %.2f  →  %s",
+              ifelse(is.na(sample_data$Cq_mean_18S2), NA, sample_data$Cq_mean_18S2),
+              sample_data$Call_18S2),
+      sprintf("  RNAseP-DNA:      %.2f  →  %s",
+              ifelse(is.na(sample_data$Cq_mean_RNAseP_DNA), NA, sample_data$Cq_mean_RNAseP_DNA),
+              sample_data$Call_RNAseP_DNA),
+      sprintf("  Delta (RNA-DNA): %.2f",
+              ifelse(is.na(sample_data$Delta_18S2_177T), NA, sample_data$Delta_18S2_177T))
+    )
+  }
+
+  output <- c(output, "═══════════════════════════════════════════════════════════════")
+
+  # Return as single string with newlines
+  paste(output, collapse = "\n")
+}
+
+#' Generate a summary report for multiple samples
+#'
+#' @param samples_data Aggregated samples data
+#' @param filter_by Optional filter (e.g., "Indeterminate", "LowConfidence")
+#' @return A character string with the summary report
+#' @export
+summarize_decision_quality <- function(samples_data, filter_by = NULL) {
+  if (nrow(samples_data) == 0) {
+    return("No samples to summarize")
+  }
+
+  # Apply filter if specified
+  if (!is.null(filter_by)) {
+    if (filter_by == "Conflicts") {
+      samples_data <- samples_data %>% filter(WellAggregateConflict == TRUE)
+    } else if (filter_by == "LowConfidence") {
+      samples_data <- samples_data %>% filter(ConfidenceScore == "Low")
+    } else if (filter_by == "Indeterminate") {
+      samples_data <- samples_data %>% filter(FinalCall == "Indeterminate")
+    } else {
+      samples_data <- samples_data %>% filter(FinalCall == filter_by)
+    }
+  }
+
+  if (nrow(samples_data) == 0) {
+    return(sprintf("No samples found matching filter: %s", filter_by))
+  }
+
+  # Calculate summary statistics
+  total <- nrow(samples_data)
+
+  call_counts <- samples_data %>%
+    group_by(FinalCall) %>%
+    summarise(n = n(), .groups = "drop") %>%
+    arrange(desc(n))
+
+  confidence_counts <- samples_data %>%
+    filter(!ControlType %in% c("PC", "NC")) %>%
+    group_by(ConfidenceScore) %>%
+    summarise(n = n(), .groups = "drop")
+
+  conflict_count <- sum(samples_data$WellAggregateConflict == TRUE, na.rm = TRUE)
+
+  step_counts <- samples_data %>%
+    filter(!ControlType %in% c("PC", "NC")) %>%
+    group_by(DecisionStep) %>%
+    summarise(n = n(), .groups = "drop") %>%
+    arrange(DecisionStep)
+
+  # Build report
+  output <- c(
+    "═══════════════════════════════════════════════════════════════",
+    "DECISION TREE QUALITY REPORT",
+    "═══════════════════════════════════════════════════════════════",
+    sprintf("Total Samples: %d", total),
+    ""
+  )
+
+  if (!is.null(filter_by)) {
+    output <- c(output, sprintf("Filter Applied: %s", filter_by), "")
+  }
+
+  output <- c(
+    output,
+    "FINAL CALL DISTRIBUTION:",
+    "───────────────────────────────────────────────────────────────"
+  )
+
+  for (i in 1:nrow(call_counts)) {
+    pct <- round(100 * call_counts$n[i] / total, 1)
+    output <- c(output, sprintf("  %-20s: %4d  (%5.1f%%)",
+                                call_counts$FinalCall[i],
+                                call_counts$n[i],
+                                pct))
+  }
+
+  output <- c(
+    output,
+    "",
+    "CONFIDENCE DISTRIBUTION:",
+    "───────────────────────────────────────────────────────────────"
+  )
+
+  for (i in 1:nrow(confidence_counts)) {
+    output <- c(output, sprintf("  %-20s: %4d",
+                                confidence_counts$ConfidenceScore[i],
+                                confidence_counts$n[i]))
+  }
+
+  output <- c(
+    output,
+    "",
+    "DECISION STEP USAGE:",
+    "───────────────────────────────────────────────────────────────"
+  )
+
+  for (i in 1:nrow(step_counts)) {
+    output <- c(output, sprintf("  %-10s: %4d",
+                                step_counts$DecisionStep[i],
+                                step_counts$n[i]))
+  }
+
+  output <- c(
+    output,
+    "",
+    sprintf("Well/Aggregate Conflicts: %d", conflict_count),
+    "═══════════════════════════════════════════════════════════════"
+  )
+
+  paste(output, collapse = "\n")
 }
 
 classify_target <- function(cq, target_name, settings) {

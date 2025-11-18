@@ -210,7 +210,7 @@ mod_mic_samples_ui <- function(id) {
         ),
         card_body(
           layout_column_wrap(
-            width = 1/2,
+            width = 1/3,
             gap = "12px",
 
             card(
@@ -219,8 +219,13 @@ mod_mic_samples_ui <- function(id) {
             ),
 
             card(
-              card_header("Confidence & Quality Metrics"),
-              card_body(DTOutput(ns("tbl_confidence_quality")))
+              card_header("Confidence Distribution"),
+              card_body(DTOutput(ns("tbl_confidence_metrics")))
+            ),
+
+            card(
+              card_header("Quality Metrics"),
+              card_body(DTOutput(ns("tbl_quality_metrics")))
             )
           )
         )
@@ -608,7 +613,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       )
     })
 
-    output$tbl_confidence_quality <- renderDT({
+    output$tbl_confidence_metrics <- renderDT({
       df <- selected_results()
 
       if (!nrow(df)) {
@@ -619,31 +624,62 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         ))
       }
 
-      # Build quality summary
-      quality_rows <- list()
-
-      # Confidence distribution
-      if ("ConfidenceScore" %in% names(df)) {
-        conf_summary <- df %>%
-          filter(!is.na(ConfidenceScore)) %>%
-          group_by(ConfidenceScore) %>%
-          summarise(n = n(), .groups = "drop")
-
-        total_conf <- sum(conf_summary$n)
-
-        for (i in seq_len(nrow(conf_summary))) {
-          quality_rows <- append(quality_rows, list(tibble(
-            Metric = paste0(conf_summary$ConfidenceScore[i], " Confidence"),
-            Count = conf_summary$n[i],
-            Percentage = sprintf("%.1f%%", 100 * conf_summary$n[i] / total_conf)
-          )))
-        }
+      if (!"ConfidenceScore" %in% names(df)) {
+        return(datatable(
+          tibble(Message = "No confidence scores available"),
+          options = list(dom = 't'),
+          rownames = FALSE
+        ))
       }
 
-      # Conflicts
+      conf_summary <- df %>%
+        filter(!is.na(ConfidenceScore)) %>%
+        count(ConfidenceScore, name = "Count")
+
+      total_conf <- sum(conf_summary$Count)
+
+      if (!total_conf) {
+        return(datatable(
+          tibble(Message = "No confidence scores available"),
+          options = list(dom = 't'),
+          rownames = FALSE
+        ))
+      }
+
+      conf_summary <- conf_summary %>%
+        mutate(
+          Percentage = sprintf("%.1f%%", 100 * Count / total_conf)
+        ) %>%
+        arrange(desc(Count))
+
+      datatable(
+        conf_summary,
+        options = list(
+          pageLength = 15,
+          dom = 't',
+          ordering = FALSE
+        ),
+        rownames = FALSE,
+        class = "display compact stripe"
+      )
+    })
+
+    output$tbl_quality_metrics <- renderDT({
+      df <- selected_results()
+
+      if (!nrow(df)) {
+        return(datatable(
+          tibble(Message = "No data available"),
+          options = list(dom = 't'),
+          rownames = FALSE
+        ))
+      }
+
+      quality_rows <- list()
+      total_samples <- nrow(df)
+
       if ("WellAggregateConflict" %in% names(df)) {
         conflict_count <- sum(df$WellAggregateConflict == TRUE, na.rm = TRUE)
-        total_samples <- nrow(df)
 
         quality_rows <- append(quality_rows, list(tibble(
           Metric = "Samples with Conflicts",
@@ -652,11 +688,9 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         )))
       }
 
-      # Indeterminate results
       if ("FinalCall" %in% names(df)) {
         invalid_count <- sum(df$FinalCall %in% c("Invalid", "Invalid_NoDNA", "RunInvalid"), na.rm = TRUE)
         indet_count <- sum(df$FinalCall == "Indeterminate", na.rm = TRUE)
-        total_samples <- nrow(df)
 
         if (invalid_count > 0) {
           quality_rows <- append(quality_rows, list(tibble(

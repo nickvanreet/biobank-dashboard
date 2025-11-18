@@ -413,7 +413,7 @@ remove_duplicates <- function(df, keep_first = FALSE) {
 load_all_extractions <- function(directory = config$paths$extractions_dir,
                                  validate = TRUE) {
   files <- list_extraction_files(directory)
-  files <- files[grepl("\.(xlsx|xls)$", files, ignore.case = TRUE)]
+  files <- files[grepl("\\.(xlsx|xls)$", files, ignore.case = TRUE)]
   if (!length(files)) {
     message("No extraction files found; returning empty dataset")
     return(tibble::tibble(

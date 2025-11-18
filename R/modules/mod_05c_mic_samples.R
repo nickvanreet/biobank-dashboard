@@ -85,14 +85,14 @@ mod_mic_samples_ui <- function(id) {
             ),
 
             value_box(
-              title = "DNA Positive",
+              title = "DNA Only Positive",
               value = textOutput(ns("kpi_samples_dna")),
               showcase = icon("circle-plus"),
               theme = "info"
             ),
 
             value_box(
-              title = "RNA Positive",
+              title = "RNA Only Positive",
               value = textOutput(ns("kpi_samples_rna")),
               showcase = icon("wave-square"),
               theme = "info"

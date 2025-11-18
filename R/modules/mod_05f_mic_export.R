@@ -35,7 +35,9 @@ mod_mic_export_ui <- function(id) {
         downloadButton(ns("dl_deltas"), "ΔCq Summary", class = "btn-secondary w-100 mb-3"),
         downloadButton(ns("dl_lj"), "Levey-Jennings Stats", class = "btn-secondary w-100 mb-3"),
         downloadButton(ns("dl_replicates"), "Replicate-Level Data", class = "btn-secondary w-100 mb-3"),
-        
+        downloadButton(ns("dl_decision_paths"), "Decision Paths (Flagged)", class = "btn-secondary w-100 mb-3"),
+        p(class = "small text-muted mb-3", "Decision tree paths for flagged/conflict samples"),
+
         hr(),
 
         h5("Complete Dataset", class = "mb-3"),
@@ -186,7 +188,43 @@ mod_mic_export_server <- function(id, processed_data, filtered_base, settings = 
       filename = function() sprintf("mic_replicates_%s.csv", format(Sys.Date(), "%Y%m%d")),
       content = function(file) write_csv(processed_data()$replicates, file)
     )
-    
+
+    # Decision paths for flagged samples
+    output$dl_decision_paths <- downloadHandler(
+      filename = function() sprintf("mic_decision_paths_%s.txt", format(Sys.Date(), "%Y%m%d")),
+      content = function(file) {
+        # Get flagged or problematic samples
+        df <- filtered_base() %>%
+          filter(
+            ControlType == "Sample",
+            AnyFlag | WellAggregateConflict | ConfidenceScore == "Low" | FinalCall == "Indeterminate"
+          )
+
+        if (nrow(df) == 0) {
+          writeLines("No flagged or problematic samples found.", file)
+          return()
+        }
+
+        # Generate decision paths for each sample
+        paths <- character(nrow(df))
+        for (i in seq_len(nrow(df))) {
+          sample_data <- df[i, , drop = FALSE]
+          path_text <- tryCatch({
+            visualize_decision_path(sample_data)
+          }, error = function(e) {
+            sprintf("Error generating decision path for %s: %s", sample_data$SampleName, e$message)
+          })
+          paths[i] <- path_text
+        }
+
+        # Combine all paths with separators
+        output_text <- paste(paths, collapse = "\n\n\n")
+
+        # Write to file
+        writeLines(output_text, file)
+      }
+    )
+
     # Complete export (Excel)
     output$dl_complete <- downloadHandler(
       filename = function() sprintf("mic_complete_%s.xlsx", format(Sys.Date(), "%Y%m%d")),

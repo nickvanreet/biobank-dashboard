@@ -253,7 +253,7 @@ mod_mic_samples_ui <- function(id) {
           class = "d-flex justify-content-between align-items-center",
           div(
             span("Sample Results"),
-            tags$small("Showing all available tests; toggle to view primary only", class = "text-muted d-block")
+            tags$small("Showing all available tests; toggle to view primary only. Click a row to view decision path.", class = "text-muted d-block")
           ),
           div(
             class = "d-flex align-items-center gap-3",
@@ -1055,6 +1055,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       
       datatable(
         df %>% select(all_of(available_cols)),
+        selection = 'single',  # Enable single row selection
         options = list(
           pageLength = 25,
           scrollX = TRUE,
@@ -1098,6 +1099,39 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
             .
           }
         }
+    })
+
+    # Handle row selection to show decision path
+    observeEvent(input$tbl_samples_rows_selected, {
+      selected_row <- input$tbl_samples_rows_selected
+
+      if (length(selected_row) == 0) return()
+
+      # Get the full data including all columns (not just the displayed ones)
+      df_full <- table_results()
+
+      if (selected_row > nrow(df_full)) return()
+
+      sample_data <- df_full[selected_row, , drop = FALSE]
+
+      # Generate the decision path visualization
+      decision_path_text <- tryCatch({
+        visualize_decision_path(sample_data)
+      }, error = function(e) {
+        paste("Error generating decision path:", e$message)
+      })
+
+      # Show modal with the decision path
+      showModal(modalDialog(
+        title = sprintf("Decision Path: %s", sample_data$SampleName),
+        size = "l",
+        easyClose = TRUE,
+        footer = modalButton("Close"),
+        tags$pre(
+          style = "background-color: #f8f9fa; padding: 15px; border-radius: 5px; font-family: 'Courier New', monospace; font-size: 12px; overflow-x: auto;",
+          decision_path_text
+        )
+      ))
     })
 
     # Download filtered

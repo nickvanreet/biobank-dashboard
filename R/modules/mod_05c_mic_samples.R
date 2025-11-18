@@ -226,13 +226,6 @@ mod_mic_samples_ui <- function(id) {
             card(
               card_header("Quality Metrics"),
               card_body(DTOutput(ns("tbl_quality_metrics")))
-            ),
-
-            card(
-              card_header("Calls, Confidence, and Decision Steps"),
-              card_body(
-                plotly::plotlyOutput(ns("decision_tree_calls_plot"), height = "420px")
-              )
             )
           )
         )

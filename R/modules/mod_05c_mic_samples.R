@@ -30,7 +30,10 @@ mod_mic_samples_ui <- function(id) {
           span("Sample KPIs"),
           div(
             class = "d-flex align-items-center gap-2",
-            checkboxInput(ns("secondary_only"), NULL, value = FALSE),
+            div(
+              class = "form-check form-switch m-0",
+              checkboxInput(ns("secondary_only"), label = NULL, value = FALSE, width = "auto")
+            ),
             tags$span(
               "Use secondary result when available",
               class = "text-muted small"
@@ -44,7 +47,7 @@ mod_mic_samples_ui <- function(id) {
             gap = "12px",
 
             value_box(
-              title = "Total Samples",
+              title = "Total Samples Tested",
               value = textOutput(ns("kpi_samples_total")),
               showcase = icon("vial"),
               theme = "primary"
@@ -69,6 +72,33 @@ mod_mic_samples_ui <- function(id) {
               value = textOutput(ns("kpi_samples_multiple")),
               showcase = icon("redo"),
               theme = "warning"
+            )
+          ),
+
+          layout_column_wrap(
+            width = 1/3,
+            heights_equal = "row",
+            gap = "12px",
+
+            value_box(
+              title = "% Linked to Biobank",
+              value = textOutput(ns("kpi_biobank_linked")),
+              showcase = icon("warehouse"),
+              theme = "info"
+            ),
+
+            value_box(
+              title = "% Linked to Extraction",
+              value = textOutput(ns("kpi_extraction_linked")),
+              showcase = icon("flask"),
+              theme = "success"
+            ),
+
+            value_box(
+              title = "% Linked to Runs",
+              value = textOutput(ns("kpi_run_linked")),
+              showcase = icon("play-circle"),
+              theme = "primary"
             )
           ),
 
@@ -110,6 +140,13 @@ mod_mic_samples_ui <- function(id) {
               value = textOutput(ns("kpi_samples_negative")),
               showcase = icon("circle-minus"),
               theme = "secondary"
+            ),
+
+            value_box(
+              title = "Invalid",
+              value = textOutput(ns("kpi_samples_invalid")),
+              showcase = icon("ban"),
+              theme = "danger"
             ),
 
             value_box(
@@ -166,7 +203,11 @@ mod_mic_samples_ui <- function(id) {
       # Decision Tree Summary
       card(
         class = "mb-3",
-        card_header("Decision Tree Summary"),
+        card_header(
+          class = "d-flex justify-content-between align-items-center",
+          span("Decision Tree Summary"),
+          tags$small("Uses one result per sample based on the toggle", class = "text-muted")
+        ),
         card_body(
           layout_column_wrap(
             width = 1/2,
@@ -189,7 +230,10 @@ mod_mic_samples_ui <- function(id) {
       card(
         card_header(
           class = "d-flex justify-content-between align-items-center",
-          span("Sample Results"),
+          div(
+            span("Sample Results"),
+            tags$small("One row per sample using primary/secondary toggle", class = "text-muted d-block")
+          ),
           downloadButton(ns("dl_filtered"), "Download", class = "btn-sm btn-outline-primary")
         ),
         card_body(
@@ -267,35 +311,45 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       result
     }
 
-    sample_metrics <- reactive({
+    drop_helper_columns <- function(df) {
+      df %>% select(-any_of(c("SampleKey", "RunKey", "RunDateTimeParsed", "RunDateParsed", "TargetTest")))
+    }
+
+    samples_with_order <- reactive({
       df <- filtered_base()
-      if (!nrow(df) || !"ControlType" %in% names(df)) return(NULL)
 
-      df <- df %>% filter(ControlType == "Sample")
-      if (!nrow(df)) return(NULL)
+      if (is.null(df) || !nrow(df) || !"ControlType" %in% names(df)) return(tibble())
 
-      total_instances <- nrow(df)
-      has_id <- "SampleID" %in% names(df)
-      has_name <- "SampleName" %in% names(df)
+      df %>%
+        filter(ControlType == "Sample") %>%
+        append_test_order(drop_helper_cols = FALSE)
+    })
 
-      df <- append_test_order(df, drop_helper_cols = FALSE)
+    selected_results <- reactive({
+      df <- samples_with_order()
 
-      sample_counts <- df %>% count(SampleKey, name = "TimesTested")
+      if (!nrow(df)) return(df)
 
-      deduped <- df %>%
-        arrange(SampleKey, RunDateTimeParsed, RunDateParsed, RunKey) %>%
+      df %>%
         group_by(SampleKey) %>%
         mutate(
-          TestNumber = dplyr::row_number(),
-          TargetTest = if_else(
-            isTRUE(input$secondary_only) & max(TestNumber) >= 2,
-            2L,
-            max(TestNumber)
-          )
+          TargetTest = if_else(isTRUE(input$secondary_only) & max(TestNumber) >= 2, 2L, 1L),
+          TargetTest = pmin(TargetTest, max(TestNumber))
         ) %>%
         filter(TestNumber == TargetTest) %>%
         slice_head(n = 1) %>%
         ungroup()
+    })
+
+    sample_metrics <- reactive({
+      df <- samples_with_order()
+      if (!nrow(df)) return(NULL)
+
+      total_instances <- nrow(df)
+
+      sample_counts <- df %>% count(SampleKey, name = "TimesTested")
+
+      deduped <- selected_results()
 
       unique_samples <- nrow(sample_counts)
       tested_once <- sum(sample_counts$TimesTested == 1)
@@ -313,10 +367,38 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       rna <- sum(final_calls == "Positive_RNA", na.rm = TRUE)
       indeterminate <- sum(final_calls == "Indeterminate", na.rm = TRUE)
       negative <- sum(final_calls == "Negative", na.rm = TRUE)
+      invalid <- sum(final_calls %in% c("Invalid", "Invalid_NoDNA", "RunInvalid"), na.rm = TRUE)
       any_positive <- sum(final_calls %in% c("Positive", "Positive_DNA", "Positive_RNA"), na.rm = TRUE)
 
       tna_prev <- if (deduped_total) round(100 * tna / deduped_total, 1) else NA_real_
       any_prev <- if (deduped_total) round(100 * any_positive / deduped_total, 1) else NA_real_
+
+      linked_biobank <- if ("BiobankMatched" %in% names(deduped)) {
+        sum(deduped$BiobankMatched, na.rm = TRUE)
+      } else {
+        NA_integer_
+      }
+
+      linked_extraction <- if ("ExtractionMatched" %in% names(deduped)) {
+        sum(deduped$ExtractionMatched, na.rm = TRUE)
+      } else {
+        NA_integer_
+      }
+
+      run_links <- if ("RunID" %in% names(deduped)) {
+        run_df <- tryCatch(processed_data()$runs, error = function(e) tibble())
+        if (!is.null(run_df) && nrow(run_df) && "RunID" %in% names(run_df)) {
+          sum(deduped$RunID %in% run_df$RunID, na.rm = TRUE)
+        } else {
+          sum(!is.na(deduped$RunID))
+        }
+      } else {
+        NA_integer_
+      }
+
+      biobank_pct <- if (deduped_total && !is.na(linked_biobank)) round(100 * linked_biobank / deduped_total, 1) else NA_real_
+      extraction_pct <- if (deduped_total && !is.na(linked_extraction)) round(100 * linked_extraction / deduped_total, 1) else NA_real_
+      run_pct <- if (deduped_total && !is.na(run_links)) round(100 * run_links / deduped_total, 1) else NA_real_
 
       # Decision tree quality metrics
       confidence_scores <- if ("ConfidenceScore" %in% names(deduped)) {
@@ -347,8 +429,12 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         rna = rna,
         indeterminate = indeterminate,
         negative = negative,
+        invalid = invalid,
         tna_prev = tna_prev,
         any_prev = any_prev,
+        biobank_pct = biobank_pct,
+        extraction_pct = extraction_pct,
+        run_pct = run_pct,
         high_confidence = high_confidence,
         medium_confidence = medium_confidence,
         low_confidence = low_confidence,
@@ -381,6 +467,24 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       paste0(scales::comma(metrics$tested_multiple), suffix)
     })
 
+    output$kpi_biobank_linked <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics) || is.na(metrics$biobank_pct)) return("0%")
+      sprintf("%.1f%%", metrics$biobank_pct)
+    })
+
+    output$kpi_extraction_linked <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics) || is.na(metrics$extraction_pct)) return("0%")
+      sprintf("%.1f%%", metrics$extraction_pct)
+    })
+
+    output$kpi_run_linked <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics) || is.na(metrics$run_pct)) return("0%")
+      sprintf("%.1f%%", metrics$run_pct)
+    })
+
     output$kpi_samples_tna <- renderText({
       metrics <- sample_metrics()
       if (is.null(metrics)) return("0")
@@ -409,6 +513,12 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       metrics <- sample_metrics()
       if (is.null(metrics)) return("0")
       scales::comma(metrics$negative)
+    })
+
+    output$kpi_samples_invalid <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics)) return("0")
+      scales::comma(metrics$invalid)
     })
 
     output$kpi_samples_tna_prev <- renderText({
@@ -449,7 +559,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
 
     # Decision tree summary tables
     output$tbl_decision_steps <- renderDT({
-      df <- filtered_base()
+      df <- selected_results()
 
       if (!nrow(df) || !"DecisionStep" %in% names(df)) {
         return(datatable(
@@ -457,11 +567,6 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
           options = list(dom = 't'),
           rownames = FALSE
         ))
-      }
-
-      # Filter to samples only
-      if ("ControlType" %in% names(df)) {
-        df <- df %>% filter(ControlType == "Sample")
       }
 
       step_summary <- df %>%
@@ -504,7 +609,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
     })
 
     output$tbl_confidence_quality <- renderDT({
-      df <- filtered_base()
+      df <- selected_results()
 
       if (!nrow(df)) {
         return(datatable(
@@ -512,11 +617,6 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
           options = list(dom = 't'),
           rownames = FALSE
         ))
-      }
-
-      # Filter to samples only
-      if ("ControlType" %in% names(df)) {
-        df <- df %>% filter(ControlType == "Sample")
       }
 
       # Build quality summary
@@ -554,8 +654,17 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
 
       # Indeterminate results
       if ("FinalCall" %in% names(df)) {
+        invalid_count <- sum(df$FinalCall %in% c("Invalid", "Invalid_NoDNA", "RunInvalid"), na.rm = TRUE)
         indet_count <- sum(df$FinalCall == "Indeterminate", na.rm = TRUE)
         total_samples <- nrow(df)
+
+        if (invalid_count > 0) {
+          quality_rows <- append(quality_rows, list(tibble(
+            Metric = "Invalid Results",
+            Count = invalid_count,
+            Percentage = sprintf("%.1f%%", 100 * invalid_count / total_samples)
+          )))
+        }
 
         quality_rows <- append(quality_rows, list(tibble(
           Metric = "Indeterminate Results",
@@ -588,8 +697,8 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
 
     # Main samples table
     output$tbl_samples <- renderDT({
-      df <- filtered_base()
-      
+      df <- selected_results()
+
       if (!nrow(df)) {
         return(datatable(
           tibble(Message = "No samples match filters"),
@@ -597,21 +706,8 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
           rownames = FALSE
         ))
       }
-      
-      # Only show samples (not controls)
-      if ("ControlType" %in% names(df)) {
-        df <- df %>% filter(ControlType == "Sample")
-      }
 
-      if (!nrow(df)) {
-        return(datatable(
-          tibble(Message = "No samples found (only controls)"),
-          options = list(dom = 't'),
-          rownames = FALSE
-        ))
-      }
-      
-      df <- append_test_order(df)
+      df <- drop_helper_columns(df)
 
       # Round numeric columns
       numeric_cols <- intersect(
@@ -656,8 +752,8 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       ) %>%
         formatStyle('FinalCall',
                     backgroundColor = styleEqual(
-                      c('Positive', 'Positive_DNA', 'Positive_RNA', 'LatePositive', 'Negative', 'Indeterminate', 'Invalid_NoDNA', 'Control', 'Control_Fail'),
-                      c('#d4edda', '#b3e0f2', '#d4b3f2', '#ffe8a1', '#f8f9fa', '#fff3cd', '#f8d7da', '#dbe9ff', '#f5c6cb')
+                      c('Positive', 'Positive_DNA', 'Positive_RNA', 'LatePositive', 'Negative', 'Indeterminate', 'Invalid_NoDNA', 'Invalid', 'RunInvalid', 'Control', 'Control_Fail'),
+                      c('#d4edda', '#b3e0f2', '#d4b3f2', '#ffe8a1', '#f8f9fa', '#fff3cd', '#f8d7da', '#f8d7da', '#f8d7da', '#dbe9ff', '#f5c6cb')
                     )) %>%
         {
           if ("ConfidenceScore" %in% available_cols) {
@@ -689,7 +785,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
     output$dl_filtered <- downloadHandler(
       filename = function() sprintf("mic_samples_filtered_%s.csv", format(Sys.Date(), "%Y%m%d")),
       content = function(file) {
-        df <- filtered_base() %>% filter(ControlType == "Sample") %>% append_test_order()
+        df <- selected_results() %>% drop_helper_columns()
         write_csv(df, file)
       }
     )

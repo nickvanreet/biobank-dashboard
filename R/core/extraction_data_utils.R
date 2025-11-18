@@ -30,6 +30,7 @@ list_extraction_files <- function(directory) {
 .is_empty_extraction_row <- function(df) {
   if (!nrow(df)) return(logical())
 
+  # Helper to convert blank strings to NA
   blank_to_na <- function(x) {
     if (is.null(x)) return(rep(NA, nrow(df)))
     out <- trimws(as.character(x))
@@ -37,23 +38,48 @@ list_extraction_files <- function(directory) {
     out
   }
 
+  # Helper to safely get column or return NA vector
+  safe_col <- function(df, col_name) {
+    if (col_name %in% names(df)) {
+      return(df[[col_name]])
+    } else {
+      return(rep(NA, nrow(df)))
+    }
+  }
+
+  # Define core columns that must have at least one non-NA value for a row to be valid
+  # Focus on identifier columns and key data columns
   core_cols <- dplyr::tibble(
-    barcode = blank_to_na(df$barcode),
-    numero = blank_to_na(df$numero),
-    sample_id = blank_to_na(df$sample_id),
-    record_number = blank_to_na(df$record_number),
-    extraction_date = df$extraction_date,
-    drs_volume_ml = df$drs_volume_ml,
-    rack = blank_to_na(df$rack),
-    rack_row = blank_to_na(df$rack_row),
-    rack_column = blank_to_na(df$rack_column),
-    freezer_position = blank_to_na(df$freezer_position)
+    barcode = blank_to_na(safe_col(df, "barcode")),
+    numero = blank_to_na(safe_col(df, "numero")),
+    sample_id = blank_to_na(safe_col(df, "sample_id")),
+    record_number = blank_to_na(safe_col(df, "record_number")),
+    extraction_date = safe_col(df, "extraction_date"),
+    drs_volume_ml = safe_col(df, "drs_volume_ml")
   )
 
-  all_na <- apply(as.data.frame(df), 1, function(row) all(is.na(row) | row == ""))
+  # A row is empty if ALL core columns are NA/blank
+  # We explicitly check core columns only, ignoring metadata like source_file
   core_empty <- apply(core_cols, 1, function(row) all(is.na(row)))
 
-  all_na | core_empty
+  # Additional check: if ALL columns (excluding metadata) are NA/blank
+  # Exclude source_file and other metadata columns from this check
+  metadata_cols <- c("source_file", "has_cn", "is_duplicate", "dup_group", "most_recent",
+                     "valid_sample_id", "duplicate_sample_id", "barcode_suspicious",
+                     "validation_status", "flag_issue", "ready_for_freezer")
+  data_cols <- setdiff(names(df), metadata_cols)
+
+  if (length(data_cols) > 0) {
+    df_data_only <- df[, data_cols, drop = FALSE]
+    all_data_na <- apply(as.data.frame(df_data_only), 1, function(row) {
+      all(is.na(row) | (is.character(row) & trimws(row) == ""))
+    })
+  } else {
+    all_data_na <- rep(FALSE, nrow(df))
+  }
+
+  # Return TRUE if core fields are empty OR all data columns are empty
+  core_empty | all_data_na
 }
 
 #' Parse extraction datetime with time support
@@ -481,46 +507,84 @@ load_all_extractions <- function(directory = config$paths$extractions_dir,
     return(df)
   }
 
-  df <- df %>%
-    dplyr::mutate(
-      dplyr::across(where(is.character), ~stringr::str_squish(.x))
-    ) %>%
-    dplyr::filter(!.is_empty_extraction_row(.))
+  # Track row counts for logging
+  rows_before_cleaning <- nrow(df)
 
   df <- df %>%
     dplyr::mutate(
+      dplyr::across(where(is.character), ~stringr::str_squish(.x))
+    )
+
+  # Filter empty rows
+  df <- df %>%
+    dplyr::filter(!.is_empty_extraction_row(.))
+
+  rows_after_empty_filter <- nrow(df)
+  empty_rows_removed <- rows_before_cleaning - rows_after_empty_filter
+
+  if (empty_rows_removed > 0) {
+    message(sprintf(
+      "Removed %d empty rows (%d records remain)",
+      empty_rows_removed,
+      rows_after_empty_filter
+    ))
+  }
+
+  # Duplicate detection: identify rows with the same identifier
+  # Normalize identifiers first (trim, lowercase for comparison)
+  df <- df %>%
+    dplyr::mutate(
+      # Normalize each identifier field
+      barcode_norm = stringr::str_trim(tolower(as.character(barcode))),
+      barcode_norm = dplyr::na_if(barcode_norm, ""),
+      numero_norm = stringr::str_trim(tolower(as.character(numero))),
+      numero_norm = dplyr::na_if(numero_norm, ""),
+      sample_id_norm = stringr::str_trim(tolower(as.character(sample_id))),
+      sample_id_norm = dplyr::na_if(sample_id_norm, ""),
+      record_number_norm = stringr::str_trim(tolower(as.character(record_number))),
+      record_number_norm = dplyr::na_if(record_number_norm, ""),
+
+      # Create composite identifier for duplicate detection
       identifier_for_dup = dplyr::coalesce(
-        dplyr::na_if(barcode, ""),
-        dplyr::na_if(numero, ""),
-        dplyr::na_if(sample_id, ""),
-        dplyr::na_if(record_number, "")
+        barcode_norm,
+        numero_norm,
+        sample_id_norm,
+        record_number_norm
       )
     ) %>%
+    dplyr::select(-barcode_norm, -numero_norm, -sample_id_norm, -record_number_norm)
+
+  # Group by identifier and detect duplicates
+  # Important: only group rows that have a valid identifier
+  df <- df %>%
+    dplyr::mutate(row_id = dplyr::row_number()) %>%
     dplyr::group_by(identifier_for_dup) %>%
     dplyr::mutate(
+      # Only assign dup_group if identifier is not NA and there are multiple rows
+      group_size = dplyr::n(),
       dup_group = dplyr::if_else(
-        !is.na(identifier_for_dup),
+        !is.na(identifier_for_dup) & group_size > 1,
         dplyr::cur_group_id(),
         NA_integer_
       ),
-      latest_date = suppressWarnings(max(extraction_date, na.rm = TRUE)),
-      latest_date = dplyr::if_else(is.infinite(latest_date), as.Date(NA), latest_date),
-      is_duplicate = dplyr::if_else(
-        !is.na(identifier_for_dup) & dplyr::n() > 1,
-        TRUE,
-        FALSE,
-        FALSE
+      # Mark as duplicate if there are multiple rows with same valid identifier
+      is_duplicate = !is.na(identifier_for_dup) & group_size > 1,
+
+      # For duplicates, identify the most recent one based on extraction_date
+      latest_date = dplyr::if_else(
+        is_duplicate,
+        suppressWarnings(max(extraction_date, na.rm = TRUE)),
+        as.Date(NA)
       ),
+      latest_date = dplyr::if_else(is.infinite(latest_date), as.Date(NA), latest_date),
       most_recent = dplyr::if_else(
-        !is.na(identifier_for_dup) & !is.na(extraction_date) &
-          extraction_date == latest_date,
-        TRUE,
-        FALSE,
+        is_duplicate & !is.na(extraction_date) & !is.na(latest_date),
+        extraction_date == latest_date,
         FALSE
       )
     ) %>%
     dplyr::ungroup() %>%
-    dplyr::select(-identifier_for_dup, -latest_date)
+    dplyr::select(-identifier_for_dup, -latest_date, -group_size, -row_id)
 
   text_fields <- df %>% dplyr::select(where(is.character))
   if (!ncol(text_fields)) {
@@ -548,7 +612,19 @@ load_all_extractions <- function(directory = config$paths$extractions_dir,
       )
   }
 
-  message(sprintf("Loaded %d extraction records", nrow(df)))
+  # Final summary statistics
+  n_duplicates <- sum(df$is_duplicate, na.rm = TRUE)
+  n_unique_dup_groups <- length(unique(df$dup_group[!is.na(df$dup_group)]))
+  n_cn <- sum(df$has_cn, na.rm = TRUE)
+
+  message(sprintf(
+    "Loaded %d extraction records (%d duplicates in %d groups, %d with CN)",
+    nrow(df),
+    n_duplicates,
+    n_unique_dup_groups,
+    n_cn
+  ))
+
   df
 }
 

@@ -140,6 +140,32 @@ safe_sd <- function(x) {
 # FILE DISCOVERY & CACHING
 # =============================================================================
 
+get_mic_cache_dir <- function() {
+  cache_dir <- file.path("data", "MIC_cache")
+  if (!dir.exists(cache_dir)) {
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  cache_dir
+}
+
+get_mic_cache_path <- function(mic_file) {
+  file.path(
+    get_mic_cache_dir(),
+    paste0(tools::file_path_sans_ext(basename(mic_file)), ".rds")
+  )
+}
+
+cache_is_fresh <- function(mic_file, cache_path) {
+  if (!file.exists(cache_path)) return(FALSE)
+
+  mic_info <- file.info(mic_file)
+  cache_info <- file.info(cache_path)
+
+  if (is.na(mic_info$mtime) || is.na(cache_info$mtime)) return(FALSE)
+
+  cache_info$mtime >= mic_info$mtime
+}
+
 scan_mic_directory <- function(path) {
   if (!dir.exists(path)) {
     return(tibble(
@@ -190,6 +216,15 @@ parse_run_datetime <- function(filename) {
 # =============================================================================
 
 parse_single_mic_file <- function(file_info, settings) {
+  cache_path <- get_mic_cache_path(file_info$file_path)
+
+  if (cache_is_fresh(file_info$file_path, cache_path)) {
+    cached <- tryCatch(readRDS(cache_path), error = function(e) NULL)
+    if (is.list(cached) && isTRUE(cached$success)) {
+      return(cached)
+    }
+  }
+
   result <- tryCatch({
     
     # Use the analyze_qpcr function from qpcr_analysis.R
@@ -281,13 +316,22 @@ parse_single_mic_file <- function(file_info, settings) {
       ThresholdsJSON = as.character(toJSON(settings$thresholds, auto_unbox = TRUE))
     )
     
-    list(
+    parsed <- list(
       run = run_meta,
       replicates = replicates_long,
       samples = samples,
       success = TRUE
     )
-    
+
+    tryCatch(
+      saveRDS(parsed, cache_path),
+      error = function(e) {
+        warning(glue("Failed to save MIC cache for {file_info$file_name}: {e$message}"))
+      }
+    )
+
+    parsed
+
   }, error = function(e) {
     warning(glue("Failed to parse {file_info$file_name}: {e$message}"))
     list(success = FALSE, error = as.character(e$message))

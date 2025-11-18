@@ -1728,7 +1728,7 @@ mod_mic_qpcr_ui <- function(id) {
     # PANEL 1: MIC OVERVIEW (KPIs Only)
     # =========================================================================
     nav_panel(
-      title = "MIC Overview",
+      title = "MIC - Run",
       icon = icon("dna"),
 
       action_bar,

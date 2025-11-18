@@ -93,40 +93,39 @@ mod_mic_overview_ui <- function(id) {
       )
     ),
 
-    # Row 2: RNA/DNA Quality
+    # Row 2: Control health
     layout_column_wrap(
       width = 1/4,
       heights_equal = "row",
       gap = "12px",
 
       value_box(
-        title = "DNA QC Passing",
-        value = textOutput(ns("kpi_dna_quality")),
-        showcase = icon("dna"),
-        theme = "info"
-      ),
-
-      value_box(
-        title = "Good RNA (ΔCq ≤5)",
-        value = textOutput(ns("kpi_rna_good")),
-        showcase = icon("star"),
+        title = "Runs Passing Controls",
+        value = textOutput(ns("kpi_runs_control_ok")),
+        showcase = icon("shield-check"),
         theme = "success"
       ),
 
       value_box(
-        title = "Moderate Loss (ΔCq 5-8)",
-        value = textOutput(ns("kpi_rna_moderate")),
-        showcase = icon("star-half-stroke"),
-        theme = "warning"
-      ),
-
-      value_box(
-        title = "Poor RNA (ΔCq >8)",
-        value = textOutput(ns("kpi_rna_poor")),
-        showcase = icon("exclamation"),
+        title = "Runs With Control Issues",
+        value = textOutput(ns("kpi_runs_control_fail")),
+        showcase = icon("ban"),
         theme = "danger"
       ),
 
+      value_box(
+        title = "Control Wells Passing",
+        value = textOutput(ns("kpi_control_wells")),
+        showcase = icon("vial-circle-check"),
+        theme = "info"
+      ),
+
+      value_box(
+        title = "Control Pass Rate",
+        value = textOutput(ns("kpi_control_rate")),
+        showcase = icon("percent"),
+        theme = "primary"
+      )
     ),
 
     # Run summary table
@@ -134,8 +133,40 @@ mod_mic_overview_ui <- function(id) {
       full_screen = TRUE,
       card_header("Run Metadata"),
       card_body(
+        p(class = "text-muted mb-2", "Aligned with MIC parsing: run-level totals, validity and control outcomes are shown together."),
         DTOutput(ns("tbl_runs"), width = "100%"),
         class = "p-3"
+      )
+    ),
+
+    # Levey-Jennings KPIs
+    layout_column_wrap(
+      width = 1/4,
+      heights_equal = "row",
+      gap = "12px",
+      value_box(
+        title = "177T Stability",
+        value = textOutput(ns("kpi_lj_177t")),
+        showcase = icon("chart-line"),
+        theme = "info"
+      ),
+      value_box(
+        title = "18S2 Stability",
+        value = textOutput(ns("kpi_lj_18s2")),
+        showcase = icon("chart-line"),
+        theme = "info"
+      ),
+      value_box(
+        title = "RNAseP DNA Stability",
+        value = textOutput(ns("kpi_lj_rnp_dna")),
+        showcase = icon("chart-line"),
+        theme = "info"
+      ),
+      value_box(
+        title = "RNAseP RNA Stability",
+        value = textOutput(ns("kpi_lj_rnp_rna")),
+        showcase = icon("chart-line"),
+        theme = "info"
       )
     ),
 
@@ -171,17 +202,6 @@ mod_mic_overview_ui <- function(id) {
         card_body(
           plotlyOutput(ns("lj_rnp_rna"), height = "400px", width = "100%")
         )
-      )
-    ),
-
-    # Control status table (was in QC panel)
-    card(
-      class = "mt-3",
-      full_screen = TRUE,
-      card_header("Control Status by Run"),
-      card_body(
-        DTOutput(ns("tbl_controls"), width = "100%"),
-        class = "p-3"
       )
     )
     )
@@ -230,71 +250,47 @@ mod_mic_overview_server <- function(id, processed_data, filtered_base) {
       glue::glue("{scales::comma(invalid)}{suffix}")
     })
 
-    # Row 2: RNA Preservation & QC
-    output$kpi_dna_quality <- renderText({
-      df <- filtered_base()
-      required_cols <- c("ControlType", "Call_RNAseP_DNA")
-      if (!nrow(df) || !all(required_cols %in% names(df))) return("N/A")
+    # Row 2: Control health
+    output$kpi_runs_control_ok <- renderText({
+      runs <- processed_data()$runs
+      if (!nrow(runs) || !"ControlsPassing" %in% names(runs)) return("0")
 
-      df <- df %>% filter(ControlType == "Sample")
-      if (!nrow(df)) return("N/A")
+      total_reviewed <- sum(!is.na(runs$ControlsPassing))
+      if (!total_reviewed) return("0")
 
-      total <- sum(!is.na(df$Call_RNAseP_DNA))
+      passing <- sum(runs$ControlsPassing, na.rm = TRUE)
+      glue::glue("{scales::comma(passing)} ({round(100 * passing / total_reviewed, 1)}%)")
+    })
+
+    output$kpi_runs_control_fail <- renderText({
+      runs <- processed_data()$runs
+      if (!nrow(runs) || !"ControlsPassing" %in% names(runs)) return("0")
+
+      total_reviewed <- sum(!is.na(runs$ControlsPassing))
+      failing <- sum(!runs$ControlsPassing, na.rm = TRUE)
+      suffix <- if (isTRUE(input$exclude_invalid_runs) && failing > 0) " (excluded)" else ""
+
+      glue::glue("{scales::comma(failing)}{suffix}")
+    })
+
+    output$kpi_control_wells <- renderText({
+      ctrl <- processed_data()$control_status
+      if (!nrow(ctrl)) return("0")
+
+      total <- sum(!is.na(ctrl$ControlPass))
+      pass <- sum(ctrl$ControlPass, na.rm = TRUE)
+      glue::glue("{scales::comma(pass)} / {scales::comma(total)}")
+    })
+
+    output$kpi_control_rate <- renderText({
+      ctrl <- processed_data()$control_status
+      if (!nrow(ctrl)) return("N/A")
+
+      total <- sum(!is.na(ctrl$ControlPass))
       if (!total) return("N/A")
 
-      good <- sum(df$Call_RNAseP_DNA %in% c("Positive", "LatePositive"), na.rm = TRUE)
-      paste0(round(100 * good / total), "%")
-    })
-
-    # Row 2 (continued): RNA Preservation & QC
-    output$kpi_rna_good <- renderText({
-      df <- filtered_base()
-      if (!nrow(df) || !all(c("ControlType", "RNA_Preservation_Delta") %in% names(df))) {
-        return("N/A")
-      }
-
-      df <- df %>% filter(ControlType == "Sample")
-      if (!nrow(df)) return("N/A")
-
-      good <- sum(!is.na(df$RNA_Preservation_Delta) & df$RNA_Preservation_Delta <= 5, na.rm = TRUE)
-      total <- sum(!is.na(df$RNA_Preservation_Delta))
-      if (total == 0) return("N/A")
-
-      paste0(good, " (", round(100 * good / total), "%)")
-    })
-
-    output$kpi_rna_moderate <- renderText({
-      df <- filtered_base()
-      if (!nrow(df) || !all(c("ControlType", "RNA_Preservation_Delta") %in% names(df))) {
-        return("N/A")
-      }
-
-      df <- df %>% filter(ControlType == "Sample")
-      if (!nrow(df)) return("N/A")
-
-      moderate <- sum(!is.na(df$RNA_Preservation_Delta) &
-                      df$RNA_Preservation_Delta > 5 &
-                      df$RNA_Preservation_Delta <= 8, na.rm = TRUE)
-      total <- sum(!is.na(df$RNA_Preservation_Delta))
-      if (total == 0) return("N/A")
-
-      paste0(moderate, " (", round(100 * moderate / total), "%)")
-    })
-
-    output$kpi_rna_poor <- renderText({
-      df <- filtered_base()
-      if (!nrow(df) || !all(c("ControlType", "RNA_Preservation_Delta") %in% names(df))) {
-        return("N/A")
-      }
-
-      df <- df %>% filter(ControlType == "Sample")
-      if (!nrow(df)) return("N/A")
-
-      poor <- sum(!is.na(df$RNA_Preservation_Delta) & df$RNA_Preservation_Delta > 8, na.rm = TRUE)
-      total <- sum(!is.na(df$RNA_Preservation_Delta))
-      if (total == 0) return("N/A")
-
-      paste0(poor, " (", round(100 * poor / total), "%)")
+      pass <- sum(ctrl$ControlPass, na.rm = TRUE)
+      glue::glue("{round(100 * pass / total, 1)}%")
     })
 
     # Runs table
@@ -312,14 +308,22 @@ mod_mic_overview_server <- function(id, processed_data, filtered_base) {
       display <- runs %>%
         mutate(
           RunDateTime = as.character(RunDateTime),
-          RunValid = if_else(RunValid, "✓", "✗")
+          RunValid = if_else(RunValid, "✓", "✗"),
+          ControlsPassing = case_when(
+            is.na(ControlsPassing) ~ "N/A",
+            ControlsPassing ~ "✓",
+            TRUE ~ "✗"
+          ),
+          ControlPassRate = if_else(is.na(ControlPassRate), "N/A", scales::percent(ControlPassRate, accuracy = 0.1)),
+          ControlIssues = if_else(is.na(FailedControls), "All controls passed", FailedControls)
         )
 
       available_cols <- intersect(
         c(
           "RunID", "FileName", "RunDateTime", "WellCount", "TotalSamples",
-          "TotalControls", "Positives", "Negatives", "Indeterminate",
-          "InvalidNoDNA", "Flagged", "RunValid"
+          "TotalControls", "ControlsPassed", "ControlsFailed", "ControlPassRate",
+          "RunValid", "ControlsPassing", "ControlIssues", "Positives", "Negatives",
+          "Indeterminate", "InvalidNoDNA", "Flagged"
         ),
         names(display)
       )
@@ -338,44 +342,11 @@ mod_mic_overview_server <- function(id, processed_data, filtered_base) {
         class = "display compact stripe hover"
       ) %>%
         formatStyle('RunValid',
-                    color = styleEqual(c('✓', '✗'), c('green', 'red')))
-    })
-
-    # Control status table (moved from QC module)
-    output$tbl_controls <- renderDT({
-      ctrl <- processed_data()$control_status
-
-      if (!nrow(ctrl)) {
-        return(datatable(
-          tibble(Message = "No control data available"),
-          options = list(dom = 't'),
-          rownames = FALSE
-        ))
-      }
-
-      available_cols <- intersect(
-        c("RunID", "SampleName", "ControlType", "ControlPass", "ControlFlag"),
-        names(ctrl)
-      )
-
-      ctrl <- ctrl %>%
-        mutate(ControlPass = if_else(ControlPass, "✓ Pass", "✗ Fail"))
-
-      datatable(
-        ctrl %>% select(all_of(available_cols)),
-        options = list(
-          dom = 'tp',
-          paging = TRUE,
-          pageLength = 20,
-          columnDefs = list(
-            list(className = 'dt-center', targets = '_all')
-          )
-        ),
-        rownames = FALSE,
-        class = "display compact stripe"
-      ) %>%
-        formatStyle('ControlPass',
-                    color = styleEqual(c('✓ Pass', '✗ Fail'), c('green', 'red')))
+                    color = styleEqual(c('✓', '✗'), c('green', 'red')),
+                    fontWeight = 'bold') %>%
+        formatStyle('ControlsPassing',
+                    color = styleEqual(c('✓', '✗', 'N/A'), c('green', 'red', '#6c757d')),
+                    fontWeight = 'bold')
     })
 
     # Levey-Jennings plots (moved from QC module)
@@ -473,6 +444,34 @@ mod_mic_overview_server <- function(id, processed_data, filtered_base) {
     render_lj_plot("18S2", "lj_18s2")
     render_lj_plot("RNAseP_DNA", "lj_rnp_dna")
     render_lj_plot("RNAseP_RNA", "lj_rnp_rna")
+
+    # Levey-Jennings KPIs
+    render_lj_kpi <- function(target_name, output_name) {
+      output[[output_name]] <- renderText({
+        lj <- processed_data()$lj_stats[[target_name]]
+
+        if (is.null(lj$summary) || !nrow(lj$summary)) return("No data")
+
+        pct <- lj$summary$Within2SD_pct[1]
+        latest_run <- lj$summary$LatestRunID[1]
+        latest_cq <- lj$summary$LatestCq[1]
+
+        if (is.na(pct)) return("No data")
+
+        parts <- c(glue::glue("{pct}% within ±2 SD"))
+
+        if (!is.na(latest_cq) && !is.na(latest_run) && latest_run != "") {
+          parts <- c(parts, glue::glue("Last: {round(latest_cq, 2)} (Run {latest_run})"))
+        }
+
+        paste(parts, collapse = " | ")
+      })
+    }
+
+    render_lj_kpi("177T", "kpi_lj_177t")
+    render_lj_kpi("18S2", "kpi_lj_18s2")
+    render_lj_kpi("RNAseP_DNA", "kpi_lj_rnp_dna")
+    render_lj_kpi("RNAseP_RNA", "kpi_lj_rnp_rna")
 
   })
 }

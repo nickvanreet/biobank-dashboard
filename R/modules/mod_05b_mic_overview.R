@@ -453,18 +453,10 @@ mod_mic_overview_server <- function(id, processed_data, filtered_base) {
         if (is.null(lj$summary) || !nrow(lj$summary)) return("No data")
 
         pct <- lj$summary$Within2SD_pct[1]
-        latest_run <- lj$summary$LatestRunID[1]
-        latest_cq <- lj$summary$LatestCq[1]
 
         if (is.na(pct)) return("No data")
 
-        parts <- c(glue::glue("{pct}% within ±2 SD"))
-
-        if (!is.na(latest_cq) && !is.na(latest_run) && latest_run != "") {
-          parts <- c(parts, glue::glue("Last: {round(latest_cq, 2)} (Run {latest_run})"))
-        }
-
-        paste(parts, collapse = " | ")
+        glue::glue("{pct}% within ±2 SD")
       })
     }
 

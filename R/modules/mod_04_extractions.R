@@ -10,7 +10,7 @@ mod_extractions_ui <- function(id) {
   ns <- NS(id)
 
   nav_panel(
-    title = "Extraction Quality",
+    title = "Extraction",
     icon = icon("vials"),
 
     div(
@@ -35,6 +35,18 @@ mod_extractions_ui <- function(id) {
           value = textOutput(ns("kpi_linked")),
           showcase = icon("link"),
           theme = "success"
+        ),
+        value_box(
+          title = "Matched",
+          value = textOutput(ns("kpi_matched")),
+          showcase = icon("check-circle"),
+          theme = "success"
+        ),
+        value_box(
+          title = "Mismatched",
+          value = textOutput(ns("kpi_mismatched")),
+          showcase = icon("exclamation-triangle"),
+          theme = "warning"
         ),
         value_box(
           title = "Mean Volume (mL)",
@@ -443,6 +455,24 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         }
       })
 
+      output$kpi_matched <- renderText({
+        m <- metrics()
+        if (is.null(m$matched_total) || is.na(m$matched_total)) {
+          "--"
+        } else {
+          scales::comma(m$matched_total)
+        }
+      })
+
+      output$kpi_mismatched <- renderText({
+        m <- metrics()
+        if (is.null(m$mismatched_total) || is.na(m$mismatched_total)) {
+          "--"
+        } else {
+          scales::comma(m$mismatched_total)
+        }
+      })
+
       output$kpi_mean_volume <- renderText({
         m <- metrics()
         if (is.null(m$mean_volume) || is.na(m$mean_volume)) {
@@ -495,9 +525,12 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         plot_df <- df %>%
           dplyr::mutate(
             drs_state = dplyr::coalesce(.data$drs_state, "Unknown"),
-            drs_state_code = dplyr::coalesce(.data$drs_state_code, stringr::str_sub(.data$drs_state, 1, 1)),
             drs_state = factor(.data$drs_state, levels = c("Liquid", "Viscous", "Coagulated", "Unknown"), ordered = TRUE),
-            code_display = dplyr::if_else(is.na(.data$drs_state_code), "?", .data$drs_state_code)
+            code_display = dplyr::case_when(
+              is.na(.data$drs_state_code) ~ "?",
+              .data$drs_state_code == "" ~ "?",
+              TRUE ~ .data$drs_state_code
+            )
           ) %>%
           dplyr::count(.data$drs_state, .data$code_display, name = "samples")
 
@@ -529,9 +562,12 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         plot_df <- df %>%
           dplyr::mutate(
             extract_quality = dplyr::coalesce(.data$extract_quality, "Unknown"),
-            extract_quality_code = dplyr::coalesce(.data$extract_quality_code, stringr::str_sub(.data$extract_quality, 1, 1)),
             extract_quality = factor(.data$extract_quality, levels = c("Clear", "Foncé", "Échec", "Unknown"), ordered = TRUE),
-            code_display = dplyr::if_else(is.na(.data$extract_quality_code), "?", .data$extract_quality_code)
+            code_display = dplyr::case_when(
+              is.na(.data$extract_quality_code) ~ "?",
+              .data$extract_quality_code == "" ~ "?",
+              TRUE ~ .data$extract_quality_code
+            )
           ) %>%
           dplyr::count(.data$extract_quality, .data$code_display, name = "samples")
 

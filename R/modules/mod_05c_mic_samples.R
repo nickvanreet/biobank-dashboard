@@ -793,7 +793,9 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
           df <- df[visible_rows, , drop = FALSE]
         }
 
-        write_csv(df, file)
+        # Use a semicolon delimiter and comma decimal mark so numbers open correctly in
+        # Belgian/French versions of Excel.
+        write_csv2(df, file, locale = locale(decimal_mark = ","))
       }
     )
     

@@ -164,23 +164,15 @@ scan_mic_directory <- function(path) {
     ))
   }
   
-  # Get file info for all files at once (performance optimization)
-  file_info_list <- map(files, ~{
-    info <- file.info(.x)
-    list(
-      path = .x,
-      size = info$size,
-      mtime = as.numeric(info$mtime)
-    )
-  })
+  # Get file info for all files at once (vectorized - faster than map)
+  info_df <- file.info(files)
 
   tibble(
-    file_path = map_chr(file_info_list, ~.x$path),
-    file_name = basename(map_chr(file_info_list, ~.x$path)),
-    size = map_dbl(file_info_list, ~.x$size),
-    mtime = map_dbl(file_info_list, ~.x$mtime) %>%
-      as.POSIXct(origin = "1970-01-01", tz = Sys.timezone()),
-    hash = map_chr(file_info_list, ~digest(paste(.x$path, .x$size, .x$mtime), algo = "md5"))
+    file_path = files,
+    file_name = basename(files),
+    size = info_df$size,
+    mtime = info_df$mtime,
+    hash = map2_chr(files, seq_along(files), ~digest(paste(.x, info_df$size[.y], info_df$mtime[.y]), algo = "md5"))
   )
 }
 
@@ -1143,11 +1135,11 @@ parse_mic_directory <- function(path, settings, cache_state) {
   # Get cached results
   cached_results <- map(cached_files$hash, ~cache[[.x]])
 
-  # Parse uncached files in parallel
+  # Parse uncached files (use parallel only for larger batches to avoid overhead)
   uncached_results <- list()
   if (nrow(uncached_files) > 0) {
-    # Use parallel processing for multiple files
-    if (nrow(uncached_files) > 1 && .Platform$OS.type == "unix") {
+    # Only use parallel processing for 5+ files to avoid fork overhead
+    if (nrow(uncached_files) >= 5 && .Platform$OS.type == "unix") {
       # Use mclapply on Unix systems for parallel processing
       # Determine number of cores to use (max 4 or half of available cores)
       n_cores <- min(4, max(1, parallel::detectCores() %/% 2))
@@ -1161,7 +1153,7 @@ parse_mic_directory <- function(path, settings, cache_state) {
         mc.cores = n_cores
       )
     } else {
-      # Fall back to sequential processing on Windows or single file
+      # Sequential processing for small batches, Windows, or single file
       uncached_results <- lapply(
         seq_len(nrow(uncached_files)),
         function(i) {

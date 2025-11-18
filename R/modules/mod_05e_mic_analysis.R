@@ -587,6 +587,14 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
           ungroup() %>%
           filter(!is.na(NextTestNumber))
 
+        # If show_latest_followup is TRUE, filter to only the last transition per sample
+        if (isTRUE(input$show_latest_followup)) {
+          consecutive_pairs <- consecutive_pairs %>%
+            group_by(SampleKey) %>%
+            filter(TestNumber == max(TestNumber) - 1) %>%
+            ungroup()
+        }
+
         if (nrow(consecutive_pairs)) {
           valid_pairs <- consecutive_pairs %>%
             filter(!is.na(FinalCall) & !is.na(NextCall))
@@ -781,11 +789,14 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
 
       total_comparisons <- transitions$total_pairs + transitions$missing_pairs
 
+      focus_suffix <- if (isTRUE(input$show_latest_followup)) " (showing only latest follow-up)" else ""
+
       base_text <- paste0(
         format(transitions$total_retests, big.mark = ","),
         " samples had multiple tests, contributing ",
         format(total_comparisons, big.mark = ","),
         if (total_comparisons == 1) " consecutive pair" else " consecutive pairs",
+        focus_suffix,
         "."
       )
 

@@ -120,14 +120,17 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
     )
 
   # Normalize extraction identifiers
+  # Prioritize barcode column first, then fall back to sample_id
+  # This ensures we don't accidentally match numero values as barcodes
   sample_barcode_raw <- resolve_first_present(
     extraction_df,
-    c("sample_id", "code_barres_kps", "code_barre", "code_bar", "barcode")
+    c("barcode", "sample_id")
   )
 
+  # Prioritize numero/record_number columns first, then fall back to sample_id
   record_number_raw <- resolve_first_present(
     extraction_df,
-    c("record_number", "numero", "lab_id", "sample_numero")
+    c("numero", "record_number", "sample_id")
   )
 
   extraction_df <- extraction_df %>%

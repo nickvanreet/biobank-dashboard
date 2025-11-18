@@ -13,7 +13,7 @@ mod_overview_demographics_ui <- function(id) {
   ns <- NS(id)
   
   nav_panel(
-    title = "Overview & Demographics",
+    title = "Demographics",
     icon = icon("chart-pie"),
     
     div(class = "container-fluid",

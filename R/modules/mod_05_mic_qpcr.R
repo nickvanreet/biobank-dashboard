@@ -164,17 +164,24 @@ scan_mic_directory <- function(path) {
     ))
   }
   
-  tibble(
-    file_path = files,
-    file_name = basename(files)
-  ) %>%
-    mutate(
-      size = map_dbl(file_path, ~file.info(.x)$size),
-      mtime = map_dbl(file_path, ~as.numeric(file.info(.x)$mtime)) %>% 
-        as.POSIXct(origin = "1970-01-01", tz = Sys.timezone()),
-      hash = map_chr(file_path, ~digest(paste(.x, file.info(.x)$size, 
-                                              file.info(.x)$mtime), algo = "md5"))
+  # Get file info for all files at once (performance optimization)
+  file_info_list <- map(files, ~{
+    info <- file.info(.x)
+    list(
+      path = .x,
+      size = info$size,
+      mtime = as.numeric(info$mtime)
     )
+  })
+
+  tibble(
+    file_path = map_chr(file_info_list, ~.x$path),
+    file_name = basename(map_chr(file_info_list, ~.x$path)),
+    size = map_dbl(file_info_list, ~.x$size),
+    mtime = map_dbl(file_info_list, ~.x$mtime) %>%
+      as.POSIXct(origin = "1970-01-01", tz = Sys.timezone()),
+    hash = map_chr(file_info_list, ~digest(paste(.x$path, .x$size, .x$mtime), algo = "md5"))
+  )
 }
 
 parse_run_datetime <- function(filename) {
@@ -1113,7 +1120,7 @@ classify_target_vectorized <- function(cq_vector, target_name, settings) {
 
 parse_mic_directory <- function(path, settings, cache_state) {
   files <- scan_mic_directory(path)
-  
+
   if (!nrow(files)) {
     return(list(
       runs = tibble(),
@@ -1123,35 +1130,74 @@ parse_mic_directory <- function(path, settings, cache_state) {
       files = files
     ))
   }
-  
+
   cache <- cache_state
+
+  # Separate files into cached and non-cached
+  files_with_cache_status <- files %>%
+    mutate(is_cached = map_lgl(hash, ~!is.null(cache[[.x]])))
+
+  cached_files <- files_with_cache_status %>% filter(is_cached)
+  uncached_files <- files_with_cache_status %>% filter(!is_cached)
+
+  # Get cached results
+  cached_results <- map(cached_files$hash, ~cache[[.x]])
+
+  # Parse uncached files in parallel
+  uncached_results <- list()
+  if (nrow(uncached_files) > 0) {
+    # Use parallel processing for multiple files
+    if (nrow(uncached_files) > 1 && .Platform$OS.type == "unix") {
+      # Use mclapply on Unix systems for parallel processing
+      # Determine number of cores to use (max 4 or half of available cores)
+      n_cores <- min(4, max(1, parallel::detectCores() %/% 2))
+
+      uncached_results <- parallel::mclapply(
+        seq_len(nrow(uncached_files)),
+        function(i) {
+          file_row <- uncached_files[i, ]
+          parse_single_mic_file(file_row, settings)
+        },
+        mc.cores = n_cores
+      )
+    } else {
+      # Fall back to sequential processing on Windows or single file
+      uncached_results <- lapply(
+        seq_len(nrow(uncached_files)),
+        function(i) {
+          file_row <- uncached_files[i, ]
+          parse_single_mic_file(file_row, settings)
+        }
+      )
+    }
+  }
+
+  # Combine all results
+  all_results <- c(cached_results, uncached_results)
+  all_hashes <- c(cached_files$hash, uncached_files$hash)
+
+  # Filter successful results and build output lists
   all_runs <- list()
   all_samples <- list()
   all_replicates <- list()
   new_cache <- list()
-  
-  for (i in seq_len(nrow(files))) {
-    file_row <- files[i, ]
-    
-    # Check cache
-    if (!is.null(cache[[file_row$hash]])) {
-      parsed <- cache[[file_row$hash]]
-    } else {
-      parsed <- parse_single_mic_file(file_row, settings)
-    }
-    
+
+  for (i in seq_along(all_results)) {
+    parsed <- all_results[[i]]
+    hash <- all_hashes[i]
+
     if (!parsed$success) next
-    
-    new_cache[[file_row$hash]] <- parsed
+
+    new_cache[[hash]] <- parsed
     all_runs[[length(all_runs) + 1]] <- parsed$run
     all_samples[[length(all_samples) + 1]] <- parsed$samples
     all_replicates[[length(all_replicates) + 1]] <- parsed$replicates
   }
-  
+
   runs_df <- if (length(all_runs)) bind_rows(all_runs) else tibble()
   samples_df <- if (length(all_samples)) bind_rows(all_samples) else tibble()
   replicates_df <- if (length(all_replicates)) bind_rows(all_replicates) else tibble()
-  
+
   list(
     runs = runs_df,
     replicates = replicates_df,

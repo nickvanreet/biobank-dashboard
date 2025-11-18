@@ -125,6 +125,62 @@ mod_mic_samples_ui <- function(id) {
               showcase = icon("chart-pie"),
               theme = "primary"
             )
+          ),
+
+          layout_column_wrap(
+            width = 1/4,
+            heights_equal = "row",
+            gap = "12px",
+
+            value_box(
+              title = "High Confidence",
+              value = textOutput(ns("kpi_confidence_high")),
+              showcase = icon("star"),
+              theme = "success"
+            ),
+
+            value_box(
+              title = "Medium Confidence",
+              value = textOutput(ns("kpi_confidence_medium")),
+              showcase = icon("star-half-stroke"),
+              theme = "info"
+            ),
+
+            value_box(
+              title = "Low Confidence",
+              value = textOutput(ns("kpi_confidence_low")),
+              showcase = icon("triangle-exclamation"),
+              theme = "warning"
+            ),
+
+            value_box(
+              title = "Samples with Conflicts",
+              value = textOutput(ns("kpi_conflicts")),
+              showcase = icon("exclamation-circle"),
+              theme = "danger"
+            )
+          )
+        )
+      ),
+
+      # Decision Tree Summary
+      card(
+        class = "mb-3",
+        card_header("Decision Tree Summary"),
+        card_body(
+          layout_column_wrap(
+            width = 1/2,
+            gap = "12px",
+
+            card(
+              card_header("Decision Step Distribution"),
+              card_body(DTOutput(ns("tbl_decision_steps")))
+            ),
+
+            card(
+              card_header("Confidence & Quality Metrics"),
+              card_body(DTOutput(ns("tbl_confidence_quality")))
+            )
           )
         )
       ),
@@ -262,6 +318,24 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       tna_prev <- if (deduped_total) round(100 * tna / deduped_total, 1) else NA_real_
       any_prev <- if (deduped_total) round(100 * any_positive / deduped_total, 1) else NA_real_
 
+      # Decision tree quality metrics
+      confidence_scores <- if ("ConfidenceScore" %in% names(deduped)) {
+        deduped$ConfidenceScore
+      } else {
+        rep(NA_character_, deduped_total)
+      }
+
+      conflicts <- if ("WellAggregateConflict" %in% names(deduped)) {
+        deduped$WellAggregateConflict
+      } else {
+        rep(FALSE, deduped_total)
+      }
+
+      high_confidence <- sum(confidence_scores == "High", na.rm = TRUE)
+      medium_confidence <- sum(confidence_scores == "Medium", na.rm = TRUE)
+      low_confidence <- sum(confidence_scores == "Low", na.rm = TRUE)
+      conflict_count <- sum(conflicts == TRUE, na.rm = TRUE)
+
       list(
         total_instances = total_instances,
         unique_samples = unique_samples,
@@ -274,7 +348,11 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         indeterminate = indeterminate,
         negative = negative,
         tna_prev = tna_prev,
-        any_prev = any_prev
+        any_prev = any_prev,
+        high_confidence = high_confidence,
+        medium_confidence = medium_confidence,
+        low_confidence = low_confidence,
+        conflict_count = conflict_count
       )
     })
 
@@ -345,6 +423,169 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       sprintf("%.1f%%", metrics$any_prev)
     })
 
+    output$kpi_confidence_high <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics)) return("0")
+      scales::comma(metrics$high_confidence)
+    })
+
+    output$kpi_confidence_medium <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics)) return("0")
+      scales::comma(metrics$medium_confidence)
+    })
+
+    output$kpi_confidence_low <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics)) return("0")
+      scales::comma(metrics$low_confidence)
+    })
+
+    output$kpi_conflicts <- renderText({
+      metrics <- sample_metrics()
+      if (is.null(metrics)) return("0")
+      scales::comma(metrics$conflict_count)
+    })
+
+    # Decision tree summary tables
+    output$tbl_decision_steps <- renderDT({
+      df <- filtered_base()
+
+      if (!nrow(df) || !"DecisionStep" %in% names(df)) {
+        return(datatable(
+          tibble(Message = "No decision step data available"),
+          options = list(dom = 't'),
+          rownames = FALSE
+        ))
+      }
+
+      # Filter to samples only
+      if ("ControlType" %in% names(df)) {
+        df <- df %>% filter(ControlType == "Sample")
+      }
+
+      step_summary <- df %>%
+        filter(!is.na(DecisionStep)) %>%
+        group_by(DecisionStep) %>%
+        summarise(
+          Count = n(),
+          .groups = "drop"
+        ) %>%
+        arrange(DecisionStep) %>%
+        mutate(
+          Percentage = sprintf("%.1f%%", 100 * Count / sum(Count)),
+          DecisionStep = case_when(
+            DecisionStep == "Step0" ~ "Step 0: Control Handling",
+            DecisionStep == "Step1" ~ "Step 1: QC Validity Check",
+            DecisionStep == "Step2" ~ "Step 2: TNA Positive (≥2 wells)",
+            DecisionStep == "Step3" ~ "Step 3: Single TNA Well",
+            DecisionStep == "Step4a" ~ "Step 4a: DNA-only Pattern",
+            DecisionStep == "Step4b" ~ "Step 4b: RNA-only Pattern",
+            DecisionStep == "Step5" ~ "Step 5: Late Positive TNA",
+            DecisionStep == "Step6a" ~ "Step 6a: Single Outlier + Negatives",
+            DecisionStep == "Step6b" ~ "Step 6b: Weak Mixed Signals",
+            DecisionStep == "Step7" ~ "Step 7: Clear Negative",
+            DecisionStep == "Step8" ~ "Step 8: Insufficient Data",
+            TRUE ~ DecisionStep
+          )
+        ) %>%
+        select(`Decision Step` = DecisionStep, Count, Percentage)
+
+      datatable(
+        step_summary,
+        options = list(
+          pageLength = 15,
+          dom = 't',
+          ordering = FALSE
+        ),
+        rownames = FALSE,
+        class = "display compact stripe"
+      )
+    })
+
+    output$tbl_confidence_quality <- renderDT({
+      df <- filtered_base()
+
+      if (!nrow(df)) {
+        return(datatable(
+          tibble(Message = "No data available"),
+          options = list(dom = 't'),
+          rownames = FALSE
+        ))
+      }
+
+      # Filter to samples only
+      if ("ControlType" %in% names(df)) {
+        df <- df %>% filter(ControlType == "Sample")
+      }
+
+      # Build quality summary
+      quality_rows <- list()
+
+      # Confidence distribution
+      if ("ConfidenceScore" %in% names(df)) {
+        conf_summary <- df %>%
+          filter(!is.na(ConfidenceScore)) %>%
+          group_by(ConfidenceScore) %>%
+          summarise(n = n(), .groups = "drop")
+
+        total_conf <- sum(conf_summary$n)
+
+        for (i in seq_len(nrow(conf_summary))) {
+          quality_rows <- append(quality_rows, list(tibble(
+            Metric = paste0(conf_summary$ConfidenceScore[i], " Confidence"),
+            Count = conf_summary$n[i],
+            Percentage = sprintf("%.1f%%", 100 * conf_summary$n[i] / total_conf)
+          )))
+        }
+      }
+
+      # Conflicts
+      if ("WellAggregateConflict" %in% names(df)) {
+        conflict_count <- sum(df$WellAggregateConflict == TRUE, na.rm = TRUE)
+        total_samples <- nrow(df)
+
+        quality_rows <- append(quality_rows, list(tibble(
+          Metric = "Samples with Conflicts",
+          Count = conflict_count,
+          Percentage = sprintf("%.1f%%", 100 * conflict_count / total_samples)
+        )))
+      }
+
+      # Indeterminate results
+      if ("FinalCall" %in% names(df)) {
+        indet_count <- sum(df$FinalCall == "Indeterminate", na.rm = TRUE)
+        total_samples <- nrow(df)
+
+        quality_rows <- append(quality_rows, list(tibble(
+          Metric = "Indeterminate Results",
+          Count = indet_count,
+          Percentage = sprintf("%.1f%%", 100 * indet_count / total_samples)
+        )))
+      }
+
+      if (length(quality_rows) == 0) {
+        return(datatable(
+          tibble(Message = "No quality metrics available"),
+          options = list(dom = 't'),
+          rownames = FALSE
+        ))
+      }
+
+      quality_summary <- bind_rows(quality_rows)
+
+      datatable(
+        quality_summary,
+        options = list(
+          pageLength = 15,
+          dom = 't',
+          ordering = FALSE
+        ),
+        rownames = FALSE,
+        class = "display compact stripe"
+      )
+    })
+
     # Main samples table
     output$tbl_samples <- renderDT({
       df <- filtered_base()
@@ -383,9 +624,10 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         df <- df %>% mutate(across(all_of(numeric_cols), ~round(.x, 2)))
       }
       
-      # Select columns to display - including Barcode and replicate counts
+      # Select columns to display - including Barcode, replicate counts, and decision tree columns
       available_cols <- intersect(
         c("RunID", "SampleName", "Barcode", "TestOrderLabel", "TestNumber", "FinalCall",
+          "DecisionStep", "DecisionReason", "ConfidenceScore", "WellSummary", "WellAggregateConflict",
           "Wells_TNA_Positive", "Wells_DNA_Positive", "Wells_RNA_Positive",
           "ReplicatesTotal", "Replicates_Positive", "Replicates_Negative", "Replicates_Failed",
           "Cq_median_177T", "Cq_median_18S2",
@@ -416,7 +658,31 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
                     backgroundColor = styleEqual(
                       c('Positive', 'Positive_DNA', 'Positive_RNA', 'LatePositive', 'Negative', 'Indeterminate', 'Invalid_NoDNA', 'Control', 'Control_Fail'),
                       c('#d4edda', '#b3e0f2', '#d4b3f2', '#ffe8a1', '#f8f9fa', '#fff3cd', '#f8d7da', '#dbe9ff', '#f5c6cb')
-                    ))
+                    )) %>%
+        {
+          if ("ConfidenceScore" %in% available_cols) {
+            formatStyle(.,
+                        'ConfidenceScore',
+                        backgroundColor = styleEqual(
+                          c('High', 'Medium', 'Low'),
+                          c('#d4edda', '#cfe2ff', '#fff3cd')
+                        ))
+          } else {
+            .
+          }
+        } %>%
+        {
+          if ("WellAggregateConflict" %in% available_cols) {
+            formatStyle(.,
+                        'WellAggregateConflict',
+                        backgroundColor = styleEqual(
+                          c(TRUE, FALSE),
+                          c('#f8d7da', 'transparent')
+                        ))
+          } else {
+            .
+          }
+        }
     })
 
     # Download filtered

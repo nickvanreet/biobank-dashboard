@@ -380,12 +380,25 @@ extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
   df_summary <- df_summary %>%
     group_by(plate_id, plate_num) %>%
     mutate(
-      PC_DOD = mean(DOD[sample_type == "control" & 
+      PC_DOD = mean(DOD[sample_type == "control" &
                           (grepl("^PC", sample) | sample_code == "CP")], na.rm = TRUE),
-      NC_DOD = mean(DOD[sample_type == "control" & 
+      NC_DOD = mean(DOD[sample_type == "control" &
                           (grepl("^NC", sample) | sample_code == "CN")], na.rm = TRUE),
       PP_fraction = (DOD - NC_DOD) / (PC_DOD - NC_DOD),
-      PP_percent = PP_fraction * 100
+      PP_percent = PP_fraction * 100,
+      positive_control_od = mean(mean_Ag_plus[sample_type == "control" &
+                                                (grepl("^PC", sample) | sample_code == "CP")],
+                                 na.rm = TRUE),
+      negative_control_od = mean(mean_Ag_plus[sample_type == "control" &
+                                                (grepl("^NC", sample) | sample_code == "CN")],
+                                 na.rm = TRUE),
+      positive_control_od = ifelse(is.nan(positive_control_od), NA_real_, positive_control_od),
+      negative_control_od = ifelse(is.nan(negative_control_od), NA_real_, negative_control_od),
+      plate_positive_control_valid = ifelse(is.na(positive_control_od), NA,
+                                            positive_control_od >= 0.5 & positive_control_od <= 1.5),
+      plate_negative_control_valid = ifelse(is.na(negative_control_od), NA,
+                                            negative_control_od < 0.5),
+      plate_valid = plate_positive_control_valid & plate_negative_control_valid
     ) %>%
     ungroup() %>%
     arrange(plate_num, sample_type, sample)

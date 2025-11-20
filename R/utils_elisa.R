@@ -260,6 +260,7 @@ ensure_elisa_columns <- function(df) {
     plate_num = integer(),
     plate_number = integer(),
     plate_date = as.Date(character()),
+    elisa_type = character(),  # CRITICAL: Required for filtering by PE/VSG
     sample_type = character(),
     sample = character(),
     sample_code = character(),
@@ -282,6 +283,9 @@ ensure_elisa_columns <- function(df) {
 
 # Cache environment
 .elisa_cache_env <- new.env(parent = emptyenv())
+
+# Cache version - increment this when data structure changes to invalidate old caches
+.elisa_cache_version <- "v3_with_elisa_type"
 
 #' Ensure ELISA parser is loaded
 ensure_elisa_parser <- function() {
@@ -326,19 +330,24 @@ load_elisa_data <- function(
     file_list <- file_list[!grepl(exclude_pattern, basename(file_list))]
   }
 
-  # Calculate hash for cache
+  # Calculate hash for cache (include version to invalidate on structure changes)
   file_info <- tibble(
     path = file_list,
     mtime = suppressWarnings(file.info(file_list)$mtime)
   )
 
-  hash_val <- digest(list(file_info$path, file_info$mtime, cv_max, recursive, exclude_pattern))
+  hash_val <- digest(list(.elisa_cache_version, file_info$path, file_info$mtime, cv_max, recursive, exclude_pattern))
 
   # Check cache
   cached <- .elisa_cache_env$data
   cached_hash <- .elisa_cache_env$hash
+  cached_version <- .elisa_cache_env$version
 
-  if (!is.null(cached) && !is.null(cached_hash) && identical(cached_hash, hash_val)) {
+  # Invalidate cache if version changed or hash doesn't match
+  cache_valid <- !is.null(cached) && !is.null(cached_hash) && identical(cached_hash, hash_val) &&
+                 !is.null(cached_version) && identical(cached_version, .elisa_cache_version)
+
+  if (cache_valid) {
     message("✓ Using cached ELISA data (", nrow(cached$data), " rows)")
     # Re-link to biobank in case biobank_df changed
     if (!is.null(biobank_df)) {
@@ -408,9 +417,10 @@ load_elisa_data <- function(
     }
   }
 
-  # Cache results
+  # Cache results with version
   .elisa_cache_env$data <- list(data = parsed)
   .elisa_cache_env$hash <- hash_val
+  .elisa_cache_env$version <- .elisa_cache_version
 
   parsed
 }

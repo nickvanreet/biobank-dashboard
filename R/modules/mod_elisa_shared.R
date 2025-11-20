@@ -1,4 +1,20 @@
-# Shared helpers for ELISA modules
+# =============================================================================
+# Shared ELISA Module UI/Server Components
+# =============================================================================
+#
+# This module provides generic UI and server components for ELISA data
+# visualization and analysis. It is used by both ELISA-PE and ELISA-VSG modules.
+#
+# Features:
+#   - Summary KPIs (plates, samples, QC rate, biobank match rate)
+#   - Runs table with download capability
+#   - Samples table with filtering and biobank match highlighting
+#   - Analysis plots (PP%, DOD, CV, QC trends)
+#   - Data quality summary
+#
+# Author: Biobank Dashboard Team
+# Last Updated: 2025-11-20
+# =============================================================================
 
 suppressPackageStartupMessages({
   library(shiny)
@@ -16,9 +32,10 @@ elisa_value_boxes <- function(ns, summary_df) {
   total_samples <- summary_df$total_samples %||% 0
   qc_rate <- summary_df$qc_rate %||% NA_real_
   total_plates <- summary_df$total_plates %||% 0
+  match_rate <- summary_df$match_rate %||% NA_real_
 
   layout_column_wrap(
-    width = 1/3,
+    width = 1/4,
     heights_equal = "row",
     gap = "12px",
     value_box(
@@ -38,12 +55,24 @@ elisa_value_boxes <- function(ns, summary_df) {
       value = if (is.na(qc_rate)) "N/A" else sprintf("%0.1f%%", qc_rate * 100),
       showcase = icon("check-circle"),
       theme = "success"
+    ),
+    value_box(
+      title = "Biobank match rate",
+      value = if (is.na(match_rate)) "N/A" else sprintf("%0.1f%%", match_rate * 100),
+      showcase = icon("link"),
+      theme = "warning"
     )
   )
 }
 
 elisa_runs_table <- function(ns) {
-  DTOutput(ns("runs_table"))
+  tagList(
+    div(
+      style = "margin-bottom: 10px;",
+      downloadButton(ns("download_runs"), "Download Runs Data", class = "btn-sm")
+    ),
+    DTOutput(ns("runs_table"))
+  )
 }
 
 elisa_samples_filters <- function(ns) {
@@ -57,7 +86,22 @@ elisa_samples_filters <- function(ns) {
 }
 
 elisa_samples_table <- function(ns) {
-  DTOutput(ns("samples_table"))
+  tagList(
+    div(
+      style = "margin-bottom: 10px;",
+      downloadButton(ns("download_samples"), "Download Samples Data", class = "btn-sm")
+    ),
+    DTOutput(ns("samples_table"))
+  )
+}
+
+elisa_data_quality_card <- function(ns) {
+  card(
+    card_header("Data Quality Summary"),
+    card_body(
+      uiOutput(ns("quality_summary"))
+    )
+  )
 }
 
 elisa_analysis_plots <- function(ns) {
@@ -79,7 +123,7 @@ mod_elisa_generic_ui <- function(id, label) {
     navset_card_tab(
       nav_panel("Runs", value = "runs", card_body(uiOutput(ns("runs_kpis")), elisa_runs_table(ns))),
       nav_panel("Samples", value = "samples", card_body(elisa_samples_filters(ns), elisa_samples_table(ns))),
-      nav_panel("Analysis", value = "analysis", card_body(elisa_analysis_plots(ns)))
+      nav_panel("Analysis", value = "analysis", card_body(elisa_data_quality_card(ns), elisa_analysis_plots(ns)))
     )
   )
 }
@@ -114,12 +158,22 @@ mod_elisa_generic_server <- function(id, elisa_type, elisa_data) {
     output$runs_kpis <- renderUI({
       df <- data_filtered()
       rs <- runs_summary()
+      samples_only <- df %>% filter(sample_type == "sample")
+
+      # Calculate biobank match rate
+      match_rate <- if (nrow(samples_only) > 0 && "BiobankMatched" %in% names(samples_only)) {
+        mean(samples_only$BiobankMatched, na.rm = TRUE)
+      } else {
+        NA_real_
+      }
+
       elisa_value_boxes(
         ns,
         list(
           total_plates = nrow(rs),
-          total_samples = sum(df$sample_type == "sample", na.rm = TRUE),
-          qc_rate = mean(df$qc_overall, na.rm = TRUE)
+          total_samples = nrow(samples_only),
+          qc_rate = mean(samples_only$qc_overall, na.rm = TRUE),
+          match_rate = match_rate
         )
       )
     })
@@ -159,12 +213,20 @@ mod_elisa_generic_server <- function(id, elisa_type, elisa_data) {
     output$plot_cv <- renderPlotly({
       df <- data_filtered()
       if (!nrow(df)) return(NULL)
+
+      # CV threshold (commonly 15-20%)
+      cv_threshold <- 20
+
       p <- df %>%
         pivot_longer(cols = c(cv_Ag_plus, cv_Ag0), names_to = "metric", values_to = "cv") %>%
         ggplot(aes(x = metric, y = cv, fill = metric)) +
         geom_boxplot(alpha = 0.6) +
+        geom_hline(yintercept = cv_threshold, linetype = "dashed", color = "red", size = 0.8) +
+        annotate("text", x = 1.5, y = cv_threshold + 2,
+                 label = paste0("QC threshold (", cv_threshold, "%)"),
+                 color = "red", size = 3) +
         theme_minimal() +
-        labs(x = NULL, y = "CV", title = "CV distributions")
+        labs(x = NULL, y = "CV (%)", title = "CV distributions with QC threshold")
       ggplotly(p)
     })
 
@@ -217,20 +279,122 @@ mod_elisa_generic_server <- function(id, elisa_type, elisa_data) {
       df
     })
 
+    output$quality_summary <- renderUI({
+      df <- data_filtered()
+      if (!nrow(df)) return(p("No data available"))
+
+      samples_only <- df %>% filter(sample_type == "sample")
+
+      # Calculate quality metrics
+      total_samples <- nrow(samples_only)
+      missing_dod <- sum(is.na(samples_only$DOD))
+      missing_pp <- sum(is.na(samples_only$PP_percent))
+      qc_pass <- sum(samples_only$qc_overall, na.rm = TRUE)
+      qc_fail <- sum(!samples_only$qc_overall, na.rm = TRUE)
+
+      # Biobank matching
+      if ("BiobankMatched" %in% names(samples_only)) {
+        biobank_matched <- sum(samples_only$BiobankMatched, na.rm = TRUE)
+        biobank_unmatched <- sum(!samples_only$BiobankMatched, na.rm = TRUE)
+      } else {
+        biobank_matched <- NA
+        biobank_unmatched <- NA
+      }
+
+      # Plate validity
+      invalid_plates <- df %>%
+        filter(!is.na(plate_valid)) %>%
+        group_by(plate_number, plate_id) %>%
+        summarise(is_valid = any(plate_valid, na.rm = TRUE), .groups = "drop") %>%
+        filter(!is_valid) %>%
+        nrow()
+
+      total_plates <- n_distinct(df$plate_number)
+
+      # Generate HTML summary
+      tagList(
+        layout_column_wrap(
+          width = 1/3,
+          value_box(
+            title = "QC Status",
+            value = sprintf("%d / %d pass", qc_pass, total_samples),
+            p(sprintf("%.1f%% pass rate", 100 * qc_pass / max(total_samples, 1))),
+            theme = "success"
+          ),
+          value_box(
+            title = "Biobank Matching",
+            value = if (is.na(biobank_matched)) "N/A" else sprintf("%d / %d", biobank_matched, total_samples),
+            p(if (!is.na(biobank_matched)) sprintf("%.1f%% matched", 100 * biobank_matched / max(total_samples, 1)) else ""),
+            theme = "info"
+          ),
+          value_box(
+            title = "Plate Validity",
+            value = sprintf("%d / %d valid", total_plates - invalid_plates, total_plates),
+            p(sprintf("%d invalid plates", invalid_plates)),
+            theme = if (invalid_plates > 0) "warning" else "success"
+          )
+        ),
+        hr(),
+        h5("Data Completeness"),
+        tags$ul(
+          tags$li(sprintf("Missing DOD values: %d (%.1f%%)", missing_dod, 100 * missing_dod / max(total_samples, 1))),
+          tags$li(sprintf("Missing PP%% values: %d (%.1f%%)", missing_pp, 100 * missing_pp / max(total_samples, 1))),
+          tags$li(sprintf("Total plates processed: %d", total_plates)),
+          tags$li(sprintf("Total samples: %d", total_samples))
+        )
+      )
+    })
+
     output$samples_table <- renderDT({
       df <- samples_filtered()
       if (!nrow(df)) return(datatable(tibble(Message = "No ELISA samples found")))
 
+      # Select columns, including BiobankMatched if available
+      cols_to_show <- c(
+        "plate_number", "plate_id", "plate_date", "sample", "numero_labo", "code_barres_kps",
+        "DOD", "PP_percent", "cv_Ag_plus", "cv_Ag0", "qc_overall"
+      )
+
+      if ("BiobankMatched" %in% names(df)) {
+        cols_to_show <- c(cols_to_show, "BiobankMatched")
+      }
+
+      cols_to_show <- c(cols_to_show, "biobank_province", "biobank_health_zone",
+                        "biobank_sex", "biobank_age_group")
+
+      # Keep only columns that exist in df
+      cols_to_show <- intersect(cols_to_show, names(df))
+
       datatable(
-        df %>% select(
-          plate_number, plate_id, plate_date, sample, numero_labo, code_barres_kps,
-          DOD, PP_percent, cv_Ag_plus, cv_Ag0, qc_overall,
-          biobank_province, biobank_health_zone, biobank_sex, biobank_age_group
-        ),
+        df %>% select(all_of(cols_to_show)),
         rownames = FALSE,
         options = list(pageLength = 15, scrollX = TRUE)
-      )
+      ) %>%
+        formatStyle(
+          "BiobankMatched",
+          target = "row",
+          backgroundColor = styleEqual(c(TRUE, FALSE), c("#d4edda", "#f8d7da"))
+        )
     })
+
+    # Download handlers
+    output$download_runs <- downloadHandler(
+      filename = function() {
+        paste0("elisa_runs_", Sys.Date(), ".csv")
+      },
+      content = function(file) {
+        write.csv(runs_summary(), file, row.names = FALSE)
+      }
+    )
+
+    output$download_samples <- downloadHandler(
+      filename = function() {
+        paste0("elisa_samples_", Sys.Date(), ".csv")
+      },
+      content = function(file) {
+        write.csv(samples_filtered(), file, row.names = FALSE)
+      }
+    )
 
   })
 }

@@ -38,6 +38,12 @@ prepare_biobank_lookup <- function(biobank_df) {
 
   biobank_df %>%
     mutate(
+      code_barres_kps = if ("code_barres_kps" %in% names(.)) .data$code_barres_kps else NA_character_,
+      barcode = if ("barcode" %in% names(.)) .data$barcode else NA_character_,
+      lab_id = if ("lab_id" %in% names(.)) .data$lab_id else NA_character_,
+      numero = if ("numero" %in% names(.)) .data$numero else NA_character_
+    ) %>%
+    mutate(
       biobank_barcode = coalesce(.data$code_barres_kps, .data$barcode),
       biobank_lab_id = coalesce(.data$lab_id, .data$numero),
       barcode_norm = .norm_key(biobank_barcode, "barcode"),

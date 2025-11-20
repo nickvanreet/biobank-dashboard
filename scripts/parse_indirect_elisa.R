@@ -71,7 +71,24 @@ parse_plate_date_from_filename <- function(filename) {
 # Read OD grid - HANDLES BOTH SINGLE AND 4-PLATE FORMATS
 # -----------------------------------------------------------------------------
 read_elisa_od_grid <- function(path, sheet = "450 nm - 600 nm") {
-  raw <- read_excel(path, sheet = sheet, col_names = FALSE)
+  # Validate file exists
+  if (!file.exists(path)) {
+    stop("File not found: ", path)
+  }
+
+  # Try to read the sheet with error handling
+  raw <- tryCatch(
+    read_excel(path, sheet = sheet, col_names = FALSE),
+    error = function(e) {
+      stop(sprintf("Failed to read sheet '%s' from file '%s': %s",
+                   sheet, basename(path), conditionMessage(e)))
+    }
+  )
+
+  # Validate we got data
+  if (is.null(raw) || nrow(raw) == 0) {
+    stop(sprintf("No data found in sheet '%s' of file '%s'", sheet, basename(path)))
+  }
   
   # Check if this is 4-plate format (look for "Plaque" markers)
   plate_markers <- which(grepl("Plaque \\d+:", raw[[1]], ignore.case = TRUE))
@@ -191,7 +208,7 @@ read_elisa_od_grid <- function(path, sheet = "450 nm - 600 nm") {
 # -----------------------------------------------------------------------------
 read_elisa_layout <- function(path) {
   plate_id <- tools::file_path_sans_ext(basename(path))
-  
+
   # ----- Samples -----
   df_samples <- read_excel(path, sheet = "Results") %>%
     clean_names() %>%
@@ -199,7 +216,8 @@ read_elisa_layout <- function(path) {
   
   dw_col_s <- names(df_samples)[str_detect(names(df_samples), "^deepwell")]
   if (length(dw_col_s) == 0) {
-    stop("No 'Deepwell' column in 'Results' sheet")
+    stop(sprintf("No 'Deepwell' column found in 'Results' sheet of '%s'. Available columns: %s",
+                 basename(path), paste(names(df_samples), collapse = ", ")))
   }
   dw_col_s <- dw_col_s[1]
   
@@ -241,7 +259,8 @@ read_elisa_layout <- function(path) {
   
   dw_col_c <- names(df_controls)[str_detect(names(df_controls), "^deepwell")]
   if (length(dw_col_c) == 0) {
-    stop("No 'Deepwell' column in 'Controls' sheet")
+    stop(sprintf("No 'Deepwell' column found in 'Controls' sheet of '%s'. Available columns: %s",
+                 basename(path), paste(names(df_controls), collapse = ", ")))
   }
   dw_col_c <- dw_col_c[1]
   
@@ -424,7 +443,50 @@ extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
     ) %>%
     ungroup() %>%
     arrange(plate_num, sample_type, sample)
-  
+
+  # Data quality validation warnings
+  for (pnum in unique(df_summary$plate_num)) {
+    plate_data <- df_summary %>% filter(plate_num == pnum)
+    controls <- plate_data %>% filter(sample_type == "control")
+
+    # Check for missing controls
+    has_pc <- any(grepl("^PC", controls$sample) | controls$sample_code == "CP", na.rm = TRUE)
+    has_nc <- any(grepl("^NC", controls$sample) | controls$sample_code == "CN", na.rm = TRUE)
+
+    if (!has_pc) {
+      warning(sprintf("File '%s' plate %d: No positive control (PC) found",
+                      basename(path), pnum))
+    }
+    if (!has_nc) {
+      warning(sprintf("File '%s' plate %d: No negative control (NC) found",
+                      basename(path), pnum))
+    }
+
+    # Check control validity
+    if (has_pc && !is.na(plate_data$positive_control_od[1])) {
+      pc_od <- plate_data$positive_control_od[1]
+      if (pc_od < 0.5 || pc_od > 1.5) {
+        warning(sprintf("File '%s' plate %d: Positive control OD (%.3f) outside valid range [0.5-1.5]",
+                        basename(path), pnum, pc_od))
+      }
+    }
+
+    if (has_nc && !is.na(plate_data$negative_control_od[1])) {
+      nc_od <- plate_data$negative_control_od[1]
+      if (nc_od >= 0.5) {
+        warning(sprintf("File '%s' plate %d: Negative control OD (%.3f) should be < 0.5",
+                        basename(path), pnum, nc_od))
+      }
+    }
+
+    # Check for high CV rates
+    high_cv_rate <- mean(plate_data$qc_overall == FALSE, na.rm = TRUE)
+    if (high_cv_rate > 0.3) {
+      warning(sprintf("File '%s' plate %d: High QC failure rate (%.1f%% samples with CV > %d%%)",
+                      basename(path), pnum, high_cv_rate * 100, cv_max))
+    }
+  }
+
   return(df_summary)
 }
 

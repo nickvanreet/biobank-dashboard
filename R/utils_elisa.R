@@ -1,5 +1,20 @@
 # R/utils_elisa.R
-# Utilities for loading and caching ELISA indirect assay data
+# =============================================================================
+# ELISA Data Loading and Caching Utilities
+# =============================================================================
+#
+# This module provides utilities for loading, caching, and linking ELISA
+# indirect assay data with biobank records. It handles both ELISA-PE and
+# ELISA-VSG data formats.
+#
+# Main functions:
+#   - load_elisa_data(): Load and cache ELISA data from Excel files
+#   - link_elisa_to_biobank(): Match ELISA samples with biobank records
+#   - prepare_biobank_lookup(): Prepare biobank data for matching
+#
+# Author: Biobank Dashboard Team
+# Last Updated: 2025-11-20
+# =============================================================================
 
 suppressPackageStartupMessages({
   library(tidyverse)
@@ -33,6 +48,14 @@ ensure_elisa_parser <- function() {
   }
 }
 
+#' Prepare Biobank Data for ELISA Matching
+#'
+#' Prepares biobank data for matching with ELISA samples by normalizing
+#' identifiers and creating lookup keys. Handles different column name
+#' variations (code_barres_kps vs barcode, lab_id vs numero).
+#'
+#' @param biobank_df Data frame containing biobank records
+#' @return Prepared data frame with normalized lookup keys, or NULL if empty
 prepare_biobank_lookup <- function(biobank_df) {
   if (is.null(biobank_df) || !nrow(biobank_df)) return(NULL)
 
@@ -53,6 +76,18 @@ prepare_biobank_lookup <- function(biobank_df) {
     distinct(barcode_norm, numero_norm, .keep_all = TRUE)
 }
 
+#' Link ELISA Data to Biobank Records
+#'
+#' Matches ELISA samples with biobank records using a two-stage matching strategy:
+#' 1. First attempts to match on normalized barcode
+#' 2. Falls back to matching on normalized lab ID for unmatched records
+#'
+#' Adds biobank metadata (province, health zone, age, sex, etc.) to ELISA data
+#' and sets a BiobankMatched flag for each sample.
+#'
+#' @param elisa_df Data frame containing ELISA sample data
+#' @param biobank_df Data frame containing biobank records
+#' @return ELISA data frame enriched with biobank metadata and match status
 link_elisa_to_biobank <- function(elisa_df, biobank_df) {
   if (is.null(elisa_df) || !nrow(elisa_df)) return(tibble())
 
@@ -123,6 +158,21 @@ link_elisa_to_biobank <- function(elisa_df, biobank_df) {
   joined
 }
 
+#' Load and Cache ELISA Data
+#'
+#' Loads ELISA data from Excel files in specified directories, with intelligent
+#' caching based on file modification times. Automatically detects ELISA type
+#' (PE or VSG) from file format and links to biobank data if provided.
+#'
+#' The function uses MD5 hashing of file paths and modification times to
+#' determine if cached data can be reused, avoiding expensive re-parsing.
+#'
+#' @param dirs Character vector of directories containing ELISA Excel files
+#' @param exclude_pattern Regex pattern to exclude specific files (default: problematic file)
+#' @param recursive Logical, whether to search subdirectories (default: TRUE)
+#' @param cv_max Numeric, maximum CV threshold for QC (default: 20)
+#' @param biobank_df Optional data frame of biobank records to link with ELISA data
+#' @return Combined data frame of all ELISA results with biobank metadata
 load_elisa_data <- function(
   dirs = c("data/ELISA_pe", "data/ELISA_vsg"),
   exclude_pattern = "^251021 Résultats indirect ELISA vF\\.5",

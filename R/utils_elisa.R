@@ -241,6 +241,34 @@ link_elisa_to_biobank <- function(elisa_df, biobank_df) {
   joined
 }
 
+#' Ensure core ELISA columns exist
+#'
+#' When ELISA data is pulled from cache or partially parsed files, some
+#' expected columns may be missing. This helper adds them with appropriate
+#' default values to avoid dplyr "Unknown or uninitialised column" warnings
+#' downstream.
+ensure_elisa_columns <- function(df) {
+  required_cols <- list(
+    plate_id = character(),
+    plate_num = integer(),
+    plate_number = integer(),
+    plate_date = as.Date(character()),
+    sample_type = character(),
+    sample = character(),
+    sample_code = character(),
+    numero_labo = character(),
+    code_barres_kps = character()
+  )
+
+  for (col_name in names(required_cols)) {
+    if (!col_name %in% names(df)) {
+      df[[col_name]] <- required_cols[[col_name]]
+    }
+  }
+
+  df
+}
+
 # ============================================================================
 # DATA LOADING WITH CACHING
 # ============================================================================
@@ -309,7 +337,7 @@ load_elisa_data <- function(
     if (!is.null(biobank_df)) {
       cached$data <- link_elisa_to_biobank(cached$data, biobank_df)
     }
-    return(cached$data)
+    return(ensure_elisa_columns(cached$data))
   }
 
   # Parse ELISA files
@@ -336,6 +364,8 @@ load_elisa_data <- function(
     )
     message("✓ Parsed ", nrow(parsed), " ELISA records")
   }
+
+  parsed <- ensure_elisa_columns(parsed)
 
   # Ensure elisa_type column exists
   if (!"elisa_type" %in% names(parsed)) {

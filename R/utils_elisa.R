@@ -256,16 +256,16 @@ link_elisa_to_biobank <- function(elisa_df, biobank_df) {
 #' downstream.
 ensure_elisa_columns <- function(df) {
   required_cols <- list(
-    plate_id = character(),
-    plate_num = integer(),
-    plate_number = integer(),
-    plate_date = as.Date(character()),
-    elisa_type = character(),  # CRITICAL: Required for filtering by PE/VSG
-    sample_type = character(),
-    sample = character(),
-    sample_code = character(),
-    numero_labo = character(),
-    code_barres_kps = character()
+    plate_id = NA_character_,
+    plate_num = NA_integer_,
+    plate_number = NA_integer_,
+    plate_date = as.Date(NA),
+    elisa_type = NA_character_,  # CRITICAL: Required for filtering by PE/VSG
+    sample_type = NA_character_,
+    sample = NA_character_,
+    sample_code = NA_character_,
+    numero_labo = NA_character_,
+    code_barres_kps = NA_character_
   )
 
   for (col_name in names(required_cols)) {

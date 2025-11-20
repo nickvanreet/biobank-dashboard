@@ -219,7 +219,7 @@ mod_elisa_samples_server <- function(id, elisa_data) {
 
       if (!nrow(data)) {
         return(datatable(
-          tibble(Message = "No samples found matching filters"),
+          tibble(),
           options = list(dom = 't'),
           rownames = FALSE
         ))

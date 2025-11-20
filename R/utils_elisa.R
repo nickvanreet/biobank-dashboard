@@ -164,15 +164,13 @@ prepare_biobank_lookup <- function(biobank_df) {
 link_elisa_to_biobank <- function(elisa_df, biobank_df) {
   if (is.null(elisa_df) || !nrow(elisa_df)) return(tibble())
 
-  # Ensure ELISA has necessary ID columns
-  elisa_df <- elisa_df %>%
-    mutate(
-      sample_type = if ("sample_type" %in% names(.)) .data$sample_type else NA_character_,
-      sample = if ("sample" %in% names(.)) .data$sample else NA_character_,
-      sample_code = if ("sample_code" %in% names(.)) .data$sample_code else NA_character_,
-      numero_labo = if ("numero_labo" %in% names(.)) .data$numero_labo else NA_character_,
-      code_barres_kps = if ("code_barres_kps" %in% names(.)) .data$code_barres_kps else NA_character_
-    )
+  # Ensure ELISA has necessary ID columns (only add if missing)
+  required_cols <- c("sample_type", "sample", "sample_code", "numero_labo", "code_barres_kps")
+  for (col in required_cols) {
+    if (!col %in% names(elisa_df)) {
+      elisa_df[[col]] <- NA_character_
+    }
+  }
 
   # Normalize ELISA IDs
   elisa_prepped <- elisa_df %>%
@@ -190,14 +188,17 @@ link_elisa_to_biobank <- function(elisa_df, biobank_df) {
     return(elisa_prepped %>% mutate(BiobankMatched = FALSE))
   }
 
-  # Join on barcode first
+  # Join on barcode first - ensure unique barcode_norm
   lookup_barcode <- lookup %>%
     filter(!is.na(barcode_norm)) %>%
+    distinct(barcode_norm, .keep_all = TRUE) %>%
     select(barcode_norm, biobank_barcode, biobank_lab_id, Province, HealthZone,
            Structure, Sex, Age, AgeGroup, SampleDate, Cohort)
 
+  # Separate lookup for numero - ensure unique numero_norm
   lookup_numero <- lookup %>%
     filter(!is.na(numero_norm)) %>%
+    distinct(numero_norm, .keep_all = TRUE) %>%
     select(numero_norm, biobank_barcode, biobank_lab_id, Province, HealthZone,
            Structure, Sex, Age, AgeGroup, SampleDate, Cohort)
 
@@ -340,18 +341,23 @@ load_elisa_data <- function(
     parsed <- parsed %>% mutate(BiobankMatched = FALSE)
   }
 
-  # Ensure all expected biobank columns exist
-  parsed <- parsed %>%
-    mutate(
-      Province = if ("Province" %in% names(.)) .data$Province else NA_character_,
-      HealthZone = if ("HealthZone" %in% names(.)) .data$HealthZone else NA_character_,
-      Structure = if ("Structure" %in% names(.)) .data$Structure else NA_character_,
-      Sex = if ("Sex" %in% names(.)) .data$Sex else NA_character_,
-      Age = if ("Age" %in% names(.)) .data$Age else NA_real_,
-      AgeGroup = if ("AgeGroup" %in% names(.)) .data$AgeGroup else NA_character_,
-      SampleDate = if ("SampleDate" %in% names(.)) .data$SampleDate else as.Date(NA),
-      Cohort = if ("Cohort" %in% names(.)) .data$Cohort else NA_character_
-    )
+  # Ensure all expected biobank columns exist (only add if missing)
+  biobank_cols <- list(
+    Province = NA_character_,
+    HealthZone = NA_character_,
+    Structure = NA_character_,
+    Sex = NA_character_,
+    Age = NA_real_,
+    AgeGroup = NA_character_,
+    SampleDate = as.Date(NA),
+    Cohort = NA_character_
+  )
+
+  for (col_name in names(biobank_cols)) {
+    if (!col_name %in% names(parsed)) {
+      parsed[[col_name]] <- biobank_cols[[col_name]]
+    }
+  }
 
   # Cache results
   .elisa_cache_env$data <- list(data = parsed)

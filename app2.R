@@ -76,10 +76,6 @@ server <- function(input, output, session) {
     biobank_data = data$clean_data
   )
 
-  elisa_data <- reactive({
-    get_elisa_data(biobank_df = data$clean_data())
-  })
-
   # MIC qPCR module - FIXED to use new coordinator architecture
   mic_data <- mod_mic_qpcr_coordinator_server(
     "mic",
@@ -88,8 +84,17 @@ server <- function(input, output, session) {
     filters = data$filters                      # ← Filters from data manager (FIXED)
   )
 
-  mod_elisa_pe_server("elisa_pe", elisa_data = elisa_data)
-  mod_elisa_vsg_server("elisa_vsg", elisa_data = elisa_data)
+  # ELISA modules - using new coordinator architecture
+  mod_elisa_pe_server(
+    "elisa_pe",
+    biobank_df = data$clean_data,
+    filters = data$filters
+  )
+  mod_elisa_vsg_server(
+    "elisa_vsg",
+    biobank_df = data$clean_data,
+    filters = data$filters
+  )
 
   # DRS vs RNAseP module
   mod_drs_rnasep_server(

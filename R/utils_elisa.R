@@ -164,20 +164,27 @@ prepare_biobank_lookup <- function(biobank_df) {
 link_elisa_to_biobank <- function(elisa_df, biobank_df) {
   if (is.null(elisa_df) || !nrow(elisa_df)) return(tibble())
 
-  # Ensure ELISA has necessary ID columns (only add if missing)
-  required_cols <- c("sample_type", "sample", "sample_code", "numero_labo", "code_barres_kps")
+  # Ensure ELISA has necessary ID columns (add if missing with proper initialization)
+  required_cols <- c("sample_type", "sample", "sample_code", "numero_labo", "code_barres_kps", "plate_id")
   for (col in required_cols) {
     if (!col %in% names(elisa_df)) {
       elisa_df[[col]] <- NA_character_
     }
   }
 
-  # Normalize ELISA IDs
+  # Ensure numeric columns exist with proper type
+  if (!"plate_num" %in% names(elisa_df)) {
+    elisa_df$plate_num <- NA_integer_
+  } else if (is.character(elisa_df$plate_num)) {
+    elisa_df$plate_num <- as.integer(elisa_df$plate_num)
+  }
+
+  # Normalize ELISA IDs - use direct column access instead of .data pronoun
   elisa_prepped <- elisa_df %>%
     mutate(
-      barcode_norm = .norm_key(.data$code_barres_kps, "barcode"),
-      numero_norm = .norm_key(coalesce(.data$numero_labo, .data$sample_code, .data$sample), "labid"),
-      SampleID_norm = normalize_id(coalesce(.data$code_barres_kps, .data$numero_labo, .data$sample_code, .data$sample))
+      barcode_norm = .norm_key(code_barres_kps, "barcode"),
+      numero_norm = .norm_key(coalesce(numero_labo, sample_code, sample), "labid"),
+      SampleID_norm = normalize_id(coalesce(code_barres_kps, numero_labo, sample_code, sample))
     )
 
   # Prepare biobank lookup

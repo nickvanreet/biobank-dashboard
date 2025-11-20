@@ -206,6 +206,18 @@ link_elisa_to_biobank <- function(elisa_df, biobank_df) {
   joined <- elisa_prepped %>%
     left_join(lookup_barcode, by = "barcode_norm", relationship = "many-to-one")
 
+  # Ensure biobank columns exist after join
+  if (!"biobank_barcode" %in% names(joined)) joined$biobank_barcode <- NA_character_
+  if (!"biobank_lab_id" %in% names(joined)) joined$biobank_lab_id <- NA_character_
+  if (!"Province" %in% names(joined)) joined$Province <- NA_character_
+  if (!"HealthZone" %in% names(joined)) joined$HealthZone <- NA_character_
+  if (!"Structure" %in% names(joined)) joined$Structure <- NA_character_
+  if (!"Sex" %in% names(joined)) joined$Sex <- NA_character_
+  if (!"Age" %in% names(joined)) joined$Age <- NA_real_
+  if (!"AgeGroup" %in% names(joined)) joined$AgeGroup <- NA_character_
+  if (!"SampleDate" %in% names(joined)) joined$SampleDate <- as.Date(NA)
+  if (!"Cohort" %in% names(joined)) joined$Cohort <- NA_character_
+
   # For unmatched records, try joining on numero
   still_unmatched <- joined %>%
     filter(is.na(biobank_barcode) & is.na(biobank_lab_id))

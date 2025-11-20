@@ -583,7 +583,7 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
 
       if (!nrow(df)) {
         return(datatable(
-          tibble(Message = "No samples found. Check MIC files and filters."),
+          tibble(),
           options = list(dom = 't'),
           rownames = FALSE
         ))
@@ -601,7 +601,7 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
 
       if (!nrow(df)) {
         return(datatable(
-          tibble(Message = "No samples found (only controls detected)."),
+          tibble(),
           options = list(dom = 't'),
           rownames = FALSE
         ))

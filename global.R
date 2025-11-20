@@ -84,7 +84,12 @@ source("R/modules/mod_03_transport.R")
 source("R/modules/mod_04_extractions.R")
 source("R/modules/mod_05_mic_qpcr.R")       # The rebuilt module
 source("R/modules/mod_06_drs_rnasep.R")     # DRS volume vs RNAseP analysis
-source("R/modules/mod_elisa_shared.R")
+
+# ELISA modules (rebuilt architecture)
+source("R/modules/mod_elisa_coordinator.R")
+source("R/modules/mod_elisa_runs.R")
+source("R/modules/mod_elisa_samples.R")
+source("R/modules/mod_elisa_analysis.R")
 source("R/modules/mod_06_elisa_pe.R")
 source("R/modules/mod_07_elisa_vsg.R")
 

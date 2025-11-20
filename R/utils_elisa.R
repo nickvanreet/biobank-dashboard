@@ -1,140 +1,261 @@
 # R/utils_elisa.R
 # Utilities for loading and caching ELISA indirect assay data
+# Modeled after MIC qPCR data loading architecture
 
 suppressPackageStartupMessages({
   library(tidyverse)
   library(digest)
 })
 
-if (!exists(".norm_key", mode = "function")) {
-  .norm_key <- function(x, kind = c("barcode", "labid")) {
-    kind <- match.arg(kind)
-    x <- tolower(trimws(as.character(x)))
-    x[x %in% c("", "na", "n/a", "null")] <- NA
-    x <- gsub("[^a-z0-9]", "", x)
-    if (kind == "barcode") {
-      x <- sub("^kps", "", x)
-      x <- sub("^0+", "", x)
-    }
-    x
-  }
+# ============================================================================
+# NORMALIZATION HELPERS (mimic MIC patterns)
+# ============================================================================
+
+#' Normalize ID for matching (uppercase, trimmed)
+#' @param x Character vector
+#' @return Normalized character vector
+normalize_id <- function(x) {
+  x %>% as.character() %>% str_trim() %>% toupper()
 }
 
-.elisa_cache_env <- new.env(parent = emptyenv())
-
-ensure_elisa_parser <- function() {
-  if (!exists("parse_indirect_elisa_folder", mode = "function")) {
-    parser_path <- file.path("scripts", "parse_indirect_elisa.R")
-    if (file.exists(parser_path)) {
-      source(parser_path)
-    } else {
-      stop("ELISA parser script not found: ", parser_path)
-    }
+#' Normalize key for barcode or lab ID matching
+#' @param x Character vector
+#' @param kind Type of key ("barcode" or "labid")
+#' @return Normalized key
+.norm_key <- function(x, kind = c("barcode", "labid")) {
+  kind <- match.arg(kind)
+  x <- tolower(trimws(as.character(x)))
+  x[x %in% c("", "na", "n/a", "null")] <- NA_character_
+  x <- gsub("[^a-z0-9]", "", x)
+  if (kind == "barcode") {
+    x <- sub("^kps", "", x)
+    x <- sub("^0+", "", x)
   }
+  x
 }
 
+# ============================================================================
+# FLEXIBLE COLUMN MATCHING (mimic MIC pattern)
+# ============================================================================
+
+#' Match column name flexibly
+#' @param names Character vector of column names
+#' @param candidates Character vector of possible names (in priority order)
+#' @return First matching column name, or NULL if none found
+match_column_name <- function(names, candidates) {
+  for (pattern in candidates) {
+    # Try exact match first (case-insensitive)
+    exact <- names[tolower(names) == tolower(pattern)]
+    if (length(exact)) return(exact[1])
+
+    # Try pattern match
+    matches <- grep(pattern, names, ignore.case = TRUE, value = TRUE)
+    if (length(matches)) return(matches[1])
+  }
+  NULL
+}
+
+#' Safely extract column with fallback
+#' @param df Data frame
+#' @param candidates Character vector of possible column names
+#' @param default Default value if column not found
+#' @return Column vector or default
+safe_column <- function(df, candidates, default = NA_character_) {
+  col_name <- match_column_name(names(df), candidates)
+  if (!is.null(col_name)) {
+    return(df[[col_name]])
+  }
+  rep(default, nrow(df))
+}
+
+# ============================================================================
+# BIOBANK LINKAGE (improved with flexible matching)
+# ============================================================================
+
+#' Prepare biobank lookup table with flexible column matching
+#' @param biobank_df Biobank data frame
+#' @return Prepared lookup table or NULL
 prepare_biobank_lookup <- function(biobank_df) {
   if (is.null(biobank_df) || !nrow(biobank_df)) return(NULL)
 
-  biobank_df %>%
+  # Find ID columns using flexible matching
+  barcode_col <- match_column_name(
+    names(biobank_df),
+    c("code_barres_kps", "code-barres kps", "barcode", "sample_barcode", "kps_barcode")
+  )
+
+  numero_col <- match_column_name(
+    names(biobank_df),
+    c("lab_id", "numero", "numero_labo", "sample_id", "id_labo")
+  )
+
+  # Find demographic columns using flexible matching
+  province_col <- match_column_name(
+    names(biobank_df),
+    c("province", "Province")
+  )
+
+  health_zone_col <- match_column_name(
+    names(biobank_df),
+    c("health_zone", "zone_de_sante", "zone", "health zone", "healthzone")
+  )
+
+  structure_col <- match_column_name(
+    names(biobank_df),
+    c("health_structure", "structure_sanitaire", "structure", "health_facility",
+      "facility", "health facility")
+  )
+
+  sex_col <- match_column_name(
+    names(biobank_df),
+    c("sex", "sexe", "gender", "genre")
+  )
+
+  age_col <- match_column_name(
+    names(biobank_df),
+    c("age", "age_years")
+  )
+
+  age_group_col <- match_column_name(
+    names(biobank_df),
+    c("age_group", "age_groupe", "age group", "agegroup")
+  )
+
+  date_sample_col <- match_column_name(
+    names(biobank_df),
+    c("date_sample", "date_prelevement", "collection_date", "sample_date",
+      "date prelevement", "date de prelevement")
+  )
+
+  cohort_col <- match_column_name(
+    names(biobank_df),
+    c("study", "etude", "cohort", "cohorte")
+  )
+
+  # Build lookup table with found columns
+  lookup <- biobank_df %>%
     mutate(
-      code_barres_kps = if ("code_barres_kps" %in% names(.)) .data$code_barres_kps else NA_character_,
-      barcode = if ("barcode" %in% names(.)) .data$barcode else NA_character_,
-      lab_id = if ("lab_id" %in% names(.)) .data$lab_id else NA_character_,
-      numero = if ("numero" %in% names(.)) .data$numero else NA_character_
-    ) %>%
-    mutate(
-      biobank_barcode = coalesce(.data$code_barres_kps, .data$barcode),
-      biobank_lab_id = coalesce(.data$lab_id, .data$numero),
+      biobank_barcode = if (!is.null(barcode_col)) .data[[barcode_col]] else NA_character_,
+      biobank_lab_id = if (!is.null(numero_col)) as.character(.data[[numero_col]]) else NA_character_,
       barcode_norm = .norm_key(biobank_barcode, "barcode"),
-      numero_norm = .norm_key(biobank_lab_id, "labid")
+      numero_norm = .norm_key(biobank_lab_id, "labid"),
+      Province = if (!is.null(province_col)) .data[[province_col]] else NA_character_,
+      HealthZone = if (!is.null(health_zone_col)) .data[[health_zone_col]] else NA_character_,
+      Structure = if (!is.null(structure_col)) .data[[structure_col]] else NA_character_,
+      Sex = if (!is.null(sex_col)) .data[[sex_col]] else NA_character_,
+      Age = if (!is.null(age_col)) as.numeric(.data[[age_col]]) else NA_real_,
+      AgeGroup = if (!is.null(age_group_col)) .data[[age_group_col]] else NA_character_,
+      SampleDate = if (!is.null(date_sample_col)) as.Date(.data[[date_sample_col]]) else as.Date(NA),
+      Cohort = if (!is.null(cohort_col)) .data[[cohort_col]] else NA_character_
     ) %>%
     filter(!is.na(barcode_norm) | !is.na(numero_norm)) %>%
+    select(barcode_norm, numero_norm, biobank_barcode, biobank_lab_id,
+           Province, HealthZone, Structure, Sex, Age, AgeGroup, SampleDate, Cohort) %>%
     distinct(barcode_norm, numero_norm, .keep_all = TRUE)
+
+  if (!nrow(lookup)) return(NULL)
+  lookup
 }
 
+#' Link ELISA data to biobank with flexible column matching
+#' @param elisa_df ELISA data frame
+#' @param biobank_df Biobank data frame
+#' @return ELISA data with biobank columns joined
 link_elisa_to_biobank <- function(elisa_df, biobank_df) {
   if (is.null(elisa_df) || !nrow(elisa_df)) return(tibble())
 
-  # Ensure required columns exist
+  # Ensure ELISA has necessary ID columns
   elisa_df <- elisa_df %>%
     mutate(
       sample_type = if ("sample_type" %in% names(.)) .data$sample_type else NA_character_,
       sample = if ("sample" %in% names(.)) .data$sample else NA_character_,
       sample_code = if ("sample_code" %in% names(.)) .data$sample_code else NA_character_,
       numero_labo = if ("numero_labo" %in% names(.)) .data$numero_labo else NA_character_,
-      code_barres_kps = if ("code_barres_kps" %in% names(.)) .data$code_barres_kps else NA_character_,
-      plate_id = if ("plate_id" %in% names(.)) .data$plate_id else NA_character_,
-      plate_num = if ("plate_num" %in% names(.)) .data$plate_num else NA_integer_
+      code_barres_kps = if ("code_barres_kps" %in% names(.)) .data$code_barres_kps else NA_character_
     )
 
+  # Normalize ELISA IDs
   elisa_prepped <- elisa_df %>%
     mutate(
       barcode_norm = .norm_key(.data$code_barres_kps, "barcode"),
-      numero_norm = .norm_key(coalesce(.data$numero_labo, .data$sample_code, .data$sample), "labid")
+      numero_norm = .norm_key(coalesce(.data$numero_labo, .data$sample_code, .data$sample), "labid"),
+      SampleID_norm = normalize_id(coalesce(.data$code_barres_kps, .data$numero_labo, .data$sample_code, .data$sample))
     )
 
+  # Prepare biobank lookup
   lookup <- prepare_biobank_lookup(biobank_df)
+
   if (is.null(lookup)) {
+    message("No valid biobank lookup data available")
     return(elisa_prepped %>% mutate(BiobankMatched = FALSE))
   }
 
+  # Join on barcode first
   lookup_barcode <- lookup %>%
     filter(!is.na(barcode_norm)) %>%
-    select(
-      barcode_norm,
-      biobank_barcode,
-      biobank_lab_id,
-      biobank_province = province,
-      biobank_health_zone = health_zone,
-      biobank_structure = health_structure,
-      biobank_sex = sex,
-      biobank_age = age,
-      biobank_age_group = age_group,
-      biobank_date_sample = date_sample
-    )
+    select(barcode_norm, biobank_barcode, biobank_lab_id, Province, HealthZone,
+           Structure, Sex, Age, AgeGroup, SampleDate, Cohort)
 
   lookup_numero <- lookup %>%
     filter(!is.na(numero_norm)) %>%
-    select(
-      numero_norm,
-      biobank_barcode,
-      biobank_lab_id,
-      biobank_province = province,
-      biobank_health_zone = health_zone,
-      biobank_structure = health_structure,
-      biobank_sex = sex,
-      biobank_age = age,
-      biobank_age_group = age_group,
-      biobank_date_sample = date_sample
-    )
+    select(numero_norm, biobank_barcode, biobank_lab_id, Province, HealthZone,
+           Structure, Sex, Age, AgeGroup, SampleDate, Cohort)
 
+  # Left join on barcode
   joined <- elisa_prepped %>%
-    left_join(lookup_barcode, by = "barcode_norm") %>%
-    mutate(BiobankMatched = !is.na(.data$biobank_barcode) | !is.na(.data$biobank_lab_id))
+    left_join(lookup_barcode, by = "barcode_norm", relationship = "many-to-one")
 
-  still_unmatched <- joined %>% filter(!BiobankMatched)
-  if (nrow(still_unmatched)) {
-    joined <- joined %>%
-      left_join(lookup_numero, by = c("numero_norm" = "numero_norm"), suffix = c("", "_numero")) %>%
-      mutate(
-        biobank_barcode = coalesce(.data$biobank_barcode, .data$biobank_barcode_numero),
-        biobank_lab_id = coalesce(.data$biobank_lab_id, .data$biobank_lab_id_numero),
-        biobank_province = coalesce(.data$biobank_province, .data$biobank_province_numero),
-        biobank_health_zone = coalesce(.data$biobank_health_zone, .data$biobank_health_zone_numero),
-        biobank_structure = coalesce(.data$biobank_structure, .data$biobank_structure_numero),
-        biobank_sex = coalesce(.data$biobank_sex, .data$biobank_sex_numero),
-        biobank_age = coalesce(.data$biobank_age, .data$biobank_age_numero),
-        biobank_age_group = coalesce(.data$biobank_age_group, .data$biobank_age_group_numero),
-        biobank_date_sample = coalesce(.data$biobank_date_sample, .data$biobank_date_sample_numero),
-        BiobankMatched = !is.na(.data$biobank_barcode) | !is.na(.data$biobank_lab_id)
-      ) %>%
-      select(-ends_with("_numero"))
+  # For unmatched records, try joining on numero
+  still_unmatched <- joined %>%
+    filter(is.na(biobank_barcode) & is.na(biobank_lab_id))
+
+  if (nrow(still_unmatched) > 0) {
+    # Join unmatched on numero
+    unmatched_joined <- still_unmatched %>%
+      select(-biobank_barcode, -biobank_lab_id, -Province, -HealthZone, -Structure,
+             -Sex, -Age, -AgeGroup, -SampleDate, -Cohort) %>%
+      left_join(lookup_numero, by = "numero_norm", relationship = "many-to-one")
+
+    # Combine matched and newly matched
+    matched <- joined %>% filter(!is.na(biobank_barcode) | !is.na(biobank_lab_id))
+    joined <- bind_rows(matched, unmatched_joined)
   }
+
+  # Add match indicator
+  joined <- joined %>%
+    mutate(BiobankMatched = !is.na(biobank_barcode) | !is.na(biobank_lab_id))
 
   joined
 }
 
+# ============================================================================
+# DATA LOADING WITH CACHING
+# ============================================================================
+
+# Cache environment
+.elisa_cache_env <- new.env(parent = emptyenv())
+
+#' Ensure ELISA parser is loaded
+ensure_elisa_parser <- function() {
+  if (!exists("parse_indirect_elisa_folder", mode = "function")) {
+    parser_path <- file.path("scripts", "parse_indirect_elisa.R")
+    if (file.exists(parser_path)) {
+      source(parser_path, local = .GlobalEnv)
+      message("✓ Loaded ELISA parser from ", parser_path)
+    } else {
+      stop("ELISA parser script not found: ", parser_path)
+    }
+  }
+}
+
+#' Load ELISA data with caching and biobank linkage
+#' @param dirs Character vector of directories to scan
+#' @param exclude_pattern Pattern to exclude files
+#' @param recursive Scan directories recursively
+#' @param cv_max Maximum CV threshold
+#' @param biobank_df Biobank data frame for linking
+#' @return Tibble with ELISA results linked to biobank
+#' @export
 load_elisa_data <- function(
   dirs = c("data/ELISA_pe", "data/ELISA_vsg"),
   exclude_pattern = "^251021 Résultats indirect ELISA vF\\.5",
@@ -144,14 +265,20 @@ load_elisa_data <- function(
 ) {
   ensure_elisa_parser()
 
+  # Build file list
   file_list <- unlist(lapply(dirs, function(d) {
+    if (!dir.exists(d)) {
+      message("Directory not found: ", d)
+      return(character(0))
+    }
     list.files(d, pattern = "\\.xlsx$", recursive = recursive, full.names = TRUE)
   }))
 
-  if (!is.null(exclude_pattern)) {
+  if (!is.null(exclude_pattern) && length(file_list) > 0) {
     file_list <- file_list[!grepl(exclude_pattern, basename(file_list))]
   }
 
+  # Calculate hash for cache
   file_info <- tibble(
     path = file_list,
     mtime = suppressWarnings(file.info(file_list)$mtime)
@@ -159,15 +286,22 @@ load_elisa_data <- function(
 
   hash_val <- digest(list(file_info$path, file_info$mtime, cv_max, recursive, exclude_pattern))
 
+  # Check cache
   cached <- .elisa_cache_env$data
-  if (!is.null(cached) && identical(.elisa_cache_env$hash, hash_val)) {
+  cached_hash <- .elisa_cache_env$hash
+
+  if (!is.null(cached) && !is.null(cached_hash) && identical(cached_hash, hash_val)) {
+    message("✓ Using cached ELISA data (", nrow(cached$data), " rows)")
+    # Re-link to biobank in case biobank_df changed
     if (!is.null(biobank_df)) {
       cached$data <- link_elisa_to_biobank(cached$data, biobank_df)
     }
     return(cached$data)
   }
 
+  # Parse ELISA files
   if (!length(file_list)) {
+    message("No ELISA files found in specified directories")
     parsed <- tibble(
       plate_id = character(),
       plate_num = integer(),
@@ -180,42 +314,64 @@ load_elisa_data <- function(
       code_barres_kps = character()
     )
   } else {
+    message("Parsing ", length(file_list), " ELISA file(s)...")
     parsed <- parse_indirect_elisa_folder(
       dirs,
       exclude_pattern = exclude_pattern,
       recursive = recursive,
       cv_max = cv_max
     )
+    message("✓ Parsed ", nrow(parsed), " ELISA records")
   }
 
-  # Ensure elisa_type column exists and is character
-  parsed <- parsed %>%
-    mutate(
-      elisa_type = if ("elisa_type" %in% names(.)) as.character(.data$elisa_type) else NA_character_
-    )
+  # Ensure elisa_type column exists
+  if (!"elisa_type" %in% names(parsed)) {
+    parsed <- parsed %>% mutate(elisa_type = NA_character_)
+  }
 
+  # Link to biobank
   if (!is.null(biobank_df)) {
+    message("Linking ELISA data to biobank...")
     parsed <- link_elisa_to_biobank(parsed, biobank_df)
+    n_matched <- sum(parsed$BiobankMatched, na.rm = TRUE)
+    message("✓ Matched ", n_matched, "/", nrow(parsed), " records to biobank (",
+            round(100 * n_matched / nrow(parsed), 1), "%)")
+  } else {
+    parsed <- parsed %>% mutate(BiobankMatched = FALSE)
   }
 
+  # Ensure all expected biobank columns exist
   parsed <- parsed %>%
     mutate(
-      biobank_province = if ("biobank_province" %in% names(.)) .data$biobank_province else NA_character_,
-      biobank_health_zone = if ("biobank_health_zone" %in% names(.)) .data$biobank_health_zone else NA_character_,
-      biobank_structure = if ("biobank_structure" %in% names(.)) .data$biobank_structure else NA_character_,
-      biobank_sex = if ("biobank_sex" %in% names(.)) .data$biobank_sex else NA_character_,
-      biobank_age = if ("biobank_age" %in% names(.)) .data$biobank_age else NA_real_,
-      biobank_age_group = if ("biobank_age_group" %in% names(.)) .data$biobank_age_group else NA_character_,
-      biobank_date_sample = if ("biobank_date_sample" %in% names(.)) .data$biobank_date_sample else as.Date(NA),
-      BiobankMatched = if ("BiobankMatched" %in% names(.)) .data$BiobankMatched else FALSE
+      Province = if ("Province" %in% names(.)) .data$Province else NA_character_,
+      HealthZone = if ("HealthZone" %in% names(.)) .data$HealthZone else NA_character_,
+      Structure = if ("Structure" %in% names(.)) .data$Structure else NA_character_,
+      Sex = if ("Sex" %in% names(.)) .data$Sex else NA_character_,
+      Age = if ("Age" %in% names(.)) .data$Age else NA_real_,
+      AgeGroup = if ("AgeGroup" %in% names(.)) .data$AgeGroup else NA_character_,
+      SampleDate = if ("SampleDate" %in% names(.)) .data$SampleDate else as.Date(NA),
+      Cohort = if ("Cohort" %in% names(.)) .data$Cohort else NA_character_
     )
 
+  # Cache results
   .elisa_cache_env$data <- list(data = parsed)
   .elisa_cache_env$hash <- hash_val
 
   parsed
 }
 
+#' Get ELISA data (convenience wrapper)
+#' @param biobank_df Biobank data frame for linking
+#' @return Tibble with ELISA results
+#' @export
 get_elisa_data <- function(biobank_df = NULL) {
   load_elisa_data(biobank_df = biobank_df)
+}
+
+#' Clear ELISA cache (force reload)
+#' @export
+clear_elisa_cache <- function() {
+  .elisa_cache_env$data <- NULL
+  .elisa_cache_env$hash <- NULL
+  message("✓ ELISA cache cleared")
 }

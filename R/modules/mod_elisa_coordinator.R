@@ -80,9 +80,10 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
 
       # Filter by elisa_type
       if ("elisa_type" %in% names(data)) {
-        data %>% filter(.data$elisa_type == !!elisa_type)
+        data %>% filter(elisa_type == !!elisa_type)
       } else {
-        message("Warning: elisa_type column not found")
+        message("Warning: elisa_type column not found in data")
+        message("Available columns: ", paste(names(data), collapse = ", "))
         tibble()
       }
     })
@@ -99,21 +100,21 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
       # Apply province filter
       if (!is.null(flt$province) && flt$province != "all" && flt$province != "") {
         if ("Province" %in% names(data)) {
-          data <- data %>% filter(.data$Province == !!flt$province)
+          data <- data %>% filter(Province == !!flt$province)
         }
       }
 
       # Apply health zone filter
       if (!is.null(flt$zone) && flt$zone != "all" && flt$zone != "") {
         if ("HealthZone" %in% names(data)) {
-          data <- data %>% filter(.data$HealthZone == !!flt$zone)
+          data <- data %>% filter(HealthZone == !!flt$zone)
         }
       }
 
       # Apply structure filter
       if (!is.null(flt$structure) && flt$structure != "all" && flt$structure != "") {
         if ("Structure" %in% names(data)) {
-          data <- data %>% filter(.data$Structure == !!flt$structure)
+          data <- data %>% filter(Structure == !!flt$structure)
         }
       }
 
@@ -122,8 +123,8 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
         if ("plate_date" %in% names(data)) {
           data <- data %>%
             filter(
-              as.Date(.data$plate_date) >= flt$date_range[1],
-              as.Date(.data$plate_date) <= flt$date_range[2]
+              as.Date(plate_date) >= flt$date_range[1],
+              as.Date(plate_date) <= flt$date_range[2]
             )
         }
       }
@@ -137,7 +138,7 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
       if (!nrow(data)) return(data)
 
       if ("sample_type" %in% names(data)) {
-        data %>% filter(.data$sample_type == "sample")
+        data %>% filter(sample_type == "sample")
       } else {
         data
       }
@@ -148,7 +149,7 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
       if (!nrow(data)) return(data)
 
       if ("sample_type" %in% names(data)) {
-        data %>% filter(.data$sample_type == "control")
+        data %>% filter(sample_type == "control")
       } else {
         tibble()
       }

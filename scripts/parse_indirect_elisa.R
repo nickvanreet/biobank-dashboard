@@ -325,19 +325,25 @@ extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
       "numero_labo", "code_barres_kps", "well_id")
   )
 
-  # Harmonize columns
-  samples_layout <- samples_layout %>%
-    mutate(
-      sample_code = NA_character_,
-      numero_labo = as.character(numero_labo),
-      code_barres_kps = as.character(code_barres_kps)
-    )
+  # Harmonize columns - ensure they're character type
+  # Convert columns if they exist, create them if they don't
+  if ("numero_labo" %in% names(samples_layout)) {
+    samples_layout$numero_labo <- as.character(samples_layout$numero_labo)
+  } else {
+    samples_layout$numero_labo <- NA_character_
+  }
 
-  controls_layout <- controls_layout %>%
-    mutate(
-      numero_labo = NA_character_,
-      code_barres_kps = NA_character_
-    )
+  if ("code_barres_kps" %in% names(samples_layout)) {
+    samples_layout$code_barres_kps <- as.character(samples_layout$code_barres_kps)
+  } else {
+    samples_layout$code_barres_kps <- NA_character_
+  }
+
+  samples_layout$sample_code <- NA_character_
+
+  # For controls, ensure these are NA
+  controls_layout$numero_labo <- NA_character_
+  controls_layout$code_barres_kps <- NA_character_
   
   # 3) Join with OD
   sample_wells <- samples_layout %>%

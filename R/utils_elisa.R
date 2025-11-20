@@ -270,7 +270,7 @@ ensure_elisa_parser <- function() {
 #' @return Tibble with ELISA results linked to biobank
 #' @export
 load_elisa_data <- function(
-  dirs = c("data/ELISA_pe", "data/ELISA_vsg"),
+  dirs = c("data/elisa_pe", "data/elisa_vsg"),
   exclude_pattern = "^251021 Résultats indirect ELISA vF\\.5",
   recursive = TRUE,
   cv_max = 20,

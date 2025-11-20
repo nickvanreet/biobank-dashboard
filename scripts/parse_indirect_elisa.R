@@ -341,10 +341,10 @@ extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
   
   # 3) Join with OD
   sample_wells <- samples_layout %>%
-    left_join(od_grid, by = c("plate_num", "well_id"))
+    left_join(od_grid, by = c("plate_num", "well_id"), relationship = "many-to-one")
 
   control_wells <- controls_layout %>%
-    left_join(od_grid, by = c("plate_num", "well_id"))
+    left_join(od_grid, by = c("plate_num", "well_id"), relationship = "many-to-one")
 
   wells_long <- bind_rows(sample_wells, control_wells)
 
@@ -517,33 +517,35 @@ parse_indirect_elisa_folder <- function(dir,
     distinct(plate_id, plate_num, plate_date, elisa_type) %>%
     arrange(plate_date, plate_id, plate_num) %>%
     mutate(plate_number = row_number())
-  
+
   df_all <- df_all %>%
-    left_join(plate_index, by = c("plate_id", "plate_num", "plate_date", "elisa_type")) %>%
+    left_join(plate_index, by = c("plate_id", "plate_num", "plate_date", "elisa_type"), relationship = "many-to-one") %>%
     arrange(plate_number, sample_type, sample)
   
   return(df_all)
 }
 
 # =============================================================================
-# USAGE
+# USAGE EXAMPLE (commented out to prevent execution when sourced)
 # =============================================================================
 
-# Process folder (single or multiple directories)
-elisa_dirs <- c("data/ELISA_pe", "data/ELISA_vsg")
-
-res <- parse_indirect_elisa_folder(
-  elisa_dirs,
-  exclude_pattern = "^251021 Résultats indirect ELISA vF\\.5",
-  recursive = TRUE
-)
-
-View(res)
-write.csv(res, "all_elisa_results.csv", row.names = FALSE)
-
-# Summary
-cat("\n=== Summary ===\n")
-cat(sprintf("Total plates: %d\n", n_distinct(res$plate_number)))
-cat(sprintf("Total samples: %d\n", sum(res$sample_type == "sample")))
-cat(sprintf("QC pass rate: %.1f%%\n", 
-            100 * mean(res$qc_overall[res$sample_type == "sample"], na.rm = TRUE)))
+# To use this parser interactively, uncomment and run the following code:
+#
+# # Process folder (single or multiple directories)
+# elisa_dirs <- c("data/ELISA_pe", "data/ELISA_vsg")
+#
+# res <- parse_indirect_elisa_folder(
+#   elisa_dirs,
+#   exclude_pattern = "^251021 Résultats indirect ELISA vF\\.5",
+#   recursive = TRUE
+# )
+#
+# View(res)
+# write.csv(res, "all_elisa_results.csv", row.names = FALSE)
+#
+# # Summary
+# cat("\n=== Summary ===\n")
+# cat(sprintf("Total plates: %d\n", n_distinct(res$plate_number)))
+# cat(sprintf("Total samples: %d\n", sum(res$sample_type == "sample")))
+# cat(sprintf("QC pass rate: %.1f%%\n",
+#             100 * mean(res$qc_overall[res$sample_type == "sample"], na.rm = TRUE)))

@@ -311,7 +311,20 @@ extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
   layout <- read_elisa_layout(path)
   samples_layout <- layout$samples_layout
   controls_layout <- layout$controls_layout
-  
+
+  # Ensure all expected columns exist in layouts before harmonizing
+  samples_layout <- ensure_columns(
+    samples_layout,
+    c("plate_id", "plate_num", "sample_type", "sample", "sample_code",
+      "numero_labo", "code_barres_kps", "well_id")
+  )
+
+  controls_layout <- ensure_columns(
+    controls_layout,
+    c("plate_id", "plate_num", "sample_type", "sample", "sample_code",
+      "numero_labo", "code_barres_kps", "well_id")
+  )
+
   # Harmonize columns
   samples_layout <- samples_layout %>%
     mutate(
@@ -319,7 +332,7 @@ extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
       numero_labo = as.character(numero_labo),
       code_barres_kps = as.character(code_barres_kps)
     )
-  
+
   controls_layout <- controls_layout %>%
     mutate(
       numero_labo = NA_character_,

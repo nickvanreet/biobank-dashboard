@@ -56,6 +56,18 @@ prepare_biobank_lookup <- function(biobank_df) {
 link_elisa_to_biobank <- function(elisa_df, biobank_df) {
   if (is.null(elisa_df) || !nrow(elisa_df)) return(tibble())
 
+  # Ensure required columns exist
+  elisa_df <- elisa_df %>%
+    mutate(
+      sample_type = if ("sample_type" %in% names(.)) .data$sample_type else NA_character_,
+      sample = if ("sample" %in% names(.)) .data$sample else NA_character_,
+      sample_code = if ("sample_code" %in% names(.)) .data$sample_code else NA_character_,
+      numero_labo = if ("numero_labo" %in% names(.)) .data$numero_labo else NA_character_,
+      code_barres_kps = if ("code_barres_kps" %in% names(.)) .data$code_barres_kps else NA_character_,
+      plate_id = if ("plate_id" %in% names(.)) .data$plate_id else NA_character_,
+      plate_num = if ("plate_num" %in% names(.)) .data$plate_num else NA_integer_
+    )
+
   elisa_prepped <- elisa_df %>%
     mutate(
       barcode_norm = .norm_key(.data$code_barres_kps, "barcode"),
@@ -156,7 +168,17 @@ load_elisa_data <- function(
   }
 
   if (!length(file_list)) {
-    parsed <- tibble()
+    parsed <- tibble(
+      plate_id = character(),
+      plate_num = integer(),
+      plate_date = as.Date(character()),
+      elisa_type = character(),
+      sample_type = character(),
+      sample = character(),
+      sample_code = character(),
+      numero_labo = character(),
+      code_barres_kps = character()
+    )
   } else {
     parsed <- parse_indirect_elisa_folder(
       dirs,
@@ -166,7 +188,11 @@ load_elisa_data <- function(
     )
   }
 
-  parsed <- parsed %>% mutate(elisa_type = as.character(elisa_type))
+  # Ensure elisa_type column exists and is character
+  parsed <- parsed %>%
+    mutate(
+      elisa_type = if ("elisa_type" %in% names(.)) as.character(.data$elisa_type) else NA_character_
+    )
 
   if (!is.null(biobank_df)) {
     parsed <- link_elisa_to_biobank(parsed, biobank_df)

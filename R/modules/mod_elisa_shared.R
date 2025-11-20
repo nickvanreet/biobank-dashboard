@@ -91,12 +91,25 @@ mod_elisa_generic_server <- function(id, elisa_type, elisa_data) {
     data_filtered <- reactive({
       df <- elisa_data()
       if (is.null(df) || !nrow(df)) return(tibble())
+
+      # Ensure elisa_type column exists
+      if (!"elisa_type" %in% names(df)) {
+        return(tibble())
+      }
+
       df %>% filter(.data$elisa_type == elisa_type)
     })
 
     runs_summary <- reactive({
       df <- data_filtered()
       if (!nrow(df)) return(tibble())
+
+      # Check required columns exist
+      required_cols <- c("plate_id", "plate_number", "plate_date", "sample_type",
+                         "PC_DOD", "NC_DOD", "PP_percent", "qc_overall")
+      if (!all(required_cols %in% names(df))) {
+        return(tibble())
+      }
 
       df %>%
         group_by(plate_id, plate_number, plate_date) %>%
@@ -114,12 +127,25 @@ mod_elisa_generic_server <- function(id, elisa_type, elisa_data) {
     output$runs_kpis <- renderUI({
       df <- data_filtered()
       rs <- runs_summary()
+
+      total_samples <- if ("sample_type" %in% names(df)) {
+        sum(df$sample_type == "sample", na.rm = TRUE)
+      } else {
+        0
+      }
+
+      qc_rate <- if ("qc_overall" %in% names(df)) {
+        mean(df$qc_overall, na.rm = TRUE)
+      } else {
+        NA_real_
+      }
+
       elisa_value_boxes(
         ns,
         list(
           total_plates = nrow(rs),
-          total_samples = sum(df$sample_type == "sample", na.rm = TRUE),
-          qc_rate = mean(df$qc_overall, na.rm = TRUE)
+          total_samples = total_samples,
+          qc_rate = qc_rate
         )
       )
     })
@@ -137,7 +163,7 @@ mod_elisa_generic_server <- function(id, elisa_type, elisa_data) {
 
     output$plot_pp <- renderPlotly({
       df <- data_filtered()
-      if (!nrow(df)) return(NULL)
+      if (!nrow(df) || !all(c("plate_number", "PP_percent") %in% names(df))) return(NULL)
 
       p <- df %>% ggplot(aes(x = plate_number, y = PP_percent)) +
         geom_boxplot(fill = "#4F46E5", alpha = 0.5) +
@@ -148,7 +174,7 @@ mod_elisa_generic_server <- function(id, elisa_type, elisa_data) {
 
     output$plot_dod <- renderPlotly({
       df <- data_filtered()
-      if (!nrow(df)) return(NULL)
+      if (!nrow(df) || !all(c("plate_date", "DOD", "sample_type") %in% names(df))) return(NULL)
       p <- df %>% ggplot(aes(x = plate_date, y = DOD, color = sample_type)) +
         geom_point(alpha = 0.6) +
         theme_minimal() +
@@ -158,7 +184,7 @@ mod_elisa_generic_server <- function(id, elisa_type, elisa_data) {
 
     output$plot_cv <- renderPlotly({
       df <- data_filtered()
-      if (!nrow(df)) return(NULL)
+      if (!nrow(df) || !all(c("cv_Ag_plus", "cv_Ag0") %in% names(df))) return(NULL)
       p <- df %>%
         pivot_longer(cols = c(cv_Ag_plus, cv_Ag0), names_to = "metric", values_to = "cv") %>%
         ggplot(aes(x = metric, y = cv, fill = metric)) +
@@ -170,7 +196,7 @@ mod_elisa_generic_server <- function(id, elisa_type, elisa_data) {
 
     output$plot_qc_time <- renderPlotly({
       df <- data_filtered()
-      if (!nrow(df)) return(NULL)
+      if (!nrow(df) || !all(c("plate_date", "qc_overall") %in% names(df))) return(NULL)
       p <- df %>%
         mutate(plate_date = as.Date(plate_date)) %>%
         group_by(plate_date) %>%
@@ -186,11 +212,26 @@ mod_elisa_generic_server <- function(id, elisa_type, elisa_data) {
 
     observe({
       df <- data_filtered()
-      updateSelectInput(session, "filter_province", choices = c("All" = "all", sort(unique(na.omit(df$biobank_province)))))
-      updateSelectInput(session, "filter_health_zone", choices = c("All" = "all", sort(unique(na.omit(df$biobank_health_zone)))))
-      dates <- suppressWarnings(as.Date(df$plate_date))
-      if (any(!is.na(dates))) {
-        updateDateRangeInput(session, "filter_date", start = min(dates, na.rm = TRUE), end = max(dates, na.rm = TRUE))
+
+      province_choices <- if ("biobank_province" %in% names(df)) {
+        c("All" = "all", sort(unique(na.omit(df$biobank_province))))
+      } else {
+        c("All" = "all")
+      }
+      updateSelectInput(session, "filter_province", choices = province_choices)
+
+      health_zone_choices <- if ("biobank_health_zone" %in% names(df)) {
+        c("All" = "all", sort(unique(na.omit(df$biobank_health_zone))))
+      } else {
+        c("All" = "all")
+      }
+      updateSelectInput(session, "filter_health_zone", choices = health_zone_choices)
+
+      if ("plate_date" %in% names(df)) {
+        dates <- suppressWarnings(as.Date(df$plate_date))
+        if (any(!is.na(dates))) {
+          updateDateRangeInput(session, "filter_date", start = min(dates, na.rm = TRUE), end = max(dates, na.rm = TRUE))
+        }
       }
     })
 
@@ -198,22 +239,31 @@ mod_elisa_generic_server <- function(id, elisa_type, elisa_data) {
       df <- data_filtered()
       if (!nrow(df)) return(df)
 
-      df <- df %>% filter(sample_type == "sample")
-      if (!is.null(input$filter_date[1]) && !is.na(input$filter_date[1])) {
-        df <- df %>% filter(as.Date(plate_date) >= input$filter_date[1])
+      if ("sample_type" %in% names(df)) {
+        df <- df %>% filter(sample_type == "sample")
       }
-      if (!is.null(input$filter_date[2]) && !is.na(input$filter_date[2])) {
-        df <- df %>% filter(as.Date(plate_date) <= input$filter_date[2])
+
+      if ("plate_date" %in% names(df)) {
+        if (!is.null(input$filter_date[1]) && !is.na(input$filter_date[1])) {
+          df <- df %>% filter(as.Date(plate_date) >= input$filter_date[1])
+        }
+        if (!is.null(input$filter_date[2]) && !is.na(input$filter_date[2])) {
+          df <- df %>% filter(as.Date(plate_date) <= input$filter_date[2])
+        }
       }
-      if (!is.null(input$filter_province) && input$filter_province != "all") {
+
+      if ("biobank_province" %in% names(df) && !is.null(input$filter_province) && input$filter_province != "all") {
         df <- df %>% filter(biobank_province == input$filter_province)
       }
-      if (!is.null(input$filter_health_zone) && input$filter_health_zone != "all") {
+
+      if ("biobank_health_zone" %in% names(df) && !is.null(input$filter_health_zone) && input$filter_health_zone != "all") {
         df <- df %>% filter(biobank_health_zone == input$filter_health_zone)
       }
-      if (!is.null(input$filter_qc) && input$filter_qc != "all") {
+
+      if ("qc_overall" %in% names(df) && !is.null(input$filter_qc) && input$filter_qc != "all") {
         df <- df %>% filter(if (input$filter_qc == "pass") qc_overall else !qc_overall)
       }
+
       df
     })
 
@@ -221,12 +271,15 @@ mod_elisa_generic_server <- function(id, elisa_type, elisa_data) {
       df <- samples_filtered()
       if (!nrow(df)) return(datatable(tibble(Message = "No ELISA samples found")))
 
+      # Select only columns that exist
+      available_cols <- c("plate_number", "plate_id", "plate_date", "sample", "numero_labo",
+                          "code_barres_kps", "DOD", "PP_percent", "cv_Ag_plus", "cv_Ag0",
+                          "qc_overall", "biobank_province", "biobank_health_zone",
+                          "biobank_sex", "biobank_age_group")
+      cols_to_select <- available_cols[available_cols %in% names(df)]
+
       datatable(
-        df %>% select(
-          plate_number, plate_id, plate_date, sample, numero_labo, code_barres_kps,
-          DOD, PP_percent, cv_Ag_plus, cv_Ag0, qc_overall,
-          biobank_province, biobank_health_zone, biobank_sex, biobank_age_group
-        ),
+        df %>% select(all_of(cols_to_select)),
         rownames = FALSE,
         options = list(pageLength = 15, scrollX = TRUE)
       )

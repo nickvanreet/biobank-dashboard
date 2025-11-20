@@ -172,6 +172,18 @@ load_elisa_data <- function(
     parsed <- link_elisa_to_biobank(parsed, biobank_df)
   }
 
+  parsed <- parsed %>%
+    mutate(
+      biobank_province = if ("biobank_province" %in% names(.)) .data$biobank_province else NA_character_,
+      biobank_health_zone = if ("biobank_health_zone" %in% names(.)) .data$biobank_health_zone else NA_character_,
+      biobank_structure = if ("biobank_structure" %in% names(.)) .data$biobank_structure else NA_character_,
+      biobank_sex = if ("biobank_sex" %in% names(.)) .data$biobank_sex else NA_character_,
+      biobank_age = if ("biobank_age" %in% names(.)) .data$biobank_age else NA_real_,
+      biobank_age_group = if ("biobank_age_group" %in% names(.)) .data$biobank_age_group else NA_character_,
+      biobank_date_sample = if ("biobank_date_sample" %in% names(.)) .data$biobank_date_sample else as.Date(NA),
+      BiobankMatched = if ("BiobankMatched" %in% names(.)) .data$BiobankMatched else FALSE
+    )
+
   .elisa_cache_env$data <- list(data = parsed)
   .elisa_cache_env$hash <- hash_val
 

@@ -50,6 +50,8 @@ ui <- do.call(
     mic_panels,
     # Remaining panels
     list(
+      mod_elisa_pe_ui("elisa_pe"),
+      mod_elisa_vsg_ui("elisa_vsg"),
       mod_drs_rnasep_ui("drs_rnasep")
     )
   )
@@ -90,13 +92,20 @@ server <- function(input, output, session) {
     filtered_data = data$filtered_extractions,
     biobank_data = data$clean_data
   )
-  
+
+  elisa_data <- reactive({
+    get_elisa_data(biobank_df = data$clean_data())
+  })
+
   mic_data <- mod_mic_qpcr_server(
     "mic_qpcr",
     biobank_df = data$clean_data,
     extractions_df = data$filtered_extractions,
     filters = data$filters
   )
+
+  mod_elisa_pe_server("elisa_pe", elisa_data = elisa_data)
+  mod_elisa_vsg_server("elisa_vsg", elisa_data = elisa_data)
 
   # DRS volume vs RNAseP analysis module
   mod_drs_rnasep_server(

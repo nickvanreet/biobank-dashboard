@@ -285,7 +285,7 @@ ensure_elisa_columns <- function(df) {
 .elisa_cache_env <- new.env(parent = emptyenv())
 
 # Cache version - increment this when data structure changes to invalidate old caches
-.elisa_cache_version <- "v3_with_elisa_type"
+.elisa_cache_version <- "v4_elisa_type_fixed"
 
 #' Ensure ELISA parser is loaded
 ensure_elisa_parser <- function() {
@@ -349,6 +349,18 @@ load_elisa_data <- function(
 
   if (cache_valid) {
     message("✓ Using cached ELISA data (", nrow(cached$data), " rows)")
+
+    # Ensure elisa_type is valid (defensive check)
+    cached$data <- cached$data %>%
+      mutate(
+        elisa_type = case_when(
+          !is.na(elisa_type) & elisa_type != "" & elisa_type != "NA" ~ elisa_type,
+          grepl("vsg", plate_id, ignore.case = TRUE) ~ "ELISA_vsg",
+          grepl("pe", plate_id, ignore.case = TRUE) ~ "ELISA_pe",
+          TRUE ~ "ELISA_pe"  # Default to PE if cannot infer
+        )
+      )
+
     # Re-link to biobank in case biobank_df changed
     if (!is.null(biobank_df)) {
       cached$data <- link_elisa_to_biobank(cached$data, biobank_df)
@@ -383,10 +395,21 @@ load_elisa_data <- function(
 
   parsed <- ensure_elisa_columns(parsed)
 
-  # Ensure elisa_type column exists
+  # Ensure elisa_type column exists and is valid
   if (!"elisa_type" %in% names(parsed)) {
     parsed <- parsed %>% mutate(elisa_type = NA_character_)
   }
+
+  # Defensive: Infer elisa_type from plate_id if missing or NA
+  parsed <- parsed %>%
+    mutate(
+      elisa_type = case_when(
+        !is.na(elisa_type) & elisa_type != "" & elisa_type != "NA" ~ elisa_type,
+        grepl("vsg", plate_id, ignore.case = TRUE) ~ "ELISA_vsg",
+        grepl("pe", plate_id, ignore.case = TRUE) ~ "ELISA_pe",
+        TRUE ~ "ELISA_pe"  # Default to PE if cannot infer
+      )
+    )
 
   # Link to biobank
   if (!is.null(biobank_df)) {

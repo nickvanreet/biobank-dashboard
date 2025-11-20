@@ -17,7 +17,7 @@ suppressPackageStartupMessages({
 # -----------------------------------------------------------------------------
 parse_deepwell_pattern <- function(x) {
   if (is.na(x) || x == "") return(character(0))
-  
+
   x %>%
     as.character() %>%
     str_replace_all("\\s+", "") %>%
@@ -26,6 +26,18 @@ parse_deepwell_pattern <- function(x) {
     str_replace_all(",", "/") %>%
     str_split("/") %>%
     pluck(1)
+}
+
+# -----------------------------------------------------------------------------
+# Ensure expected columns are present
+# -----------------------------------------------------------------------------
+ensure_columns <- function(df, cols, default = NA_character_) {
+  for (col in cols) {
+    if (!col %in% names(df)) {
+      df[[col]] <- default
+    }
+  }
+  df
 }
 
 # -----------------------------------------------------------------------------
@@ -182,7 +194,8 @@ read_elisa_layout <- function(path) {
   
   # ----- Samples -----
   df_samples <- read_excel(path, sheet = "Results") %>%
-    clean_names()
+    clean_names() %>%
+    ensure_columns(c("sample", "numero_labo", "code_barres_kps", "sample_code"))
   
   dw_col_s <- names(df_samples)[str_detect(names(df_samples), "^deepwell")]
   if (length(dw_col_s) == 0) {
@@ -223,7 +236,8 @@ read_elisa_layout <- function(path) {
   
   # ----- Controls -----
   df_controls <- read_excel(path, sheet = "Controls") %>%
-    clean_names()
+    clean_names() %>%
+    ensure_columns(c("sample", "sample_code"))
   
   dw_col_c <- names(df_controls)[str_detect(names(df_controls), "^deepwell")]
   if (length(dw_col_c) == 0) {
@@ -315,11 +329,19 @@ extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
   # 3) Join with OD
   sample_wells <- samples_layout %>%
     left_join(od_grid, by = c("plate_num", "well_id"))
-  
+
   control_wells <- controls_layout %>%
     left_join(od_grid, by = c("plate_num", "well_id"))
-  
+
   wells_long <- bind_rows(sample_wells, control_wells)
+
+  wells_long <- ensure_columns(
+    wells_long,
+    c(
+      "plate_id", "plate_num", "sample_type", "sample", "sample_code",
+      "numero_labo", "code_barres_kps"
+    )
+  )
   
   # 4) Summarize by sample/control
   summarize_entry <- function(df_group) {
@@ -448,9 +470,35 @@ parse_indirect_elisa_folder <- function(dir,
       }
     )
   })
-  
+
   df_all <- bind_rows(Filter(Negate(is.null), res_list))
-  
+
+  if (!nrow(df_all)) {
+    return(tibble(
+      plate_id = character(),
+      plate_num = integer(),
+      plate_date = as.Date(character()),
+      elisa_type = character(),
+      sample_type = character(),
+      sample = character(),
+      sample_code = character(),
+      numero_labo = character(),
+      code_barres_kps = character(),
+      Ag_plus_1 = double(),
+      Ag_plus_2 = double(),
+      Ag0_1 = double(),
+      Ag0_2 = double(),
+      mean_Ag_plus = double(),
+      mean_Ag0 = double(),
+      DOD = double(),
+      cv_Ag_plus = double(),
+      cv_Ag0 = double(),
+      qc_Ag_plus = logical(),
+      qc_Ag0 = logical(),
+      qc_overall = logical()
+    ))
+  }
+
   # Assign unique plate number across all files
   plate_index <- df_all %>%
     distinct(plate_id, plate_num, plate_date, elisa_type) %>%

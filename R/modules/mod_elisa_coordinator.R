@@ -76,11 +76,23 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
     # Filter to specific ELISA type (PE or VSG)
     elisa_data_typed <- reactive({
       data <- raw_elisa_data()
-      if (is.null(data) || !nrow(data)) return(tibble())
+      if (is.null(data) || !nrow(data)) {
+        message("DEBUG: raw_elisa_data is NULL or empty")
+        return(tibble())
+      }
+
+      message("DEBUG: raw_elisa_data has ", nrow(data), " rows")
+      message("DEBUG: Looking for elisa_type = ", elisa_type)
 
       # Filter by elisa_type
       if ("elisa_type" %in% names(data)) {
-        data %>% filter(elisa_type == !!elisa_type)
+        # Show unique values of elisa_type
+        unique_types <- unique(data$elisa_type)
+        message("DEBUG: Unique elisa_type values: ", paste(unique_types, collapse = ", "))
+
+        filtered <- data %>% filter(elisa_type == !!elisa_type)
+        message("DEBUG: After filtering for '", elisa_type, "': ", nrow(filtered), " rows")
+        return(filtered)
       } else {
         message("Warning: elisa_type column not found in data")
         message("Available columns: ", paste(names(data), collapse = ", "))

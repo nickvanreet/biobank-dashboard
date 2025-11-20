@@ -63,11 +63,19 @@ mod_elisa_runs_server <- function(id, elisa_data) {
 
     runs_summary <- reactive({
       data <- elisa_data()
-      if (!nrow(data)) return(tibble())
+      message("DEBUG [mod_elisa_runs]: elisa_data has ", nrow(data), " rows")
+
+      if (!nrow(data)) {
+        message("DEBUG [mod_elisa_runs]: Returning empty tibble (no rows)")
+        return(tibble())
+      }
 
       # Check required columns exist
       required_cols <- c("plate_id", "plate_number", "plate_date", "sample_type")
       if (!all(required_cols %in% names(data))) {
+        message("DEBUG [mod_elisa_runs]: Missing required columns")
+        message("DEBUG [mod_elisa_runs]: Required: ", paste(required_cols, collapse = ", "))
+        message("DEBUG [mod_elisa_runs]: Available: ", paste(names(data), collapse = ", "))
         return(tibble())
       }
 

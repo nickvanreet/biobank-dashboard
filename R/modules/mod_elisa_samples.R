@@ -16,17 +16,20 @@ mod_elisa_samples_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
-    # Summary info
-    uiOutput(ns("summary_info")),
+    div(
+      class = "elisa-panel",
+      # Summary info
+      uiOutput(ns("summary_info")),
 
-    # Spacer
-    tags$div(style = "height: 16px;"),
+      # Spacer
+      tags$div(style = "height: 16px;"),
 
-    # Samples table
-    card(
-      card_header("Sample Results"),
-      card_body(
-        DTOutput(ns("samples_table"))
+      # Samples table
+      card(
+        card_header("Sample Results"),
+        card_body(
+          DTOutput(ns("samples_table"))
+        )
       )
     )
   )

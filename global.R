@@ -208,6 +208,43 @@ app_theme <- bslib::bs_add_rules(
       padding-right: 0;
     }
   }
+
+  /* ELISA Module Styling - Enhanced figure visibility with scrolling */
+  .elisa-panel {
+    max-height: calc(100vh - 160px);
+    overflow-y: auto;
+    padding-right: 0.5rem;
+    padding-bottom: 1rem;
+  }
+
+  .elisa-panel::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .elisa-panel::-webkit-scrollbar-thumb {
+    background-color: rgba(79, 70, 229, 0.4);
+    border-radius: 4px;
+  }
+
+  .elisa-panel::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  @media (max-width: 991.98px) {
+    .elisa-panel {
+      max-height: none;
+      padding-right: 0;
+    }
+  }
+
+  /* Ensure ELISA cards have proper spacing and visibility */
+  [id*='elisa'] .card {
+    margin-bottom: 1rem;
+  }
+
+  [id*='elisa'] .plotly {
+    width: 100% !important;
+  }
   "
 )
 

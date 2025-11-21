@@ -17,8 +17,10 @@ mod_elisa_runs_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
-    # KPIs
-    uiOutput(ns("kpis")),
+    div(
+      class = "elisa-panel",
+      # KPIs
+      uiOutput(ns("kpis")),
 
     # Spacer
     tags$div(style = "height: 16px;"),
@@ -39,12 +41,13 @@ mod_elisa_runs_ui <- function(id) {
       col_widths = c(6, 6),
       card(
         card_header("PP% Distribution by Plate"),
-        card_body(plotlyOutput(ns("plot_pp_by_plate")))
+        card_body(plotlyOutput(ns("plot_pp_by_plate"), height = "550px"))
       ),
       card(
         card_header("QC Pass Rate by Plate"),
-        card_body(plotlyOutput(ns("plot_qc_by_plate")))
+        card_body(plotlyOutput(ns("plot_qc_by_plate"), height = "550px"))
       )
+    )
     )
   )
 }

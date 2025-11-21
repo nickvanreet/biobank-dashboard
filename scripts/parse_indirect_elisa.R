@@ -575,15 +575,9 @@ parse_indirect_elisa_folder <- function(dir,
   type_counts <- table(df_all$elisa_type)
   message("✓ ELISA type distribution: ", paste(names(type_counts), "=", type_counts, collapse = ", "))
 
-  # Assign unique plate number across all files
-  plate_index <- df_all %>%
-    distinct(plate_id, plate_num, plate_date, elisa_type) %>%
-    arrange(plate_date, plate_id, plate_num) %>%
-    mutate(plate_number = row_number())
-
+  # Sort by date and plate (plate_number will be assigned later by load_elisa_data)
   df_all <- df_all %>%
-    left_join(plate_index, by = c("plate_id", "plate_num", "plate_date", "elisa_type"), relationship = "many-to-one") %>%
-    arrange(plate_number, sample_type, sample)
+    arrange(plate_date, plate_id, plate_num, sample_type, sample)
 
   return(df_all)
 }

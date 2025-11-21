@@ -295,17 +295,30 @@ calculate_cv <- function(val1, val2) {
 # Main extraction function - UNIFIED
 # -----------------------------------------------------------------------------
 extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
-  
+
   plate_id <- tools::file_path_sans_ext(basename(path))
   plate_date <- parse_plate_date_from_filename(basename(path))
-  
+
   cat(sprintf("Processing: %s (Date: %s)\n", basename(path),
               ifelse(is.na(plate_date), "Unknown", as.character(plate_date))))
-  
+
   # 1) Read OD data
   od_grid_info <- read_elisa_od_grid(path)
   od_grid <- od_grid_info$od
   elisa_type <- od_grid_info$elisa_type
+
+  # Fallback: Infer elisa_type from file path if not set correctly
+  if (is.null(elisa_type) || is.na(elisa_type) || elisa_type == "") {
+    if (grepl("elisa_vsg|vsg", path, ignore.case = TRUE)) {
+      elisa_type <- "ELISA_vsg"
+    } else if (grepl("elisa_pe|pe", path, ignore.case = TRUE)) {
+      elisa_type <- "ELISA_pe"
+    } else {
+      # Default to PE if cannot infer
+      elisa_type <- "ELISA_pe"
+    }
+    cat(sprintf("  Inferred elisa_type from path: %s\n", elisa_type))
+  }
   
   # 2) Read layouts
   layout <- read_elisa_layout(path)
@@ -518,6 +531,22 @@ parse_indirect_elisa_folder <- function(dir,
     ))
   }
 
+  # Defensive check: Ensure all rows have valid elisa_type
+  # Infer from plate_id if missing
+  df_all <- df_all %>%
+    mutate(
+      elisa_type = case_when(
+        !is.na(elisa_type) & elisa_type != "" ~ elisa_type,
+        grepl("vsg", plate_id, ignore.case = TRUE) ~ "ELISA_vsg",
+        grepl("pe", plate_id, ignore.case = TRUE) ~ "ELISA_pe",
+        TRUE ~ "ELISA_pe"  # Default to PE
+      )
+    )
+
+  # Report elisa_type distribution
+  type_counts <- table(df_all$elisa_type)
+  message("ELISA type distribution: ", paste(names(type_counts), "=", type_counts, collapse = ", "))
+
   # Assign unique plate number across all files
   plate_index <- df_all %>%
     distinct(plate_id, plate_num, plate_date, elisa_type) %>%
@@ -527,7 +556,7 @@ parse_indirect_elisa_folder <- function(dir,
   df_all <- df_all %>%
     left_join(plate_index, by = c("plate_id", "plate_num", "plate_date", "elisa_type"), relationship = "many-to-one") %>%
     arrange(plate_number, sample_type, sample)
-  
+
   return(df_all)
 }
 

@@ -106,8 +106,22 @@ col15_letters <- c("L","M","H","I","J","K")  # LiTat 1.5 wells
 #' - Sheet "ECHANTILLONS": Contains sample metadata (LabID, Barcode)
 #'
 #' @param path Path to Excel file
+#' @param neg_od_min Minimum acceptable negative control OD (default: 1)
+#' @param neg_od_max Maximum acceptable negative control OD (default: 3)
+#' @param pos_od_min Minimum acceptable positive control OD (default: 0.3)
+#' @param pos_od_max Maximum acceptable positive control OD (default: 0.7)
+#' @param ctrl_inh_min Minimum acceptable control inhibition % (default: 50)
+#' @param ctrl_inh_max Maximum acceptable control inhibition % (default: 80)
+#' @param ctrl_cv_max Maximum acceptable control CV % (default: 20)
 #' @return Tibble with parsed control and sample data
-parse_ielisa_file <- function(path){
+parse_ielisa_file <- function(path,
+                               neg_od_min = 1,
+                               neg_od_max = 3,
+                               pos_od_min = 0.3,
+                               pos_od_max = 0.7,
+                               ctrl_inh_min = 50,
+                               ctrl_inh_max = 80,
+                               ctrl_cv_max = 20){
 
   # --- Load sheets ----------------------------------------------------------------
   od <- read_excel(path, sheet="450-600 nm", col_names=FALSE)
@@ -191,15 +205,16 @@ parse_ielisa_file <- function(path){
   pct_inh_pos_13_f1 <- 100*(1 - ctrl$OD_L13_pos_mean / ctrl$OD_L13_neg_mean)
   pct_inh_pos_15_f1 <- 100*(1 - ctrl$OD_L15_pos_mean / ctrl$OD_L15_neg_mean)
 
-  neg_ok_13 <- ctrl$OD_L13_neg_mean > 1 & ctrl$OD_L13_neg_mean < 3
-  pos_ok_13 <- ctrl$OD_L13_pos_mean > 0.3 & ctrl$OD_L13_pos_mean < 0.7
-  pos_inh_ok_13 <- pct_inh_pos_13_f1 > 50 & pct_inh_pos_13_f1 < 80
-  cv_ok_13 <- ctrl$OD_L13_neg_cv < 20 & ctrl$OD_L13_pos_cv < 20
+  # Use configurable thresholds for control QC
+  neg_ok_13 <- ctrl$OD_L13_neg_mean > neg_od_min & ctrl$OD_L13_neg_mean < neg_od_max
+  pos_ok_13 <- ctrl$OD_L13_pos_mean > pos_od_min & ctrl$OD_L13_pos_mean < pos_od_max
+  pos_inh_ok_13 <- pct_inh_pos_13_f1 > ctrl_inh_min & pct_inh_pos_13_f1 < ctrl_inh_max
+  cv_ok_13 <- ctrl$OD_L13_neg_cv < ctrl_cv_max & ctrl$OD_L13_pos_cv < ctrl_cv_max
 
-  neg_ok_15 <- ctrl$OD_L15_neg_mean > 1 & ctrl$OD_L15_neg_mean < 3
-  pos_ok_15 <- ctrl$OD_L15_pos_mean > 0.3 & ctrl$OD_L15_pos_mean < 0.7
-  pos_inh_ok_15 <- pct_inh_pos_15_f1 > 50 & pct_inh_pos_15_f1 < 80
-  cv_ok_15 <- ctrl$OD_L15_neg_cv < 20 & ctrl$OD_L15_pos_cv < 20
+  neg_ok_15 <- ctrl$OD_L15_neg_mean > neg_od_min & ctrl$OD_L15_neg_mean < neg_od_max
+  pos_ok_15 <- ctrl$OD_L15_pos_mean > pos_od_min & ctrl$OD_L15_pos_mean < pos_od_max
+  pos_inh_ok_15 <- pct_inh_pos_15_f1 > ctrl_inh_min & pct_inh_pos_15_f1 < ctrl_inh_max
+  cv_ok_15 <- ctrl$OD_L15_neg_cv < ctrl_cv_max & ctrl$OD_L15_pos_cv < ctrl_cv_max
 
   plate_qc <- tibble(
     plate_valid_L13 = neg_ok_13 & pos_ok_13 & pos_inh_ok_13 & cv_ok_13,
@@ -246,8 +261,22 @@ parse_ielisa_file <- function(path){
 #' Parse all iELISA files in a folder
 #'
 #' @param folder Path to folder containing iELISA Excel files
+#' @param neg_od_min Minimum acceptable negative control OD (default: 1)
+#' @param neg_od_max Maximum acceptable negative control OD (default: 3)
+#' @param pos_od_min Minimum acceptable positive control OD (default: 0.3)
+#' @param pos_od_max Maximum acceptable positive control OD (default: 0.7)
+#' @param ctrl_inh_min Minimum acceptable control inhibition % (default: 50)
+#' @param ctrl_inh_max Maximum acceptable control inhibition % (default: 80)
+#' @param ctrl_cv_max Maximum acceptable control CV % (default: 20)
 #' @return Combined tibble with all parsed data
-parse_ielisa_folder <- function(folder){
+parse_ielisa_folder <- function(folder,
+                                 neg_od_min = 1,
+                                 neg_od_max = 3,
+                                 pos_od_min = 0.3,
+                                 pos_od_max = 0.7,
+                                 ctrl_inh_min = 50,
+                                 ctrl_inh_max = 80,
+                                 ctrl_cv_max = 20){
   files <- list.files(folder, pattern="\\.xlsx$", full.names=TRUE)
 
   if (length(files) == 0) {
@@ -261,7 +290,14 @@ parse_ielisa_folder <- function(folder){
   res <- map(files, ~{
     message("Parsing: ", basename(.x))
     tryCatch(
-      parse_ielisa_file(.x),
+      parse_ielisa_file(.x,
+                        neg_od_min = neg_od_min,
+                        neg_od_max = neg_od_max,
+                        pos_od_min = pos_od_min,
+                        pos_od_max = pos_od_max,
+                        ctrl_inh_min = ctrl_inh_min,
+                        ctrl_inh_max = ctrl_inh_max,
+                        ctrl_cv_max = ctrl_cv_max),
       error=function(e){
         warning("Error in ", basename(.x), ": ", e$message)
         NULL
@@ -383,8 +419,23 @@ apply_custom_qc <- function(ielisa_data, threshold = 30, formula = "f2") {
 #'
 #' @param ielisa_dir Path to iELISA data directory (default: "data/ielisa")
 #' @param cache_dir Path to cache directory (default: "data/ielisa_cache")
+#' @param neg_od_min Minimum acceptable negative control OD (default: 1)
+#' @param neg_od_max Maximum acceptable negative control OD (default: 3)
+#' @param pos_od_min Minimum acceptable positive control OD (default: 0.3)
+#' @param pos_od_max Maximum acceptable positive control OD (default: 0.7)
+#' @param ctrl_inh_min Minimum acceptable control inhibition % (default: 50)
+#' @param ctrl_inh_max Maximum acceptable control inhibition % (default: 80)
+#' @param ctrl_cv_max Maximum acceptable control CV % (default: 20)
 #' @return Tibble with all iELISA data
-load_ielisa_data <- function(ielisa_dir = "data/ielisa", cache_dir = "data/ielisa_cache") {
+load_ielisa_data <- function(ielisa_dir = "data/ielisa",
+                              cache_dir = "data/ielisa_cache",
+                              neg_od_min = 1,
+                              neg_od_max = 3,
+                              pos_od_min = 0.3,
+                              pos_od_max = 0.7,
+                              ctrl_inh_min = 50,
+                              ctrl_inh_max = 80,
+                              ctrl_cv_max = 20) {
 
   # Ensure cache directory exists
   if (!dir.exists(cache_dir)) {
@@ -399,9 +450,11 @@ load_ielisa_data <- function(ielisa_dir = "data/ielisa", cache_dir = "data/ielis
     return(tibble())
   }
 
-  # Compute hash of all files
+  # Compute hash of all files + QC parameters
   all_hashes <- sapply(files, digest, file = TRUE, algo = "md5")
-  combined_hash <- digest(paste(all_hashes, collapse = ""), algo = "md5")
+  qc_params <- paste(neg_od_min, neg_od_max, pos_od_min, pos_od_max,
+                     ctrl_inh_min, ctrl_inh_max, ctrl_cv_max, sep = "_")
+  combined_hash <- digest(paste(paste(all_hashes, collapse = ""), qc_params, sep = "_"), algo = "md5")
   cache_file <- file.path(cache_dir, paste0("ielisa_", combined_hash, ".rds"))
 
   # Try to load from cache
@@ -412,7 +465,14 @@ load_ielisa_data <- function(ielisa_dir = "data/ielisa", cache_dir = "data/ielis
 
   # Parse all files
   message("Parsing ", length(files), " iELISA files...")
-  data <- parse_ielisa_folder(ielisa_dir)
+  data <- parse_ielisa_folder(ielisa_dir,
+                               neg_od_min = neg_od_min,
+                               neg_od_max = neg_od_max,
+                               pos_od_min = pos_od_min,
+                               pos_od_max = pos_od_max,
+                               ctrl_inh_min = ctrl_inh_min,
+                               ctrl_inh_max = ctrl_inh_max,
+                               ctrl_cv_max = ctrl_cv_max)
 
   # Add duplicate detection
   if (nrow(data) > 0) {

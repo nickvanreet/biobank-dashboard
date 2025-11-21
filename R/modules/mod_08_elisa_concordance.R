@@ -41,8 +41,13 @@ mod_elisa_concordance_ui <- function(id) {
               class = "btn-outline-primary"
             ),
             checkboxInput(
-              ns("exclude_invalid_qc"),
-              "Exclude invalid QC",
+              ns("exclude_sample_qc_fail"),
+              "Exclude samples failing QC",
+              value = FALSE
+            ),
+            checkboxInput(
+              ns("exclude_plate_qc_fail"),
+              "Exclude plates failing QC",
               value = FALSE
             )
           )
@@ -191,11 +196,18 @@ mod_elisa_concordance_server <- function(id,
       data <- pe_data()
       message("DEBUG: PE data before filters: ", nrow(data))
 
-      # Apply QC filter only
-      if (input$exclude_invalid_qc) {
+      # Apply sample-level QC filter
+      if (input$exclude_sample_qc_fail) {
         data <- data %>%
-          filter(qc_overall == TRUE, plate_valid == TRUE)
-        message("DEBUG: PE data after QC filter: ", nrow(data))
+          filter(qc_overall == TRUE)
+        message("DEBUG: PE data after sample QC filter: ", nrow(data))
+      }
+
+      # Apply plate-level QC filter
+      if (input$exclude_plate_qc_fail) {
+        data <- data %>%
+          filter(plate_valid == TRUE)
+        message("DEBUG: PE data after plate QC filter: ", nrow(data))
       }
 
       # NOTE: Global demographic filters (province, zone, structure, cohort, date_range)
@@ -213,11 +225,18 @@ mod_elisa_concordance_server <- function(id,
       data <- vsg_data()
       message("DEBUG: VSG data before filters: ", nrow(data))
 
-      # Apply QC filter only
-      if (input$exclude_invalid_qc) {
+      # Apply sample-level QC filter
+      if (input$exclude_sample_qc_fail) {
         data <- data %>%
-          filter(qc_overall == TRUE, plate_valid == TRUE)
-        message("DEBUG: VSG data after QC filter: ", nrow(data))
+          filter(qc_overall == TRUE)
+        message("DEBUG: VSG data after sample QC filter: ", nrow(data))
+      }
+
+      # Apply plate-level QC filter
+      if (input$exclude_plate_qc_fail) {
+        data <- data %>%
+          filter(plate_valid == TRUE)
+        message("DEBUG: VSG data after plate QC filter: ", nrow(data))
       }
 
       # NOTE: Global demographic filters (province, zone, structure, cohort, date_range)

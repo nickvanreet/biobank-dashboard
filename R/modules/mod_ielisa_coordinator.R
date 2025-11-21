@@ -23,7 +23,7 @@ mod_ielisa_coordinator_ui <- function(id, label = "iELISA") {
       card_body(
         class = "p-2",
         div(
-          class = "d-flex justify-content-between align-items-center",
+          class = "d-flex justify-content-between align-items-center flex-wrap gap-3",
           div(
             class = "d-flex flex-column justify-content-end",
             checkboxInput(
@@ -34,6 +34,47 @@ mod_ielisa_coordinator_ui <- function(id, label = "iELISA") {
             tags$small(
               class = "text-muted",
               "Removes plates with failed control QC from all analyses"
+            )
+          ),
+          div(
+            class = "d-flex flex-column",
+            tags$label(
+              class = "form-label mb-1",
+              "Positivity Threshold (% inhibition)"
+            ),
+            numericInput(
+              ns("positivity_threshold"),
+              label = NULL,
+              value = 30,
+              min = 0,
+              max = 100,
+              step = 5,
+              width = "120px"
+            ),
+            tags$small(
+              class = "text-muted",
+              "Samples ≥ threshold are positive"
+            )
+          ),
+          div(
+            class = "d-flex flex-column",
+            tags$label(
+              class = "form-label mb-1",
+              "Inhibition Formula"
+            ),
+            radioButtons(
+              ns("formula_choice"),
+              label = NULL,
+              choices = c(
+                "Formula 1 (NEG-based)" = "f1",
+                "Formula 2 (NEG-POS normalized)" = "f2"
+              ),
+              selected = "f2",
+              inline = FALSE
+            ),
+            tags$small(
+              class = "text-muted",
+              "Formula for calculating % inhibition"
             )
           ),
           div(
@@ -124,7 +165,7 @@ mod_ielisa_coordinator_server <- function(id, biobank_df = reactive(NULL), filte
       })
     })
 
-    # Filtered data (apply plate validity filter if needed)
+    # Filtered data (apply plate validity filter and custom QC settings)
     filtered_ielisa_data <- reactive({
       data <- raw_ielisa_data()
 
@@ -137,6 +178,13 @@ mod_ielisa_coordinator_server <- function(id, biobank_df = reactive(NULL), filte
         data <- data %>%
           filter(plate_valid_L13 == TRUE | plate_valid_L15 == TRUE)
       }
+
+      # Apply custom QC settings (threshold and formula)
+      data <- apply_custom_qc(
+        data,
+        threshold = input$positivity_threshold,
+        formula = input$formula_choice
+      )
 
       data
     })

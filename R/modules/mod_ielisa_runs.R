@@ -162,7 +162,7 @@ mod_ielisa_runs_server <- function(id, ielisa_data) {
         0
       }
 
-      # Sample positivity (≥30% inhibition)
+      # Sample positivity (threshold-based)
       positive_L13 <- if ("qc_sample_L13" %in% names(data)) {
         sum(data$qc_sample_L13 == TRUE, na.rm = TRUE)
       } else {
@@ -175,21 +175,47 @@ mod_ielisa_runs_server <- function(id, ielisa_data) {
         0
       }
 
-      # Either antigen positive
+      # Both antigens positive (L13 AND L15)
+      both_positive <- if (all(c("qc_sample_L13", "qc_sample_L15") %in% names(data))) {
+        sum(data$qc_sample_L13 & data$qc_sample_L15, na.rm = TRUE)
+      } else {
+        0
+      }
+
+      # Either antigen positive (L13 OR L15)
       either_positive <- if (all(c("qc_sample_L13", "qc_sample_L15") %in% names(data))) {
         sum(data$qc_sample_L13 | data$qc_sample_L15, na.rm = TRUE)
       } else {
         0
       }
 
-      pct_positive <- if (total_samples > 0) {
+      # Calculate percentages
+      pct_positive_L13 <- if (total_samples > 0) {
+        (positive_L13 / total_samples) * 100
+      } else {
+        0
+      }
+
+      pct_positive_L15 <- if (total_samples > 0) {
+        (positive_L15 / total_samples) * 100
+      } else {
+        0
+      }
+
+      pct_both_positive <- if (total_samples > 0) {
+        (both_positive / total_samples) * 100
+      } else {
+        0
+      }
+
+      pct_either_positive <- if (total_samples > 0) {
         (either_positive / total_samples) * 100
       } else {
         0
       }
 
       layout_column_wrap(
-        width = 1/5,
+        width = 1/6,
         heights_equal = "row",
         value_box(
           title = "Total Files",
@@ -210,16 +236,22 @@ mod_ielisa_runs_server <- function(id, ielisa_data) {
           theme = "info"
         ),
         value_box(
-          title = "Positive Samples",
-          value = paste0(comma(either_positive), " (", sprintf("%.1f%%", pct_positive), ")"),
-          showcase = icon("viruses"),
-          theme = if (pct_positive >= 30) "success" else "secondary"
+          title = "Positive LiTat 1.3",
+          value = paste0(comma(positive_L13), " (", sprintf("%.1f%%", pct_positive_L13), ")"),
+          showcase = icon("flask-vial"),
+          theme = if (pct_positive_L13 >= 30) "success" else "secondary"
         ),
         value_box(
-          title = "LiTat 1.3 Valid",
-          value = paste0(comma(valid_runs_L13), " / ", comma(total_files)),
-          showcase = icon("flask-vial"),
-          theme = if (valid_runs_L13 == total_files) "success" else "warning"
+          title = "Positive LiTat 1.5",
+          value = paste0(comma(positive_L15), " (", sprintf("%.1f%%", pct_positive_L15), ")"),
+          showcase = icon("flask"),
+          theme = if (pct_positive_L15 >= 30) "success" else "secondary"
+        ),
+        value_box(
+          title = "Positive Both",
+          value = paste0(comma(both_positive), " (", sprintf("%.1f%%", pct_both_positive), ")"),
+          showcase = icon("viruses"),
+          theme = if (pct_both_positive >= 20) "success" else "secondary"
         )
       )
     })

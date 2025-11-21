@@ -34,6 +34,7 @@ ui <- do.call(
 
     # Remaining panels
     list(
+      mod_ielisa_coordinator_ui("ielisa"),
       mod_elisa_pe_ui("elisa_pe"),
       mod_elisa_vsg_ui("elisa_vsg"),
       mod_elisa_concordance_ui("concordance"),
@@ -83,6 +84,13 @@ server <- function(input, output, session) {
     biobank_df = data$clean_data,              # ← Biobank data from data manager
     extractions_df = data$filtered_extractions, # ← Extractions data from data manager
     filters = data$filters                      # ← Filters from data manager (FIXED)
+  )
+
+  # iELISA module - Inhibition ELISA for LiTat 1.3 and 1.5
+  ielisa_data <- mod_ielisa_coordinator_server(
+    "ielisa",
+    biobank_df = data$clean_data,
+    filters = data$filters
   )
 
   # ELISA modules - using new coordinator architecture

@@ -338,6 +338,41 @@ add_duplicate_detection <- function(ielisa_data) {
 }
 
 # ============================================================================
+# RECALCULATE SAMPLE QC WITH CUSTOM SETTINGS
+# ============================================================================
+
+#' Recalculate sample QC with custom threshold and formula
+#'
+#' Applies user-selected threshold and formula to determine sample positivity
+#'
+#' @param ielisa_data iELISA data frame with both formulas calculated
+#' @param threshold Positivity threshold (% inhibition, default 30)
+#' @param formula Formula to use for QC ("f1" or "f2", default "f2")
+#' @return Data frame with updated qc_sample_L13 and qc_sample_L15 columns
+apply_custom_qc <- function(ielisa_data, threshold = 30, formula = "f2") {
+  if (nrow(ielisa_data) == 0) {
+    return(ielisa_data)
+  }
+
+  # Select the appropriate columns based on formula choice
+  if (formula == "f1") {
+    ielisa_data <- ielisa_data %>%
+      mutate(
+        qc_sample_L13 = pct_inh_f1_13 >= threshold,
+        qc_sample_L15 = pct_inh_f1_15 >= threshold
+      )
+  } else {  # f2
+    ielisa_data <- ielisa_data %>%
+      mutate(
+        qc_sample_L13 = pct_inh_f2_13 >= threshold,
+        qc_sample_L15 = pct_inh_f2_15 >= threshold
+      )
+  }
+
+  ielisa_data
+}
+
+# ============================================================================
 # CACHED DATA LOADING
 # ============================================================================
 

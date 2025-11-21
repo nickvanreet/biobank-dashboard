@@ -16,14 +16,16 @@ mod_elisa_analysis_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
-    # Section 1: DOD and PP% distributions
-    card(
+    div(
+      class = "elisa-panel",
+      # Section 1: DOD and PP% distributions
+      card(
       card_header("Key Metrics Distributions"),
       card_body(
         layout_columns(
           col_widths = c(6, 6),
-          plotlyOutput(ns("plot_dod_dist")),
-          plotlyOutput(ns("plot_pp_dist"))
+          plotlyOutput(ns("plot_dod_dist"), height = "500px"),
+          plotlyOutput(ns("plot_pp_dist"), height = "500px")
         )
       )
     ),
@@ -37,8 +39,8 @@ mod_elisa_analysis_ui <- function(id) {
       card_body(
         layout_columns(
           col_widths = c(6, 6),
-          plotlyOutput(ns("plot_cv_dist")),
-          plotlyOutput(ns("plot_cv_scatter"))
+          plotlyOutput(ns("plot_cv_dist"), height = "500px"),
+          plotlyOutput(ns("plot_cv_scatter"), height = "500px")
         )
       )
     ),
@@ -52,8 +54,8 @@ mod_elisa_analysis_ui <- function(id) {
       card_body(
         layout_columns(
           col_widths = c(6, 6),
-          plotlyOutput(ns("plot_dod_time")),
-          plotlyOutput(ns("plot_qc_time"))
+          plotlyOutput(ns("plot_dod_time"), height = "500px"),
+          plotlyOutput(ns("plot_qc_time"), height = "500px")
         )
       )
     ),
@@ -67,10 +69,11 @@ mod_elisa_analysis_ui <- function(id) {
       card_body(
         layout_columns(
           col_widths = c(6, 6),
-          plotlyOutput(ns("plot_by_province")),
-          plotlyOutput(ns("plot_by_health_zone"))
+          plotlyOutput(ns("plot_by_province"), height = "500px"),
+          plotlyOutput(ns("plot_by_health_zone"), height = "500px")
         )
       )
+    )
     )
   )
 }

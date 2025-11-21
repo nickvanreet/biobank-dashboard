@@ -35,6 +35,64 @@ normalize_id <- function(x) {
 }
 
 # ============================================================================
+# SCREENING NUMBER CALCULATION
+# ============================================================================
+
+#' Add screening numbers to ELISA data
+#' Ranks tests by date for each unique sample (identified by barcode or numero_labo)
+#' @param elisa_data Data frame with ELISA results
+#' @return Data frame with screening_num and is_first_screening columns added
+add_screening_numbers <- function(elisa_data) {
+  if (nrow(elisa_data) == 0) {
+    return(elisa_data %>%
+      mutate(
+        screening_num = integer(),
+        is_first_screening = logical()
+      ))
+  }
+
+  # Only process samples (not controls)
+  samples <- elisa_data %>%
+    filter(sample_type == "sample")
+
+  controls <- elisa_data %>%
+    filter(sample_type != "sample")
+
+  # For samples, add screening numbers
+  if (nrow(samples) > 0) {
+    samples <- samples %>%
+      mutate(
+        # Create sample identifier (prefer barcode, fallback to numero_labo)
+        sample_id = coalesce(
+          .norm_key(code_barres_kps, "barcode"),
+          .norm_key(numero_labo, "labid")
+        )
+      ) %>%
+      group_by(sample_id, elisa_type) %>%
+      arrange(plate_date, .by_group = TRUE) %>%
+      mutate(
+        screening_num = dense_rank(plate_date),
+        is_first_screening = (screening_num == 1)
+      ) %>%
+      ungroup() %>%
+      select(-sample_id)
+  }
+
+  # For controls, set NA
+  if (nrow(controls) > 0) {
+    controls <- controls %>%
+      mutate(
+        screening_num = NA_integer_,
+        is_first_screening = NA
+      )
+  }
+
+  # Recombine
+  bind_rows(samples, controls) %>%
+    arrange(plate_date, plate_id, sample)
+}
+
+# ============================================================================
 # FLEXIBLE COLUMN MATCHING (mimic MIC pattern)
 # ============================================================================
 
@@ -579,6 +637,10 @@ load_elisa_data <- function(
       parsed[[col_name]] <- biobank_cols[[col_name]]
     }
   }
+
+  # Add screening numbers for each sample (rank by plate_date)
+  message("Calculating screening numbers...")
+  parsed <- add_screening_numbers(parsed)
 
   # Cache results with version
   .elisa_cache_env$data <- list(data = parsed)

@@ -8,7 +8,7 @@ mod_elisa_concordance_table_ui <- function(id) {
   tagList(
     # Summary and export buttons
     layout_columns(
-      col_widths = c(6, 6),
+      col_widths = c(4, 4, 4),
       card(
         card_body(
           p(class = "mb-1",
@@ -16,6 +16,22 @@ mod_elisa_concordance_table_ui <- function(id) {
             textOutput(ns("n_samples"), inline = TRUE)),
           p(class = "mb-0 small text-muted",
             "Use the filters below each column to search and filter the table")
+        )
+      ),
+      card(
+        card_body(
+          p(class = "mb-2 small", strong("Screening Filter:")),
+          radioButtons(
+            ns("screening_filter"),
+            label = NULL,
+            choices = c(
+              "All tests" = "all",
+              "First screenings only" = "first",
+              "Additional screenings only" = "additional"
+            ),
+            selected = "all",
+            inline = FALSE
+          )
         )
       ),
       card(
@@ -52,7 +68,7 @@ mod_elisa_concordance_table_ui <- function(id) {
       card_body(
         class = "small",
         layout_columns(
-          col_widths = c(4, 4, 4),
+          col_widths = c(3, 3, 3, 3),
           div(
             h6("Concordance Status:"),
             tags$ul(
@@ -71,6 +87,21 @@ mod_elisa_concordance_table_ui <- function(id) {
               tags$li(
                 span(class = "badge bg-warning", "PE- / VSG+"),
                 " - PE negative, VSG positive"
+              )
+            )
+          ),
+          div(
+            h6("Screening Numbers:"),
+            tags$ul(
+              tags$li(
+                span(style = "color: #0066cc; font-weight: bold;", "#1 (1st)"),
+                " - First screening"
+              ),
+              tags$li(
+                "#2, #3, ... - Additional screenings"
+              ),
+              tags$li(
+                "Same sample tested multiple times"
               )
             )
           ),
@@ -110,9 +141,25 @@ mod_elisa_concordance_table_ui <- function(id) {
 mod_elisa_concordance_table_server <- function(id, concordance_results) {
   moduleServer(id, function(input, output, session) {
 
-    # Classified data
+    # Classified data with screening filter applied
     classified_data <- reactive({
-      concordance_results()$data
+      data <- concordance_results()$data
+
+      # Apply screening filter
+      filter_type <- input$screening_filter
+
+      if (filter_type == "first") {
+        # First screenings only: both PE and VSG must be first screenings
+        data <- data %>%
+          filter(pe_is_first_screening & vsg_is_first_screening)
+      } else if (filter_type == "additional") {
+        # Additional screenings only: at least one must be additional
+        data <- data %>%
+          filter(!pe_is_first_screening | !vsg_is_first_screening)
+      }
+      # "all" shows everything (no filter)
+
+      data
     })
 
     # Number of samples
@@ -142,6 +189,18 @@ mod_elisa_concordance_table_server <- function(id, concordance_results) {
             " / ",
             ifelse(!is.na(vsg_numero), vsg_numero, "-")
           ),
+
+          # Format screening numbers
+          pe_screening = ifelse(!is.na(pe_screening_num),
+                               ifelse(pe_is_first_screening,
+                                      paste0("#", pe_screening_num, " (1st)"),
+                                      paste0("#", pe_screening_num)),
+                               "-"),
+          vsg_screening = ifelse(!is.na(vsg_screening_num),
+                                ifelse(vsg_is_first_screening,
+                                       paste0("#", vsg_screening_num, " (1st)"),
+                                       paste0("#", vsg_screening_num)),
+                                "-"),
 
           # Format dates - handle NA values safely
           pe_date = ifelse(!is.na(pe_plate_date), as.character(pe_plate_date), "-"),
@@ -174,11 +233,13 @@ mod_elisa_concordance_table_server <- function(id, concordance_results) {
           lab_number,
           match_method,
           concordance_type,
+          pe_screening,
           pe_date,
           pe_dod_fmt,
           pe_pp_fmt,
           pe_result,
           pe_qc,
+          vsg_screening,
           vsg_date,
           vsg_dod_fmt,
           vsg_pp_fmt,
@@ -214,11 +275,13 @@ mod_elisa_concordance_table_server <- function(id, concordance_results) {
           "Lab Number (PE / VSG)" = "lab_number",
           "Match Method" = "match_method",
           "Concordance" = "concordance_type",
+          "PE Screening" = "pe_screening",
           "PE Date" = "pe_date",
           "PE DOD" = "pe_dod_fmt",
           "PE PP%" = "pe_pp_fmt",
           "PE Result" = "pe_result",
           "PE QC" = "pe_qc",
+          "VSG Screening" = "vsg_screening",
           "VSG Date" = "vsg_date",
           "VSG DOD" = "vsg_dod_fmt",
           "VSG PP%" = "vsg_pp_fmt",
@@ -288,6 +351,30 @@ mod_elisa_concordance_table_server <- function(id, concordance_results) {
             c("#d4edda", "#f8d7da")
           ),
           textAlign = 'center'
+        ) %>%
+        # Highlight first screenings in PE
+        DT::formatStyle(
+          'pe_screening',
+          fontWeight = DT::styleEqual(
+            grep("1st", table_data()$pe_screening, value = TRUE),
+            rep('bold', sum(grepl("1st", table_data()$pe_screening)))
+          ),
+          color = DT::styleEqual(
+            grep("1st", table_data()$pe_screening, value = TRUE),
+            rep('#0066cc', sum(grepl("1st", table_data()$pe_screening)))
+          )
+        ) %>%
+        # Highlight first screenings in VSG
+        DT::formatStyle(
+          'vsg_screening',
+          fontWeight = DT::styleEqual(
+            grep("1st", table_data()$vsg_screening, value = TRUE),
+            rep('bold', sum(grepl("1st", table_data()$vsg_screening)))
+          ),
+          color = DT::styleEqual(
+            grep("1st", table_data()$vsg_screening, value = TRUE),
+            rep('#0066cc', sum(grepl("1st", table_data()$vsg_screening)))
+          )
         )
     })
 

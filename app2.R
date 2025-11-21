@@ -36,6 +36,7 @@ ui <- do.call(
     list(
       mod_elisa_pe_ui("elisa_pe"),
       mod_elisa_vsg_ui("elisa_vsg"),
+      mod_elisa_concordance_ui("concordance"),
       mod_drs_rnasep_ui("drs_rnasep")
     )
   )
@@ -92,6 +93,13 @@ server <- function(input, output, session) {
   )
   mod_elisa_vsg_server(
     "elisa_vsg",
+    biobank_df = data$clean_data,
+    filters = data$filters
+  )
+
+  # ELISA Concordance module (PE vs VSG comparison)
+  mod_elisa_concordance_server(
+    "concordance",
     biobank_df = data$clean_data,
     filters = data$filters
   )

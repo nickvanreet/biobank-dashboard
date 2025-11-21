@@ -99,7 +99,8 @@ match_elisa_samples <- function(pe_data, vsg_data) {
     inner_join(
       vsg_samples %>% filter(!is.na(barcode_norm)),
       by = "barcode_norm",
-      suffix = c("_pe", "_vsg")
+      suffix = c("_pe", "_vsg"),
+      relationship = "many-to-many"  # Same sample may be tested multiple times
     ) %>%
     mutate(match_method = "barcode")
 
@@ -116,7 +117,8 @@ match_elisa_samples <- function(pe_data, vsg_data) {
     inner_join(
       unmatched_vsg,
       by = "numero_norm",
-      suffix = c("_pe", "_vsg")
+      suffix = c("_pe", "_vsg"),
+      relationship = "many-to-many"  # Same sample may be tested multiple times
     ) %>%
     mutate(match_method = "numero_labo")
 

@@ -66,14 +66,27 @@ mod_elisa_samples_server <- function(id, elisa_data) {
       }
       qc_pct <- if (n_total > 0) round(100 * n_qc_pass / n_total, 1) else 0
 
+      n_positive <- if ("sample_positive" %in% names(data)) {
+        sum(data$sample_positive, na.rm = TRUE)
+      } else {
+        0
+      }
+      pos_pct <- if (n_total > 0) round(100 * n_positive / n_total, 1) else 0
+
       layout_column_wrap(
-        width = 1/3,
+        width = 1/4,
         heights_equal = "row",
         value_box(
           title = "Samples",
           value = scales::comma(n_total),
           showcase = icon("vial"),
           theme = "secondary"
+        ),
+        value_box(
+          title = "Positive Samples",
+          value = sprintf("%d (%.1f%%)", n_positive, pos_pct),
+          showcase = icon("plus-circle"),
+          theme = "primary"
         ),
         value_box(
           title = "Biobank Match",
@@ -108,7 +121,7 @@ mod_elisa_samples_server <- function(id, elisa_data) {
       # Select columns to display (only those that exist)
       available_cols <- c(
         "plate_number", "plate_date", "sample", "numero_labo", "code_barres_kps",
-        "DOD", "PP_percent", "cv_Ag_plus", "cv_Ag0", "qc_overall",
+        "DOD", "PP_percent", "sample_positive", "cv_Ag_plus", "cv_Ag0", "qc_overall",
         "Province", "HealthZone", "Structure", "Sex", "AgeGroup", "BiobankMatched"
       )
 
@@ -120,6 +133,7 @@ mod_elisa_samples_server <- function(id, elisa_data) {
           plate_date = if ("plate_date" %in% names(.)) as.Date(plate_date) else NA,
           DOD = if ("DOD" %in% names(.)) round(DOD, 3) else NA,
           PP_percent = if ("PP_percent" %in% names(.)) round(PP_percent, 1) else NA,
+          sample_positive = if ("sample_positive" %in% names(.)) ifelse(sample_positive, "Positive", "Negative") else NA,
           cv_Ag_plus = if ("cv_Ag_plus" %in% names(.)) round(cv_Ag_plus, 1) else NA,
           cv_Ag0 = if ("cv_Ag0" %in% names(.)) round(cv_Ag0, 1) else NA,
           qc_overall = if ("qc_overall" %in% names(.)) ifelse(qc_overall, "Pass", "Fail") else NA
@@ -156,6 +170,11 @@ mod_elisa_samples_server <- function(id, elisa_data) {
         formatStyle(
           columns = which(names(display_data) == "Biobankmatched"),
           backgroundColor = styleEqual(c(TRUE, FALSE), c('#d4edda', '#f8d7da'))
+        ) %>%
+        formatStyle(
+          columns = which(names(display_data) == "Sample Positive"),
+          backgroundColor = styleEqual(c("Positive", "Negative"), c('#cfe2ff', '#f8f9fa')),
+          fontWeight = styleEqual(c("Positive", "Negative"), c('bold', 'normal'))
         )
     })
   })

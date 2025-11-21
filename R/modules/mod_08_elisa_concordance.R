@@ -199,31 +199,36 @@ mod_elisa_concordance_server <- function(id,
       }
 
       # Apply global filters if provided
+      # NOTE: We DON'T apply date filters here because plate_date (ELISA plate run date)
+      # is different from SampleDate (biobank sample collection date)
       if (!is.null(filters())) {
         f <- filters()
+        message("DEBUG: PE Filters object: province=", f$province,
+                ", health_zone=", f$health_zone,
+                ", structure=", f$structure)
 
-        # Province filter
+        # Province filter (only for biobank-matched samples)
         if (!is.null(f$province) && length(f$province) > 0 && f$province != "All") {
-          data <- data %>% filter(Province %in% f$province)
+          before <- nrow(data)
+          data <- data %>% filter(is.na(Province) | Province %in% f$province)
+          message("DEBUG: PE Province filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
 
-        # Health Zone filter
+        # Health Zone filter (only for biobank-matched samples)
         if (!is.null(f$health_zone) && length(f$health_zone) > 0 && f$health_zone != "All") {
-          data <- data %>% filter(HealthZone %in% f$health_zone)
+          before <- nrow(data)
+          data <- data %>% filter(is.na(HealthZone) | HealthZone %in% f$health_zone)
+          message("DEBUG: PE HealthZone filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
 
-        # Structure filter
+        # Structure filter (only for biobank-matched samples)
         if (!is.null(f$structure) && length(f$structure) > 0 && f$structure != "All") {
-          data <- data %>% filter(Structure %in% f$structure)
+          before <- nrow(data)
+          data <- data %>% filter(is.na(Structure) | Structure %in% f$structure)
+          message("DEBUG: PE Structure filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
 
-        # Date range filter
-        if (!is.null(f$date_from) && !is.na(f$date_from)) {
-          data <- data %>% filter(plate_date >= f$date_from)
-        }
-        if (!is.null(f$date_to) && !is.na(f$date_to)) {
-          data <- data %>% filter(plate_date <= f$date_to)
-        }
+        # NOTE: Date filters intentionally NOT applied - plate_date != SampleDate
       }
 
       message("DEBUG: PE data after all filters: ", nrow(data))
@@ -244,31 +249,33 @@ mod_elisa_concordance_server <- function(id,
       }
 
       # Apply global filters if provided
+      # NOTE: We DON'T apply date filters here because plate_date (ELISA plate run date)
+      # is different from SampleDate (biobank sample collection date)
       if (!is.null(filters())) {
         f <- filters()
 
-        # Province filter
+        # Province filter (only for biobank-matched samples)
         if (!is.null(f$province) && length(f$province) > 0 && f$province != "All") {
-          data <- data %>% filter(Province %in% f$province)
+          before <- nrow(data)
+          data <- data %>% filter(is.na(Province) | Province %in% f$province)
+          message("DEBUG: VSG Province filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
 
-        # Health Zone filter
+        # Health Zone filter (only for biobank-matched samples)
         if (!is.null(f$health_zone) && length(f$health_zone) > 0 && f$health_zone != "All") {
-          data <- data %>% filter(HealthZone %in% f$health_zone)
+          before <- nrow(data)
+          data <- data %>% filter(is.na(HealthZone) | HealthZone %in% f$health_zone)
+          message("DEBUG: VSG HealthZone filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
 
-        # Structure filter
+        # Structure filter (only for biobank-matched samples)
         if (!is.null(f$structure) && length(f$structure) > 0 && f$structure != "All") {
-          data <- data %>% filter(Structure %in% f$structure)
+          before <- nrow(data)
+          data <- data %>% filter(is.na(Structure) | Structure %in% f$structure)
+          message("DEBUG: VSG Structure filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
 
-        # Date range filter
-        if (!is.null(f$date_from) && !is.na(f$date_from)) {
-          data <- data %>% filter(plate_date >= f$date_from)
-        }
-        if (!is.null(f$date_to) && !is.na(f$date_to)) {
-          data <- data %>% filter(plate_date <= f$date_to)
-        }
+        # NOTE: Date filters intentionally NOT applied - plate_date != SampleDate
       }
 
       message("DEBUG: VSG data after all filters: ", nrow(data))

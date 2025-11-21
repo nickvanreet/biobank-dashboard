@@ -262,10 +262,11 @@ ensure_elisa_columns <- function(df) {
     plate_date = as.Date(NA),
     elisa_type = NA_character_,  # CRITICAL: Required for filtering by PE/VSG
     sample_type = NA_character_,
-    sample = NA_character_,
+    sample = NA_character_,      # NOTE: This is PLATE POSITION, not sample ID
     sample_code = NA_character_,
-    numero_labo = NA_character_,
-    code_barres_kps = NA_character_
+    numero_labo = NA_character_, # Actual sample ID (lab numero)
+    code_barres_kps = NA_character_, # Actual sample ID (barcode)
+    well_id = NA_character_      # Well position (A1, B2, etc.)
   )
 
   for (col_name in names(required_cols)) {
@@ -285,7 +286,7 @@ ensure_elisa_columns <- function(df) {
 .elisa_cache_env <- new.env(parent = emptyenv())
 
 # Cache version - increment this when data structure changes to invalidate old caches
-.elisa_cache_version <- "v9_force_parser_reload_and_fix_elisa_type"
+.elisa_cache_version <- "v10_fix_sample_vs_plate_position_and_preserve_well_id"
 
 #' Ensure ELISA parser is loaded
 ensure_elisa_parser <- function() {

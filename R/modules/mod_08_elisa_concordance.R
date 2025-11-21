@@ -198,41 +198,10 @@ mod_elisa_concordance_server <- function(id,
         message("DEBUG: PE data after QC filter: ", nrow(data))
       }
 
-      # Apply global filters if provided
-      # NOTE: We DON'T apply date filters here because plate_date (ELISA plate run date)
-      # is different from SampleDate (biobank sample collection date)
-      if (!is.null(filters())) {
-        f <- filters()
-        message("DEBUG: PE Filters object: province=", f$province,
-                ", health_zone=", f$health_zone,
-                ", structure=", f$structure)
-
-        # Province filter (only for biobank-matched samples)
-        if (!is.null(f$province) && length(f$province) > 0 &&
-            !tolower(f$province) %in% c("all", "")) {
-          before <- nrow(data)
-          data <- data %>% filter(is.na(Province) | Province %in% f$province)
-          message("DEBUG: PE Province filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
-        }
-
-        # Health Zone filter (only for biobank-matched samples)
-        if (!is.null(f$health_zone) && length(f$health_zone) > 0 &&
-            !tolower(f$health_zone) %in% c("all", "")) {
-          before <- nrow(data)
-          data <- data %>% filter(is.na(HealthZone) | HealthZone %in% f$health_zone)
-          message("DEBUG: PE HealthZone filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
-        }
-
-        # Structure filter (only for biobank-matched samples)
-        if (!is.null(f$structure) && length(f$structure) > 0 &&
-            !tolower(f$structure) %in% c("all", "")) {
-          before <- nrow(data)
-          data <- data %>% filter(is.na(Structure) | Structure %in% f$structure)
-          message("DEBUG: PE Structure filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
-        }
-
-        # NOTE: Date filters intentionally NOT applied - plate_date != SampleDate
-      }
+      # NOTE: Concordance module does NOT apply any global filters
+      # The concordance analysis compares ELISA test results (PE vs VSG) regardless
+      # of patient demographics. Filtering should be done in individual ELISA modules.
+      # Users can filter the concordance table after viewing all matches.
 
       message("DEBUG: PE data after all filters: ", nrow(data))
       message("DEBUG: PE samples (sample_type='sample'): ", sum(data$sample_type == "sample", na.rm = TRUE))
@@ -251,38 +220,10 @@ mod_elisa_concordance_server <- function(id,
         message("DEBUG: VSG data after QC filter: ", nrow(data))
       }
 
-      # Apply global filters if provided
-      # NOTE: We DON'T apply date filters here because plate_date (ELISA plate run date)
-      # is different from SampleDate (biobank sample collection date)
-      if (!is.null(filters())) {
-        f <- filters()
-
-        # Province filter (only for biobank-matched samples)
-        if (!is.null(f$province) && length(f$province) > 0 &&
-            !tolower(f$province) %in% c("all", "")) {
-          before <- nrow(data)
-          data <- data %>% filter(is.na(Province) | Province %in% f$province)
-          message("DEBUG: VSG Province filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
-        }
-
-        # Health Zone filter (only for biobank-matched samples)
-        if (!is.null(f$health_zone) && length(f$health_zone) > 0 &&
-            !tolower(f$health_zone) %in% c("all", "")) {
-          before <- nrow(data)
-          data <- data %>% filter(is.na(HealthZone) | HealthZone %in% f$health_zone)
-          message("DEBUG: VSG HealthZone filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
-        }
-
-        # Structure filter (only for biobank-matched samples)
-        if (!is.null(f$structure) && length(f$structure) > 0 &&
-            !tolower(f$structure) %in% c("all", "")) {
-          before <- nrow(data)
-          data <- data %>% filter(is.na(Structure) | Structure %in% f$structure)
-          message("DEBUG: VSG Structure filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
-        }
-
-        # NOTE: Date filters intentionally NOT applied - plate_date != SampleDate
-      }
+      # NOTE: Concordance module does NOT apply any global filters
+      # The concordance analysis compares ELISA test results (PE vs VSG) regardless
+      # of patient demographics. Filtering should be done in individual ELISA modules.
+      # Users can filter the concordance table after viewing all matches.
 
       message("DEBUG: VSG data after all filters: ", nrow(data))
       message("DEBUG: VSG samples (sample_type='sample'): ", sum(data$sample_type == "sample", na.rm = TRUE))

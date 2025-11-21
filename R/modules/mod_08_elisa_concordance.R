@@ -161,31 +161,41 @@ mod_elisa_concordance_server <- function(id,
 
     # Load all ELISA data
     all_elisa_data <- reactive({
-      load_elisa_data(
+      data <- load_elisa_data(
         dirs = c("data/elisa_pe", "data/elisa_vsg"),
         biobank_df = biobank_df()
       )
+      message("DEBUG: Loaded ", nrow(data), " total ELISA records")
+      message("DEBUG: elisa_type values: ", paste(unique(data$elisa_type), collapse = ", "))
+      message("DEBUG: sample_type values: ", paste(unique(data$sample_type), collapse = ", "))
+      data
     })
 
     # Separate PE and VSG data
     pe_data <- reactive({
-      all_elisa_data() %>%
+      data <- all_elisa_data() %>%
         filter(elisa_type == "ELISA_pe")
+      message("DEBUG: PE records after filter: ", nrow(data))
+      data
     })
 
     vsg_data <- reactive({
-      all_elisa_data() %>%
+      data <- all_elisa_data() %>%
         filter(elisa_type == "ELISA_vsg")
+      message("DEBUG: VSG records after filter: ", nrow(data))
+      data
     })
 
     # Apply global filters to PE data
     pe_filtered <- reactive({
       data <- pe_data()
+      message("DEBUG: PE data before filters: ", nrow(data))
 
       # Apply QC filter
       if (input$exclude_invalid_qc) {
         data <- data %>%
           filter(qc_overall == TRUE, plate_valid == TRUE)
+        message("DEBUG: PE data after QC filter: ", nrow(data))
       }
 
       # Apply global filters if provided
@@ -216,17 +226,21 @@ mod_elisa_concordance_server <- function(id,
         }
       }
 
+      message("DEBUG: PE data after all filters: ", nrow(data))
+      message("DEBUG: PE samples (sample_type='sample'): ", sum(data$sample_type == "sample", na.rm = TRUE))
       data
     })
 
     # Apply global filters to VSG data
     vsg_filtered <- reactive({
       data <- vsg_data()
+      message("DEBUG: VSG data before filters: ", nrow(data))
 
       # Apply QC filter
       if (input$exclude_invalid_qc) {
         data <- data %>%
           filter(qc_overall == TRUE, plate_valid == TRUE)
+        message("DEBUG: VSG data after QC filter: ", nrow(data))
       }
 
       # Apply global filters if provided
@@ -257,12 +271,20 @@ mod_elisa_concordance_server <- function(id,
         }
       }
 
+      message("DEBUG: VSG data after all filters: ", nrow(data))
+      message("DEBUG: VSG samples (sample_type='sample'): ", sum(data$sample_type == "sample", na.rm = TRUE))
       data
     })
 
     # Match samples between PE and VSG
     matched_data <- reactive({
-      match_elisa_samples(pe_filtered(), vsg_filtered())
+      pe <- pe_filtered()
+      vsg <- vsg_filtered()
+      message("DEBUG: Matching - PE filtered: ", nrow(pe), ", VSG filtered: ", nrow(vsg))
+
+      matched <- match_elisa_samples(pe, vsg)
+      message("DEBUG: Matched samples: ", nrow(matched))
+      matched
     })
 
     # Calculate concordance with current thresholds

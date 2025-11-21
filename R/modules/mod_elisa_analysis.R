@@ -63,7 +63,18 @@ mod_elisa_analysis_ui <- function(id) {
     # Spacer
     tags$div(style = "height: 16px;"),
 
-    # Section 4: Biobank stratification
+    # Section 4: Threshold Performance Analysis
+    card(
+      card_header("Threshold Performance Analysis"),
+      card_body(
+        plotlyOutput(ns("plot_dod_threshold"), height = "500px")
+      )
+    ),
+
+    # Spacer
+    tags$div(style = "height: 16px;"),
+
+    # Section 5: Biobank stratification
     card(
       card_header("Biobank Stratification"),
       card_body(
@@ -276,7 +287,65 @@ mod_elisa_analysis_server <- function(id, elisa_data, samples_data, controls_dat
     })
 
     # ========================================================================
-    # PLOT 7: PP% by Province
+    # PLOT 7: DOD Threshold Performance
+    # ========================================================================
+
+    output$plot_dod_threshold <- renderPlotly({
+      data <- samples_data()
+      if (!nrow(data) || !"DOD" %in% names(data)) {
+        return(plotly_empty(plot_bgcolor = "#f8f9fa") %>%
+          layout(title = list(text = "No data available", x = 0.5)))
+      }
+
+      data_filtered <- data %>% filter(!is.na(DOD))
+
+      if (!nrow(data_filtered)) {
+        return(plotly_empty(plot_bgcolor = "#f8f9fa") %>%
+          layout(title = list(text = "No DOD data available", x = 0.5)))
+      }
+
+      # Calculate positivity rate across a range of DOD thresholds
+      thresholds <- seq(0, 1.5, by = 0.02)
+
+      threshold_data <- tibble(threshold = thresholds) %>%
+        mutate(
+          n_positive = map_dbl(threshold, ~sum(data_filtered$DOD >= .x)),
+          positivity_rate = n_positive / nrow(data_filtered) * 100
+        )
+
+      # Create plot
+      p <- plot_ly(threshold_data, x = ~threshold, y = ~positivity_rate, type = "scatter", mode = "lines+markers",
+                   line = list(color = "#4F46E5", width = 2),
+                   marker = list(color = "#4F46E5", size = 4),
+                   hovertemplate = paste(
+                     "<b>DOD Threshold:</b> %{x:.2f}<br>",
+                     "<b>Positivity Rate:</b> %{y:.1f}%<br>",
+                     "<extra></extra>"
+                   )) %>%
+        add_trace(
+          x = c(0.3, 0.3),
+          y = c(0, max(threshold_data$positivity_rate)),
+          type = "scatter",
+          mode = "lines",
+          line = list(color = "#EF4444", width = 2, dash = "dash"),
+          name = "Default (0.3)",
+          showlegend = TRUE,
+          hoverinfo = "skip"
+        ) %>%
+        layout(
+          title = "Positivity Rate vs DOD Threshold",
+          xaxis = list(title = "DOD Threshold"),
+          yaxis = list(title = "Positivity Rate (%)", range = c(0, 100)),
+          hovermode = "closest",
+          showlegend = TRUE,
+          legend = list(x = 0.8, y = 0.95)
+        )
+
+      p
+    })
+
+    # ========================================================================
+    # PLOT 8: PP% by Province
     # ========================================================================
 
     output$plot_by_province <- renderPlotly({
@@ -309,7 +378,7 @@ mod_elisa_analysis_server <- function(id, elisa_data, samples_data, controls_dat
     })
 
     # ========================================================================
-    # PLOT 8: PP% by Health Zone
+    # PLOT 9: PP% by Health Zone
     # ========================================================================
 
     output$plot_by_health_zone <- renderPlotly({

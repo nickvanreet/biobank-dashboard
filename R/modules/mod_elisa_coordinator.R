@@ -321,6 +321,13 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
           }
         }
 
+        # Apply cohort filter
+        if (!is.null(flt$cohort) && flt$cohort != "all" && flt$cohort != "") {
+          if ("Cohort" %in% names(data)) {
+            data <- data %>% filter(Cohort == !!flt$cohort)
+          }
+        }
+
         # Apply date range filter
         if (!is.null(flt$date_range) && length(flt$date_range) == 2) {
           if ("plate_date" %in% names(data)) {

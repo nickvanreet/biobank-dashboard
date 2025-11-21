@@ -16,40 +16,6 @@ mod_elisa_samples_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
-    # Filters
-    card(
-      card_header("Filters"),
-      card_body(
-        layout_columns(
-          col_widths = c(3, 3, 3, 3),
-          dateRangeInput(
-            ns("filter_date"),
-            "Plate Date Range",
-            start = NULL,
-            end = NULL
-          ),
-          selectInput(
-            ns("filter_province"),
-            "Province",
-            choices = c("All" = "all")
-          ),
-          selectInput(
-            ns("filter_health_zone"),
-            "Health Zone",
-            choices = c("All" = "all")
-          ),
-          selectInput(
-            ns("filter_qc"),
-            "QC Status",
-            choices = c("All" = "all", "Pass" = "pass", "Fail" = "fail")
-          )
-        )
-      )
-    ),
-
-    # Spacer
-    tags$div(style = "height: 16px;"),
-
     # Summary info
     uiOutput(ns("summary_info")),
 
@@ -74,102 +40,13 @@ mod_elisa_samples_server <- function(id, elisa_data) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # ========================================================================
-    # UPDATE FILTER CHOICES DYNAMICALLY
-    # ========================================================================
-
-    observe({
-      data <- elisa_data()
-
-      # Update date range
-      if ("plate_date" %in% names(data) && nrow(data) > 0) {
-        dates <- as.Date(data$plate_date)
-        dates <- dates[!is.na(dates)]
-        if (length(dates) > 0) {
-          updateDateRangeInput(
-            session,
-            "filter_date",
-            start = min(dates),
-            end = max(dates)
-          )
-        }
-      }
-
-      # Update province choices
-      if ("Province" %in% names(data)) {
-        provinces <- sort(unique(na.omit(data$Province)))
-        updateSelectInput(
-          session,
-          "filter_province",
-          choices = c("All" = "all", setNames(provinces, provinces))
-        )
-      }
-
-      # Update health zone choices
-      if ("HealthZone" %in% names(data)) {
-        zones <- sort(unique(na.omit(data$HealthZone)))
-        updateSelectInput(
-          session,
-          "filter_health_zone",
-          choices = c("All" = "all", setNames(zones, zones))
-        )
-      }
-    })
-
-    # ========================================================================
-    # APPLY LOCAL FILTERS
-    # ========================================================================
-
-    samples_filtered <- reactive({
-      data <- elisa_data()
-      if (!nrow(data)) return(data)
-
-      # Date filter
-      if ("plate_date" %in% names(data)) {
-        if (!is.null(input$filter_date) && length(input$filter_date) == 2) {
-          if (!is.na(input$filter_date[1])) {
-            data <- data %>% filter(as.Date(plate_date) >= input$filter_date[1])
-          }
-          if (!is.na(input$filter_date[2])) {
-            data <- data %>% filter(as.Date(plate_date) <= input$filter_date[2])
-          }
-        }
-      }
-
-      # Province filter
-      if ("Province" %in% names(data) &&
-          !is.null(input$filter_province) &&
-          input$filter_province != "all") {
-        data <- data %>% filter(Province == input$filter_province)
-      }
-
-      # Health zone filter
-      if ("HealthZone" %in% names(data) &&
-          !is.null(input$filter_health_zone) &&
-          input$filter_health_zone != "all") {
-        data <- data %>% filter(HealthZone == input$filter_health_zone)
-      }
-
-      # QC filter
-      if ("qc_overall" %in% names(data) &&
-          !is.null(input$filter_qc) &&
-          input$filter_qc != "all") {
-        if (input$filter_qc == "pass") {
-          data <- data %>% filter(qc_overall == TRUE)
-        } else {
-          data <- data %>% filter(qc_overall == FALSE | is.na(qc_overall))
-        }
-      }
-
-      data
-    })
 
     # ========================================================================
     # SUMMARY INFO
     # ========================================================================
 
     output$summary_info <- renderUI({
-      data <- samples_filtered()
+      data <- elisa_data()
 
       n_total <- nrow(data)
       n_matched <- if ("BiobankMatched" %in% names(data)) {
@@ -190,9 +67,9 @@ mod_elisa_samples_server <- function(id, elisa_data) {
         width = 1/3,
         heights_equal = "row",
         value_box(
-          title = "Samples (filtered)",
+          title = "Samples",
           value = scales::comma(n_total),
-          showcase = icon("filter"),
+          showcase = icon("vial"),
           theme = "secondary"
         ),
         value_box(
@@ -215,7 +92,7 @@ mod_elisa_samples_server <- function(id, elisa_data) {
     # ========================================================================
 
     output$samples_table <- renderDT({
-      data <- samples_filtered()
+      data <- elisa_data()
 
       if (!nrow(data)) {
         return(datatable(

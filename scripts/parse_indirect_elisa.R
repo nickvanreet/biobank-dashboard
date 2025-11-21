@@ -403,17 +403,13 @@ extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
     qc_Ag0 <- if(is.na(cv_Ag0)) NA else cv_Ag0 <= cv_max
     qc_overall <- if(is.na(qc_Ag_plus) || is.na(qc_Ag0)) NA else (qc_Ag_plus & qc_Ag0)
 
+    # NOTE: Do NOT include grouping variables (plate_id, plate_num, sample_type,
+    # sample, sample_code, numero_labo, code_barres_kps) here.
+    # group_modify() automatically adds them back.
     tibble(
-      plate_id = group_keys$plate_id,
-      plate_num = group_keys$plate_num,
       plate_date = plate_date,
       elisa_type = elisa_type,
       source_path = path,  # Track source file path for inference
-      sample_type = group_keys$sample_type,
-      sample = group_keys$sample,
-      sample_code = group_keys$sample_code,
-      numero_labo = group_keys$numero_labo,
-      code_barres_kps = group_keys$code_barres_kps,
       Ag_plus_1 = Ag_plus_1,
       Ag_plus_2 = Ag_plus_2,
       Ag0_1 = Ag0_1,

@@ -383,7 +383,7 @@ elisa_cache_is_fresh <- function(elisa_file, cache_path) {
 .elisa_cache_env <- new.env(parent = emptyenv())
 
 # Cache version - increment this when data structure changes to invalidate old caches
-.elisa_cache_version <- "v11_persistent_rds_cache"
+.elisa_cache_version <- "v12_add_plate_number_field"
 
 #' Ensure ELISA parser is loaded
 ensure_elisa_parser <- function() {
@@ -607,6 +607,24 @@ load_elisa_data <- function(
   if (nrow(parsed) > 0 && all(is.na(parsed$elisa_type))) {
     warning("All elisa_type values are NA after parsing! This should not happen.")
     message("DEBUG: Columns in parsed data: ", paste(names(parsed), collapse = ", "))
+  }
+
+  # CRITICAL: Assign unique plate_number across all files
+  # This creates a sequential ID for each unique plate (by plate_id, plate_num, date, type)
+  if (nrow(parsed) > 0) {
+    plate_index <- parsed %>%
+      distinct(plate_id, plate_num, plate_date, elisa_type) %>%
+      arrange(plate_date, plate_id, plate_num) %>%
+      mutate(plate_number = row_number())
+
+    parsed <- parsed %>%
+      left_join(plate_index, by = c("plate_id", "plate_num", "plate_date", "elisa_type"), relationship = "many-to-one") %>%
+      arrange(plate_number, sample_type)
+
+    message("✓ Assigned plate numbers to ", n_distinct(parsed$plate_number), " unique plates")
+  } else {
+    # Ensure plate_number exists even for empty data
+    parsed <- parsed %>% mutate(plate_number = NA_integer_)
   }
 
   # Link to biobank

@@ -29,7 +29,9 @@ match_elisa_samples <- function(pe_data, vsg_data) {
     filter(sample_type == "sample") %>%
     mutate(
       barcode_norm = normalize_elisa_id(code_barres_kps),
-      numero_norm = normalize_elisa_id(coalesce(numero_labo, sample_code, sample))
+      # NOTE: 'sample' column contains PLATE POSITION, not sample ID
+      # Only use numero_labo or sample_code for matching
+      numero_norm = normalize_elisa_id(coalesce(numero_labo, sample_code))
     ) %>%
     select(
       # Identifiers
@@ -61,7 +63,9 @@ match_elisa_samples <- function(pe_data, vsg_data) {
     filter(sample_type == "sample") %>%
     mutate(
       barcode_norm = normalize_elisa_id(code_barres_kps),
-      numero_norm = normalize_elisa_id(coalesce(numero_labo, sample_code, sample))
+      # NOTE: 'sample' column contains PLATE POSITION, not sample ID
+      # Only use numero_labo or sample_code for matching
+      numero_norm = normalize_elisa_id(coalesce(numero_labo, sample_code))
     ) %>%
     select(
       # Identifiers

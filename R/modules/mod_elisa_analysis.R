@@ -88,6 +88,17 @@ mod_elisa_analysis_ui <- function(id) {
           plotlyOutput(ns("plot_by_health_zone"), height = "500px")
         )
       )
+    ),
+
+    # Spacer
+    tags$div(style = "height: 16px;"),
+
+    # Section 6: Levey-Jennings Quality Control
+    card(
+      card_header("Levey-Jennings Quality Control - Positive Controls"),
+      card_body(
+        plotlyOutput(ns("plot_levey_jennings"), height = "500px")
+      )
     )
     )
   )
@@ -483,6 +494,112 @@ mod_elisa_analysis_server <- function(id, elisa_data, samples_data, controls_dat
         )
 
       ggplotly(p) %>% layout(hovermode = "closest")
+    })
+
+    # ========================================================================
+    # PLOT 10: Levey-Jennings Quality Control for Positive Controls
+    # ========================================================================
+
+    output$plot_levey_jennings <- renderPlotly({
+      data <- elisa_data()
+
+      # Check if we have the required columns
+      if (!nrow(data) || !all(c("positive_control_od", "plate_date") %in% names(data))) {
+        return(plotly_empty(plot_bgcolor = "#f8f9fa") %>%
+          layout(title = list(text = "No positive control data available", x = 0.5)))
+      }
+
+      # Compute Levey-Jennings statistics
+      lj <- compute_levey_jennings_elisa(data)
+
+      # Check if we have valid data
+      if (!lj$has_data || is.null(lj$data) || !nrow(lj$data)) {
+        return(plotly_empty(plot_bgcolor = "#f8f9fa") %>%
+          layout(title = list(text = "Insufficient positive control data for Levey-Jennings chart", x = 0.5)))
+      }
+
+      # Create the Levey-Jennings plot
+      fig <- plot_ly(lj$data, x = ~plate_display_id, y = ~positive_control_od,
+                      type = 'scatter', mode = 'markers+lines',
+                      name = 'Positive Control OD',
+                      marker = list(size = 10, color = '#2c3e50'),
+                      line = list(width = 2, color = '#2c3e50'),
+                      hovertemplate = paste0(
+                        "<b>Plate: %{x}</b><br>",
+                        "Date: ", format(lj$data$plate_date, "%Y-%m-%d"), "<br>",
+                        "Positive Control OD: %{y:.3f}<br>",
+                        "<extra></extra>"
+                      )) %>%
+        # Add mean line
+        add_lines(data = lj$data, x = ~plate_display_id, y = ~Mean, name = 'Mean',
+                  line = list(color = 'black', width = 2, dash = 'solid'),
+                  mode = 'lines',
+                  hoverinfo = 'skip',
+                  inherit = FALSE) %>%
+        # Add ±1 SD lines
+        add_lines(data = lj$data, x = ~plate_display_id, y = ~plus1, name = '+1 SD',
+                  line = list(color = '#3498db', dash = 'dot', width = 1.5),
+                  mode = 'lines',
+                  hoverinfo = 'skip',
+                  inherit = FALSE) %>%
+        add_lines(data = lj$data, x = ~plate_display_id, y = ~minus1, name = '-1 SD',
+                  line = list(color = '#3498db', dash = 'dot', width = 1.5),
+                  mode = 'lines',
+                  hoverinfo = 'skip',
+                  inherit = FALSE) %>%
+        # Add ±2 SD lines (warning limits)
+        add_lines(data = lj$data, x = ~plate_display_id, y = ~plus2, name = '+2 SD',
+                  line = list(color = '#f39c12', dash = 'dash', width = 2),
+                  mode = 'lines',
+                  hoverinfo = 'skip',
+                  inherit = FALSE) %>%
+        add_lines(data = lj$data, x = ~plate_display_id, y = ~minus2, name = '-2 SD',
+                  line = list(color = '#f39c12', dash = 'dash', width = 2),
+                  mode = 'lines',
+                  hoverinfo = 'skip',
+                  inherit = FALSE) %>%
+        # Add ±3 SD lines (action limits)
+        add_lines(data = lj$data, x = ~plate_display_id, y = ~plus3, name = '+3 SD',
+                  line = list(color = '#e74c3c', dash = 'dashdot', width = 2),
+                  mode = 'lines',
+                  hoverinfo = 'skip',
+                  inherit = FALSE) %>%
+        add_lines(data = lj$data, x = ~plate_display_id, y = ~minus3, name = '-3 SD',
+                  line = list(color = '#e74c3c', dash = 'dashdot', width = 2),
+                  mode = 'lines',
+                  hoverinfo = 'skip',
+                  inherit = FALSE) %>%
+        layout(
+          title = list(
+            text = sprintf(
+              "Levey-Jennings Chart: Positive Control OD<br><sub>Mean: %.3f | SD: %.3f | N: %d | Within ±2SD: %.1f%%</sub>",
+              lj$summary$Mean,
+              lj$summary$SD,
+              lj$summary$N,
+              lj$summary$Within2SD_pct
+            ),
+            font = list(size = 16)
+          ),
+          xaxis = list(
+            title = "Plate ID",
+            tickangle = -45,
+            automargin = TRUE
+          ),
+          yaxis = list(
+            title = "Positive Control OD",
+            automargin = TRUE
+          ),
+          legend = list(
+            orientation = 'h',
+            y = -0.25,
+            x = 0,
+            xanchor = 'left'
+          ),
+          margin = list(t = 80, r = 40, b = 120, l = 60),
+          hovermode = 'closest'
+        )
+
+      fig
     })
   })
 }

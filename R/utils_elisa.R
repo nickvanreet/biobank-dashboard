@@ -620,3 +620,146 @@ clear_elisa_cache <- function(clear_rds = FALSE) {
     }
   }
 }
+
+# =============================================================================
+# LEVEY-JENNINGS CALCULATION FOR ELISA POSITIVE CONTROLS
+# =============================================================================
+
+#' Compute Levey-Jennings statistics for ELISA positive controls
+#'
+#' This function calculates Levey-Jennings control chart statistics for
+#' positive control OD values across ELISA plates. It computes the mean and
+#' standard deviation of positive control values and generates control limits
+#' (±1SD, ±2SD, ±3SD) for quality control monitoring.
+#'
+#' @param elisa_data Data frame containing ELISA plate data with positive_control_od
+#' @return List containing:
+#'   - data: Tibble with plate-level data and control limits
+#'   - summary: Tibble with overall statistics (mean, SD, N, within-2SD percentage)
+#'   - has_data: Logical indicating if valid data was found
+#' @export
+compute_levey_jennings_elisa <- function(elisa_data) {
+  # Return empty structure if no data
+  if (is.null(elisa_data) || !nrow(elisa_data)) {
+    return(list(
+      data = tibble(),
+      summary = tibble(
+        Mean = NA_real_,
+        SD = NA_real_,
+        N = 0,
+        Within2SD_pct = NA_real_,
+        LatestPlateID = NA_character_,
+        LatestOD = NA_real_
+      ),
+      has_data = FALSE
+    ))
+  }
+
+  # Check for required columns
+  if (!all(c("positive_control_od", "plate_date") %in% names(elisa_data))) {
+    warning("Missing required columns for Levey-Jennings: positive_control_od, plate_date")
+    return(list(
+      data = tibble(),
+      summary = tibble(
+        Mean = NA_real_,
+        SD = NA_real_,
+        N = 0,
+        Within2SD_pct = NA_real_,
+        LatestPlateID = NA_character_,
+        LatestOD = NA_real_
+      ),
+      has_data = FALSE
+    ))
+  }
+
+  # Get unique plates with positive control values
+  # Each row in the input should represent one plate (with aggregated positive_control_od)
+  plates_df <- elisa_data %>%
+    filter(!is.na(positive_control_od), !is.na(plate_date)) %>%
+    mutate(plate_date = as.Date(plate_date)) %>%
+    # Get unique plates - use plate_id or plate_number as identifier
+    distinct(plate_id, plate_number, plate_date, positive_control_od, .keep_all = TRUE) %>%
+    arrange(plate_date)
+
+  # Return empty if no valid data
+  if (!nrow(plates_df)) {
+    return(list(
+      data = tibble(),
+      summary = tibble(
+        Mean = NA_real_,
+        SD = NA_real_,
+        N = 0,
+        Within2SD_pct = NA_real_,
+        LatestPlateID = NA_character_,
+        LatestOD = NA_real_
+      ),
+      has_data = FALSE
+    ))
+  }
+
+  # Calculate overall mean and SD from all positive control values
+  mu <- mean(plates_df$positive_control_od, na.rm = TRUE)
+  sdv <- sd(plates_df$positive_control_od, na.rm = TRUE)
+
+  # Create plot data with control limits
+  plot_data <- plates_df %>%
+    mutate(
+      # Create a display ID for the x-axis
+      plate_display_id = coalesce(
+        plate_id,
+        paste0("P", plate_number)
+      ),
+      # Add control limits
+      Mean = mu,
+      SD = sdv,
+      plus1 = mu + sdv,
+      minus1 = mu - sdv,
+      plus2 = mu + 2 * sdv,
+      minus2 = mu - 2 * sdv,
+      plus3 = mu + 3 * sdv,
+      minus3 = mu - 3 * sdv
+    ) %>%
+    select(plate_display_id, plate_date, positive_control_od, Mean, SD,
+           plus1, minus1, plus2, minus2, plus3, minus3)
+
+  # Calculate percentage within ±2SD limits
+  within_limits <- if (nrow(plot_data) > 0) {
+    valid <- !is.na(plot_data$positive_control_od)
+    total <- sum(valid)
+    if (total == 0) {
+      NA_real_
+    } else {
+      round(100 * sum(plot_data$positive_control_od[valid] >= plot_data$minus2[valid] &
+                      plot_data$positive_control_od[valid] <= plot_data$plus2[valid]) / total, 1)
+    }
+  } else {
+    NA_real_
+  }
+
+  # Get latest values
+  latest_od <- if (nrow(plot_data) > 0 && any(!is.na(plot_data$positive_control_od))) {
+    tail(na.omit(plot_data$positive_control_od), 1)
+  } else {
+    NA_real_
+  }
+
+  latest_plate <- if (nrow(plot_data) > 0 && any(!is.na(plot_data$positive_control_od))) {
+    tail(plot_data$plate_display_id[!is.na(plot_data$positive_control_od)], 1)
+  } else {
+    NA_character_
+  }
+
+  # Return results
+  list(
+    data = plot_data,
+    summary = tibble(
+      Mean = mu,
+      SD = sdv,
+      N = nrow(plates_df),
+      Within2SD_pct = within_limits,
+      LatestPlateID = latest_plate,
+      LatestOD = latest_od
+    ),
+    has_data = TRUE
+  )
+}

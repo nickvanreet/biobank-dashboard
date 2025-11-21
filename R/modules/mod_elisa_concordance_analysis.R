@@ -176,7 +176,7 @@ mod_elisa_concordance_analysis_server <- function(id, concordance_results) {
         mode = "markers",
         marker = list(size = 8, opacity = 0.7),
         text = ~paste(
-          "Sample:", coalesce(pe_sample, vsg_sample),
+          "Sample:", coalesce(pe_barcode, pe_numero, vsg_barcode, vsg_numero),
           "<br>PE PP%:", sprintf("%.1f", pe_PP_percent),
           "<br>VSG PP%:", sprintf("%.1f", vsg_PP_percent),
           "<br>Status:", concordance_type
@@ -310,7 +310,7 @@ mod_elisa_concordance_analysis_server <- function(id, concordance_results) {
         mode = "markers",
         marker = list(size = 8, opacity = 0.7),
         text = ~paste(
-          "Sample:", coalesce(pe_sample, vsg_sample),
+          "Sample:", coalesce(pe_barcode, pe_numero, vsg_barcode, vsg_numero),
           "<br>PE DOD:", sprintf("%.3f", pe_DOD),
           "<br>VSG DOD:", sprintf("%.3f", vsg_DOD),
           "<br>Status:", concordance_type
@@ -437,7 +437,7 @@ mod_elisa_concordance_analysis_server <- function(id, concordance_results) {
         mode = "markers",
         marker = list(size = 8, opacity = 0.7),
         text = ~paste(
-          "Sample:", coalesce(pe_sample, vsg_sample),
+          "Sample:", coalesce(pe_barcode, pe_numero, vsg_barcode, vsg_numero),
           "<br>Mean DOD:", sprintf("%.3f", mean_DOD),
           "<br>Difference:", sprintf("%.3f", diff_DOD),
           "<br>Status:", concordance_type
@@ -534,7 +534,7 @@ mod_elisa_concordance_analysis_server <- function(id, concordance_results) {
         mode = "markers",
         marker = list(size = 8, opacity = 0.7),
         text = ~paste(
-          "Sample:", coalesce(pe_sample, vsg_sample),
+          "Sample:", coalesce(pe_barcode, pe_numero, vsg_barcode, vsg_numero),
           "<br>Mean PP%:", sprintf("%.1f", mean_PP),
           "<br>Difference:", sprintf("%.1f", diff_PP),
           "<br>Status:", concordance_type

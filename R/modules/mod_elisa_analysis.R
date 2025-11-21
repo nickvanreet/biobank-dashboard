@@ -67,7 +67,11 @@ mod_elisa_analysis_ui <- function(id) {
     card(
       card_header("Threshold Performance Analysis"),
       card_body(
-        plotlyOutput(ns("plot_dod_threshold"), height = "500px")
+        layout_columns(
+          col_widths = c(6, 6),
+          plotlyOutput(ns("plot_dod_threshold"), height = "500px"),
+          plotlyOutput(ns("plot_pp_threshold"), height = "500px")
+        )
       )
     ),
 
@@ -335,6 +339,74 @@ mod_elisa_analysis_server <- function(id, elisa_data, samples_data, controls_dat
         layout(
           title = "Positivity Rate vs DOD Threshold",
           xaxis = list(title = "DOD Threshold"),
+          yaxis = list(title = "Positivity Rate (%)", range = c(0, 100)),
+          hovermode = "closest",
+          showlegend = TRUE,
+          legend = list(x = 0.8, y = 0.95)
+        )
+
+      p
+    })
+
+    # ========================================================================
+    # PLOT 7b: PP% Threshold Performance
+    # ========================================================================
+
+    output$plot_pp_threshold <- renderPlotly({
+      data <- samples_data()
+      if (!nrow(data) || !"PP_percent" %in% names(data)) {
+        return(plotly_empty(plot_bgcolor = "#f8f9fa") %>%
+          layout(title = list(text = "No data available", x = 0.5)))
+      }
+
+      data_filtered <- data %>% filter(!is.na(PP_percent))
+
+      if (!nrow(data_filtered)) {
+        return(plotly_empty(plot_bgcolor = "#f8f9fa") %>%
+          layout(title = list(text = "No PP% data available", x = 0.5)))
+      }
+
+      # Calculate positivity rate across a range of PP% thresholds
+      thresholds <- seq(0, 200, by = 2)
+
+      threshold_data <- tibble(threshold = thresholds) %>%
+        mutate(
+          n_positive = map_dbl(threshold, ~sum(data_filtered$PP_percent >= .x)),
+          positivity_rate = n_positive / nrow(data_filtered) * 100
+        )
+
+      # Create plot
+      p <- plot_ly(threshold_data, x = ~threshold, y = ~positivity_rate, type = "scatter", mode = "lines+markers",
+                   line = list(color = "#06B6D4", width = 2),
+                   marker = list(color = "#06B6D4", size = 4),
+                   hovertemplate = paste(
+                     "<b>PP% Threshold:</b> %{x:.0f}%<br>",
+                     "<b>Positivity Rate:</b> %{y:.1f}%<br>",
+                     "<extra></extra>"
+                   )) %>%
+        add_trace(
+          x = c(20, 20),
+          y = c(0, max(threshold_data$positivity_rate)),
+          type = "scatter",
+          mode = "lines",
+          line = list(color = "#EF4444", width = 2, dash = "dash"),
+          name = "Default (20%)",
+          showlegend = TRUE,
+          hoverinfo = "skip"
+        ) %>%
+        add_trace(
+          x = c(100, 100),
+          y = c(0, max(threshold_data$positivity_rate)),
+          type = "scatter",
+          mode = "lines",
+          line = list(color = "#F59E0B", width = 2, dash = "dash"),
+          name = "Alt Threshold (100%)",
+          showlegend = TRUE,
+          hoverinfo = "skip"
+        ) %>%
+        layout(
+          title = "Positivity Rate vs PP% Threshold",
+          xaxis = list(title = "PP% Threshold"),
           yaxis = list(title = "Positivity Rate (%)", range = c(0, 100)),
           hovermode = "closest",
           showlegend = TRUE,

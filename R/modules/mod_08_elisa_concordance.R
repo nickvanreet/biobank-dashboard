@@ -5,64 +5,68 @@
 mod_elisa_concordance_ui <- function(id) {
   ns <- NS(id)
 
-  page_fluid(
-    # Header with settings button
-    layout_columns(
-      col_widths = c(9, 3),
-      card(
-        card_header(
-          class = "d-flex justify-content-between align-items-center",
-          div(
-            class = "d-flex align-items-center gap-2",
-            bsicons::bs_icon("diagram-3", size = "1.5rem"),
-            "ELISA Concordance Analysis",
-            span(
-              class = "badge bg-info ms-2",
-              "PE vs VSG"
+  nav_panel(
+    title = "ELISA Concordance",
+    icon = icon("diagram-3"),
+    page_fluid(
+      # Header with settings button
+      layout_columns(
+        col_widths = c(9, 3),
+        card(
+          card_header(
+            class = "d-flex justify-content-between align-items-center",
+            div(
+              class = "d-flex align-items-center gap-2",
+              bsicons::bs_icon("diagram-3", size = "1.5rem"),
+              "ELISA Concordance Analysis",
+              span(
+                class = "badge bg-info ms-2",
+                "PE vs VSG"
+              )
             )
+          ),
+          card_body(
+            p("Compare PE-PGRS and VSG ELISA results to assess concordance, co-positivity, and discordance patterns."),
+            p(class = "text-muted mb-0 small",
+              "Samples are matched by barcode or lab number. Only samples tested in both assays are included.")
           )
         ),
-        card_body(
-          p("Compare PE-PGRS and VSG ELISA results to assess concordance, co-positivity, and discordance patterns."),
-          p(class = "text-muted mb-0 small",
-            "Samples are matched by barcode or lab number. Only samples tested in both assays are included.")
-        )
-      ),
-      card(
-        card_body(
-          class = "d-flex align-items-center justify-content-end gap-2",
-          actionButton(
-            ns("settings_btn"),
-            "Thresholds",
-            icon = icon("sliders"),
-            class = "btn-outline-primary"
-          ),
-          checkboxInput(
-            ns("exclude_invalid_qc"),
-            "Exclude invalid QC",
-            value = FALSE
+        card(
+          card_body(
+            class = "d-flex align-items-center justify-content-end gap-2",
+            actionButton(
+              ns("settings_btn"),
+              "Thresholds",
+              icon = icon("sliders"),
+              class = "btn-outline-primary"
+            ),
+            checkboxInput(
+              ns("exclude_invalid_qc"),
+              "Exclude invalid QC",
+              value = FALSE
+            )
           )
         )
-      )
-    ),
+      ),
 
-    # Main content tabs
-    navset_card_tab(
-      id = ns("tabs"),
-      nav_panel(
-        "Summary",
-        icon = icon("chart-pie"),
-        mod_elisa_concordance_summary_ui(ns("summary"))
-      ),
-      nav_panel(
-        "Table",
-        icon = icon("table"),
-        mod_elisa_concordance_table_ui(ns("table"))
-      ),
-      nav_panel(
-        "Analysis",
-        icon = icon("chart-line"),
-        mod_elisa_concordance_analysis_ui(ns("analysis"))
+      # Main content tabs
+      navset_card_tab(
+        id = ns("tabs"),
+        nav_panel(
+          "Summary",
+          icon = icon("chart-pie"),
+          mod_elisa_concordance_summary_ui(ns("summary"))
+        ),
+        nav_panel(
+          "Table",
+          icon = icon("table"),
+          mod_elisa_concordance_table_ui(ns("table"))
+        ),
+        nav_panel(
+          "Analysis",
+          icon = icon("chart-line"),
+          mod_elisa_concordance_analysis_ui(ns("analysis"))
+        )
       )
     )
   )

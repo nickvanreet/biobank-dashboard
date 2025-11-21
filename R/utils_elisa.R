@@ -316,7 +316,8 @@ ensure_elisa_columns <- function(df) {
   required_cols <- list(
     plate_id = NA_character_,
     plate_num = NA_integer_,
-    plate_number = NA_integer_,
+    # NOTE: plate_number is NOT included here - it's calculated later in load_elisa_data()
+    # to avoid column conflicts during left_join
     plate_date = as.Date(NA),
     elisa_type = NA_character_,  # CRITICAL: Required for filtering by PE/VSG
     sample_type = NA_character_,

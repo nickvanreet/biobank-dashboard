@@ -209,6 +209,13 @@ mod_ielisa_samples_server <- function(id, ielisa_data) {
           # Format QC status
           L13_QC = ifelse(qc_sample_L13, "✓ PASS", "✗ FAIL"),
           L15_QC = ifelse(qc_sample_L15, "✓ PASS", "✗ FAIL"),
+          # Positivity indicator
+          Positive_For = case_when(
+            qc_sample_L13 & qc_sample_L15 ~ "Both",
+            qc_sample_L13 ~ "LiTat 1.3",
+            qc_sample_L15 ~ "LiTat 1.5",
+            TRUE ~ "Neither"
+          ),
           # Format duplicate flags
           Dup_Flag = case_when(
             duplicate_across_files ~ "🔄 DUP",
@@ -221,6 +228,7 @@ mod_ielisa_samples_server <- function(id, ielisa_data) {
           File = file,
           LabID,
           Barcode,
+          `Positive For` = Positive_For,
           `OD L13` = OD_L13,
           `Inh% L13 (F1)` = pct_inh_f1_13,
           `Inh% L13 (F2)` = pct_inh_f2_13,
@@ -246,6 +254,14 @@ mod_ielisa_samples_server <- function(id, ielisa_data) {
         rownames = FALSE,
         class = 'cell-border stripe hover'
       ) %>%
+        formatStyle(
+          'Positive For',
+          backgroundColor = styleEqual(
+            c("Both", "LiTat 1.3", "LiTat 1.5", "Neither"),
+            c("#d4edda", "#cfe2ff", "#cfe2ff", "#f8d7da")
+          ),
+          fontWeight = 'bold'
+        ) %>%
         formatStyle(
           'L13 QC',
           backgroundColor = styleEqual(c("✓ PASS", "✗ FAIL"), c("#d4edda", "#f8d7da"))

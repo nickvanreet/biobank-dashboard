@@ -18,6 +18,53 @@ mod_ielisa_coordinator_ui <- function(id, label = "iELISA") {
   nav_panel(
     title = label,
     icon = icon("vial-circle-check"),
+
+    # Control QC Settings (collapsible)
+    accordion(
+      accordion_panel(
+        title = "Control QC Settings",
+        icon = icon("sliders"),
+        layout_columns(
+          col_widths = c(3, 3, 3, 3),
+          div(
+            tags$label(class = "form-label mb-1", "Negative Control OD Range"),
+            div(
+              class = "d-flex gap-2 align-items-center",
+              numericInput(ns("neg_od_min"), "Min", value = 1, min = 0, max = 5, step = 0.1, width = "100px"),
+              tags$span("-"),
+              numericInput(ns("neg_od_max"), "Max", value = 3, min = 0, max = 5, step = 0.1, width = "100px")
+            ),
+            tags$small(class = "text-muted", "Acceptable NEG control OD range")
+          ),
+          div(
+            tags$label(class = "form-label mb-1", "Positive Control OD Range"),
+            div(
+              class = "d-flex gap-2 align-items-center",
+              numericInput(ns("pos_od_min"), "Min", value = 0.3, min = 0, max = 5, step = 0.1, width = "100px"),
+              tags$span("-"),
+              numericInput(ns("pos_od_max"), "Max", value = 0.7, min = 0, max = 5, step = 0.1, width = "100px")
+            ),
+            tags$small(class = "text-muted", "Acceptable POS control OD range")
+          ),
+          div(
+            tags$label(class = "form-label mb-1", "Control Inhibition % Range"),
+            div(
+              class = "d-flex gap-2 align-items-center",
+              numericInput(ns("ctrl_inh_min"), "Min", value = 50, min = 0, max = 100, step = 5, width = "100px"),
+              tags$span("-"),
+              numericInput(ns("ctrl_inh_max"), "Max", value = 80, min = 0, max = 100, step = 5, width = "100px")
+            ),
+            tags$small(class = "text-muted", "Acceptable POS control inhibition range")
+          ),
+          div(
+            tags$label(class = "form-label mb-1", "Control CV Threshold (%)"),
+            numericInput(ns("ctrl_cv_max"), label = NULL, value = 20, min = 0, max = 100, step = 5, width = "100px"),
+            tags$small(class = "text-muted", "Maximum allowed CV for controls")
+          )
+        )
+      )
+    ),
+
     # Add controls above the tabs
     card(
       card_body(
@@ -133,15 +180,30 @@ mod_ielisa_coordinator_server <- function(id, biobank_df = reactive(NULL), filte
 
     # Raw data loading
     raw_ielisa_data <- reactive({
-      # Trigger refresh when button is clicked
+      # Trigger refresh when button is clicked or when control QC settings change
       input$refresh_data
+      input$neg_od_min
+      input$neg_od_max
+      input$pos_od_min
+      input$pos_od_max
+      input$ctrl_inh_min
+      input$ctrl_inh_max
+      input$ctrl_cv_max
 
       message("Loading iELISA data...")
 
       tryCatch({
         data <- load_ielisa_data(
           ielisa_dir = "data/ielisa",
-          cache_dir = "data/ielisa_cache"
+          cache_dir = "data/ielisa_cache",
+          # Control QC parameters
+          neg_od_min = input$neg_od_min,
+          neg_od_max = input$neg_od_max,
+          pos_od_min = input$pos_od_min,
+          pos_od_max = input$pos_od_max,
+          ctrl_inh_min = input$ctrl_inh_min,
+          ctrl_inh_max = input$ctrl_inh_max,
+          ctrl_cv_max = input$ctrl_cv_max
         )
 
         if (nrow(data) == 0) {

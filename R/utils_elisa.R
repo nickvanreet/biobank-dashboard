@@ -278,14 +278,54 @@ ensure_elisa_columns <- function(df) {
 }
 
 # ============================================================================
+# PERSISTENT RDS CACHING (per-file, like MIC)
+# ============================================================================
+
+#' Get ELISA cache directory
+#' @return Path to cache directory
+get_elisa_cache_dir <- function() {
+  cache_dir <- file.path("data", "ELISA_cache")
+  if (!dir.exists(cache_dir)) {
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  cache_dir
+}
+
+#' Get cache path for an ELISA file
+#' @param elisa_file Path to ELISA file
+#' @return Path to RDS cache file
+get_elisa_cache_path <- function(elisa_file) {
+  file.path(
+    get_elisa_cache_dir(),
+    paste0(tools::file_path_sans_ext(basename(elisa_file)), ".rds")
+  )
+}
+
+#' Check if cache is fresh
+#' @param elisa_file Path to ELISA file
+#' @param cache_path Path to cache file
+#' @return TRUE if cache is fresh, FALSE otherwise
+elisa_cache_is_fresh <- function(elisa_file, cache_path) {
+  if (!file.exists(cache_path)) return(FALSE)
+
+  elisa_info <- file.info(elisa_file)
+  cache_info <- file.info(cache_path)
+
+  if (is.na(elisa_info$mtime) || is.na(cache_info$mtime)) return(FALSE)
+
+  # Cache valid if newer or equal to source file
+  cache_info$mtime >= elisa_info$mtime
+}
+
+# ============================================================================
 # DATA LOADING WITH CACHING
 # ============================================================================
 
-# Cache environment
+# Cache environment (for session-level hash-based caching)
 .elisa_cache_env <- new.env(parent = emptyenv())
 
 # Cache version - increment this when data structure changes to invalidate old caches
-.elisa_cache_version <- "v10_fix_sample_vs_plate_position"
+.elisa_cache_version <- "v11_persistent_rds_cache"
 
 #' Ensure ELISA parser is loaded
 ensure_elisa_parser <- function() {
@@ -299,18 +339,91 @@ ensure_elisa_parser <- function() {
   cached_digest <- .elisa_cache_env$parser_digest
 
   # Always (re)load when the function is missing or when the parser file changed
-  if (!exists("parse_indirect_elisa_folder", mode = "function") ||
+  if (!exists("extract_elisa_plate_summary", mode = "function") ||
       is.null(cached_digest) || !identical(cached_digest, parser_digest)) {
     source(parser_path, local = .GlobalEnv)
     .elisa_cache_env$parser_digest <- parser_digest
 
-    # Invalidate ELISA cache when the parser changes to avoid stale structures
+    # Invalidate RDS caches when parser changes
+    message("✓ Parser changed, clearing RDS caches...")
+    cache_dir <- get_elisa_cache_dir()
+    if (dir.exists(cache_dir)) {
+      cache_files <- list.files(cache_dir, pattern = "\\.rds$", full.names = TRUE)
+      if (length(cache_files) > 0) {
+        file.remove(cache_files)
+        message("  Removed ", length(cache_files), " RDS cache file(s)")
+      }
+    }
+
+    # Also invalidate session cache
     .elisa_cache_env$data <- NULL
     .elisa_cache_env$hash <- NULL
     .elisa_cache_env$version <- NULL
 
     message("✓ Loaded ELISA parser from ", parser_path, " (digest: ", parser_digest, ")")
   }
+}
+
+#' Parse a single ELISA file with RDS caching
+#' @param file_path Path to ELISA file
+#' @param cv_max_ag_plus Maximum CV threshold for Ag+ control
+#' @param cv_max_ag0 Maximum CV threshold for Ag0 control
+#' @return Tibble with parsed ELISA data, or NULL on error
+parse_single_elisa_file <- function(file_path, cv_max_ag_plus = 20, cv_max_ag0 = 20) {
+  cache_path <- get_elisa_cache_path(file_path)
+
+  # Try loading from cache if fresh
+  if (elisa_cache_is_fresh(file_path, cache_path)) {
+    cached <- tryCatch(
+      {
+        data <- readRDS(cache_path)
+        # Validate cached data structure
+        if (is.data.frame(data) && nrow(data) > 0) {
+          return(data)
+        }
+        NULL
+      },
+      error = function(e) {
+        warning("Failed to read cache for ", basename(file_path), ": ", e$message)
+        NULL
+      }
+    )
+    if (!is.null(cached)) {
+      return(cached)
+    }
+  }
+
+  # Parse file
+  result <- tryCatch(
+    {
+      parsed <- extract_elisa_plate_summary(
+        file_path,
+        cv_max_ag_plus = cv_max_ag_plus,
+        cv_max_ag0 = cv_max_ag0
+      )
+
+      if (is.null(parsed) || !nrow(parsed)) {
+        warning("No data parsed from ", basename(file_path))
+        return(NULL)
+      }
+
+      # Save to cache
+      tryCatch(
+        saveRDS(parsed, cache_path),
+        error = function(e) {
+          warning("Failed to save cache for ", basename(file_path), ": ", e$message)
+        }
+      )
+
+      parsed
+    },
+    error = function(e) {
+      warning("Failed to parse ", basename(file_path), ": ", e$message)
+      NULL
+    }
+  )
+
+  result
 }
 
 #' Load ELISA data with caching and biobank linkage
@@ -380,7 +493,7 @@ load_elisa_data <- function(
     }
   }
 
-  # Parse ELISA files
+  # Parse ELISA files (using per-file RDS caching)
   if (!length(file_list)) {
     message("No ELISA files found in specified directories")
     parsed <- tibble(
@@ -395,15 +508,33 @@ load_elisa_data <- function(
       code_barres_kps = character()
     )
   } else {
-    message("Parsing ", length(file_list), " ELISA file(s)...")
-    parsed <- parse_indirect_elisa_folder(
-      dirs,
-      exclude_pattern = exclude_pattern,
-      recursive = recursive,
-      cv_max_ag_plus = cv_max_ag_plus,
-      cv_max_ag0 = cv_max_ag0
-    )
-    message("✓ Parsed ", nrow(parsed), " ELISA records")
+    message("Loading ", length(file_list), " ELISA file(s) (using RDS cache where available)...")
+
+    # Parse each file individually with caching
+    parsed_list <- lapply(file_list, function(f) {
+      parse_single_elisa_file(f, cv_max_ag_plus = cv_max_ag_plus, cv_max_ag0 = cv_max_ag0)
+    })
+
+    # Combine all non-NULL results
+    parsed_list <- Filter(Negate(is.null), parsed_list)
+
+    if (length(parsed_list) == 0) {
+      message("No valid ELISA data parsed")
+      parsed <- tibble(
+        plate_id = character(),
+        plate_num = integer(),
+        plate_date = as.Date(character()),
+        elisa_type = character(),
+        sample_type = character(),
+        sample = character(),
+        sample_code = character(),
+        numero_labo = character(),
+        code_barres_kps = character()
+      )
+    } else {
+      parsed <- bind_rows(parsed_list)
+      message("✓ Loaded ", nrow(parsed), " ELISA records from ", length(parsed_list), " file(s)")
+    }
   }
 
   parsed <- ensure_elisa_columns(parsed)
@@ -466,9 +597,26 @@ get_elisa_data <- function(biobank_df = NULL) {
 }
 
 #' Clear ELISA cache (force reload)
+#' @param clear_rds If TRUE, also remove RDS cache files from disk
 #' @export
-clear_elisa_cache <- function() {
+clear_elisa_cache <- function(clear_rds = FALSE) {
+  # Clear session cache
   .elisa_cache_env$data <- NULL
   .elisa_cache_env$hash <- NULL
-  message("✓ ELISA cache cleared")
+  .elisa_cache_env$version <- NULL
+  message("✓ ELISA session cache cleared")
+
+  # Optionally clear RDS files
+  if (clear_rds) {
+    cache_dir <- get_elisa_cache_dir()
+    if (dir.exists(cache_dir)) {
+      cache_files <- list.files(cache_dir, pattern = "\\.rds$", full.names = TRUE)
+      if (length(cache_files) > 0) {
+        file.remove(cache_files)
+        message("✓ Removed ", length(cache_files), " RDS cache file(s)")
+      } else {
+        message("  No RDS cache files to remove")
+      }
+    }
+  }
 }

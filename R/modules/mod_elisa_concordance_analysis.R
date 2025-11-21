@@ -59,7 +59,25 @@ mod_elisa_concordance_analysis_ui <- function(id) {
       )
     ),
 
-    # Row 4: Stratified Analysis
+    # Row 4: Bland-Altman Plots
+    h4("Bland-Altman Agreement Analysis", class = "mt-4 mb-3"),
+    layout_columns(
+      col_widths = c(6, 6),
+      card(
+        card_header("DOD Bland-Altman Plot"),
+        card_body(
+          plotly::plotlyOutput(ns("bland_altman_dod"), height = "400px")
+        )
+      ),
+      card(
+        card_header("PP% Bland-Altman Plot"),
+        card_body(
+          plotly::plotlyOutput(ns("bland_altman_pp"), height = "400px")
+        )
+      )
+    ),
+
+    # Row 5: Stratified Analysis
     h4("Stratified Analysis", class = "mt-4 mb-3"),
     layout_columns(
       col_widths = c(6, 6),
@@ -375,7 +393,201 @@ mod_elisa_concordance_analysis_server <- function(id, concordance_results) {
         )
     })
 
-    # 7. Agreement by Province
+    # 7. DOD Bland-Altman Plot
+    output$bland_altman_dod <- plotly::renderPlotly({
+      data <- classified_data()
+
+      if (nrow(data) == 0) {
+        return(plotly_empty("No data available"))
+      }
+
+      # Calculate mean and difference
+      ba_data <- data %>%
+        filter(!is.na(pe_DOD) & !is.na(vsg_DOD)) %>%
+        mutate(
+          mean_DOD = (pe_DOD + vsg_DOD) / 2,
+          diff_DOD = pe_DOD - vsg_DOD
+        )
+
+      if (nrow(ba_data) == 0) {
+        return(plotly_empty("No DOD data available"))
+      }
+
+      # Calculate statistics
+      mean_diff <- mean(ba_data$diff_DOD, na.rm = TRUE)
+      sd_diff <- sd(ba_data$diff_DOD, na.rm = TRUE)
+      upper_loa <- mean_diff + 1.96 * sd_diff
+      lower_loa <- mean_diff - 1.96 * sd_diff
+
+      # Color by concordance
+      colors <- c(
+        "Both Positive" = "#28a745",
+        "Both Negative" = "#6c757d",
+        "PE+ / VSG-" = "#ffc107",
+        "PE- / VSG+" = "#fd7e14"
+      )
+
+      plot_ly(
+        data = ba_data,
+        x = ~mean_DOD,
+        y = ~diff_DOD,
+        color = ~concordance_type,
+        colors = colors,
+        type = "scatter",
+        mode = "markers",
+        marker = list(size = 8, opacity = 0.7),
+        text = ~paste(
+          "Sample:", coalesce(pe_sample, vsg_sample),
+          "<br>Mean DOD:", sprintf("%.3f", mean_DOD),
+          "<br>Difference:", sprintf("%.3f", diff_DOD),
+          "<br>Status:", concordance_type
+        ),
+        hovertemplate = "%{text}<extra></extra>"
+      ) %>%
+        # Mean difference line
+        add_lines(
+          x = c(min(ba_data$mean_DOD), max(ba_data$mean_DOD)),
+          y = c(mean_diff, mean_diff),
+          line = list(color = "#0d6efd", width = 2),
+          name = sprintf("Mean: %.3f", mean_diff),
+          showlegend = TRUE,
+          hoverinfo = "skip",
+          inherit = FALSE
+        ) %>%
+        # Upper LOA
+        add_lines(
+          x = c(min(ba_data$mean_DOD), max(ba_data$mean_DOD)),
+          y = c(upper_loa, upper_loa),
+          line = list(color = "#dc3545", width = 2, dash = "dash"),
+          name = sprintf("+1.96 SD: %.3f", upper_loa),
+          showlegend = TRUE,
+          hoverinfo = "skip",
+          inherit = FALSE
+        ) %>%
+        # Lower LOA
+        add_lines(
+          x = c(min(ba_data$mean_DOD), max(ba_data$mean_DOD)),
+          y = c(lower_loa, lower_loa),
+          line = list(color = "#dc3545", width = 2, dash = "dash"),
+          name = sprintf("-1.96 SD: %.3f", lower_loa),
+          showlegend = TRUE,
+          hoverinfo = "skip",
+          inherit = FALSE
+        ) %>%
+        # Zero reference line
+        add_lines(
+          x = c(min(ba_data$mean_DOD), max(ba_data$mean_DOD)),
+          y = c(0, 0),
+          line = list(color = "gray", width = 1, dash = "dot"),
+          showlegend = FALSE,
+          hoverinfo = "skip",
+          inherit = FALSE
+        ) %>%
+        layout(
+          xaxis = list(title = "Mean DOD ((PE + VSG) / 2)"),
+          yaxis = list(title = "Difference (PE - VSG)"),
+          legend = list(x = 0.02, y = 0.98, bgcolor = "rgba(255,255,255,0.8)")
+        )
+    })
+
+    # 8. PP% Bland-Altman Plot
+    output$bland_altman_pp <- plotly::renderPlotly({
+      data <- classified_data()
+
+      if (nrow(data) == 0) {
+        return(plotly_empty("No data available"))
+      }
+
+      # Calculate mean and difference
+      ba_data <- data %>%
+        filter(!is.na(pe_PP_percent) & !is.na(vsg_PP_percent)) %>%
+        mutate(
+          mean_PP = (pe_PP_percent + vsg_PP_percent) / 2,
+          diff_PP = pe_PP_percent - vsg_PP_percent
+        )
+
+      if (nrow(ba_data) == 0) {
+        return(plotly_empty("No PP% data available"))
+      }
+
+      # Calculate statistics
+      mean_diff <- mean(ba_data$diff_PP, na.rm = TRUE)
+      sd_diff <- sd(ba_data$diff_PP, na.rm = TRUE)
+      upper_loa <- mean_diff + 1.96 * sd_diff
+      lower_loa <- mean_diff - 1.96 * sd_diff
+
+      # Color by concordance
+      colors <- c(
+        "Both Positive" = "#28a745",
+        "Both Negative" = "#6c757d",
+        "PE+ / VSG-" = "#ffc107",
+        "PE- / VSG+" = "#fd7e14"
+      )
+
+      plot_ly(
+        data = ba_data,
+        x = ~mean_PP,
+        y = ~diff_PP,
+        color = ~concordance_type,
+        colors = colors,
+        type = "scatter",
+        mode = "markers",
+        marker = list(size = 8, opacity = 0.7),
+        text = ~paste(
+          "Sample:", coalesce(pe_sample, vsg_sample),
+          "<br>Mean PP%:", sprintf("%.1f", mean_PP),
+          "<br>Difference:", sprintf("%.1f", diff_PP),
+          "<br>Status:", concordance_type
+        ),
+        hovertemplate = "%{text}<extra></extra>"
+      ) %>%
+        # Mean difference line
+        add_lines(
+          x = c(min(ba_data$mean_PP), max(ba_data$mean_PP)),
+          y = c(mean_diff, mean_diff),
+          line = list(color = "#0d6efd", width = 2),
+          name = sprintf("Mean: %.1f%%", mean_diff),
+          showlegend = TRUE,
+          hoverinfo = "skip",
+          inherit = FALSE
+        ) %>%
+        # Upper LOA
+        add_lines(
+          x = c(min(ba_data$mean_PP), max(ba_data$mean_PP)),
+          y = c(upper_loa, upper_loa),
+          line = list(color = "#dc3545", width = 2, dash = "dash"),
+          name = sprintf("+1.96 SD: %.1f%%", upper_loa),
+          showlegend = TRUE,
+          hoverinfo = "skip",
+          inherit = FALSE
+        ) %>%
+        # Lower LOA
+        add_lines(
+          x = c(min(ba_data$mean_PP), max(ba_data$mean_PP)),
+          y = c(lower_loa, lower_loa),
+          line = list(color = "#dc3545", width = 2, dash = "dash"),
+          name = sprintf("-1.96 SD: %.1f%%", lower_loa),
+          showlegend = TRUE,
+          hoverinfo = "skip",
+          inherit = FALSE
+        ) %>%
+        # Zero reference line
+        add_lines(
+          x = c(min(ba_data$mean_PP), max(ba_data$mean_PP)),
+          y = c(0, 0),
+          line = list(color = "gray", width = 1, dash = "dot"),
+          showlegend = FALSE,
+          hoverinfo = "skip",
+          inherit = FALSE
+        ) %>%
+        layout(
+          xaxis = list(title = "Mean PP% ((PE + VSG) / 2)"),
+          yaxis = list(title = "Difference (PE - VSG)"),
+          legend = list(x = 0.02, y = 0.98, bgcolor = "rgba(255,255,255,0.8)")
+        )
+    })
+
+    # 9. Agreement by Province
     output$province_plot <- plotly::renderPlotly({
       data <- classified_data()
 
@@ -417,7 +629,7 @@ mod_elisa_concordance_analysis_server <- function(id, concordance_results) {
         )
     })
 
-    # 8. Agreement by Health Zone
+    # 10. Agreement by Health Zone
     output$healthzone_plot <- plotly::renderPlotly({
       data <- classified_data()
 

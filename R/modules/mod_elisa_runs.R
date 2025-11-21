@@ -249,11 +249,6 @@ mod_elisa_runs_server <- function(id, elisa_data) {
         ) %>%
         formatStyle(
           'NC OD',
-          backgroundColor = styleEqual(
-            levels = c(TRUE, FALSE),
-            values = c('#d4edda', '#fee'),
-            default = '#fff'
-          ),
           target = 'cell',
           backgroundColor = JS(
             "function(value, type) {",

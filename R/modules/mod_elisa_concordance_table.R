@@ -143,15 +143,15 @@ mod_elisa_concordance_table_server <- function(id, concordance_results) {
             ifelse(!is.na(vsg_numero), vsg_numero, "-")
           ),
 
-          # Format dates
-          pe_date = format(pe_plate_date, "%Y-%m-%d"),
-          vsg_date = format(vsg_plate_date, "%Y-%m-%d"),
+          # Format dates - handle NA values safely
+          pe_date = ifelse(!is.na(pe_plate_date), as.character(pe_plate_date), "-"),
+          vsg_date = ifelse(!is.na(vsg_plate_date), as.character(vsg_plate_date), "-"),
 
-          # Format numeric values
-          pe_dod_fmt = sprintf("%.3f", pe_DOD),
-          vsg_dod_fmt = sprintf("%.3f", vsg_DOD),
-          pe_pp_fmt = sprintf("%.1f%%", pe_PP_percent),
-          vsg_pp_fmt = sprintf("%.1f%%", vsg_PP_percent),
+          # Format numeric values - handle NA values safely
+          pe_dod_fmt = ifelse(!is.na(pe_DOD), sprintf("%.3f", pe_DOD), "-"),
+          vsg_dod_fmt = ifelse(!is.na(vsg_DOD), sprintf("%.3f", vsg_DOD), "-"),
+          pe_pp_fmt = ifelse(!is.na(pe_PP_percent), sprintf("%.1f%%", pe_PP_percent), "-"),
+          vsg_pp_fmt = ifelse(!is.na(vsg_PP_percent), sprintf("%.1f%%", vsg_PP_percent), "-"),
 
           # Result status
           pe_result = ifelse(pe_positive, "Positive", "Negative"),

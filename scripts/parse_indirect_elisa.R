@@ -361,11 +361,12 @@ extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
     )
   
   # 3) Join with OD
+  # Note: Each well_id can have multiple OD records (Ag_plus and Ag0), so use many-to-many
   sample_wells <- samples_layout %>%
-    left_join(od_grid, by = c("plate_num", "well_id"), relationship = "many-to-one")
+    left_join(od_grid, by = c("plate_num", "well_id"), relationship = "many-to-many")
 
   control_wells <- controls_layout %>%
-    left_join(od_grid, by = c("plate_num", "well_id"), relationship = "many-to-one")
+    left_join(od_grid, by = c("plate_num", "well_id"), relationship = "many-to-many")
 
   wells_long <- bind_rows(sample_wells, control_wells)
 
@@ -378,7 +379,8 @@ extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
   )
   
   # 4) Summarize by sample/control
-  summarize_entry <- function(df_group) {
+  # Note: group_modify passes group keys in .y, not in .x
+  summarize_entry <- function(df_group, group_keys) {
     plus <- df_group$od[df_group$ag_state == "Ag_plus"]
     zero <- df_group$od[df_group$ag_state == "Ag0"]
 
@@ -402,16 +404,16 @@ extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
     qc_overall <- if(is.na(qc_Ag_plus) || is.na(qc_Ag0)) NA else (qc_Ag_plus & qc_Ag0)
 
     tibble(
-      plate_id = df_group$plate_id[1],
-      plate_num = df_group$plate_num[1],
+      plate_id = group_keys$plate_id,
+      plate_num = group_keys$plate_num,
       plate_date = plate_date,
       elisa_type = elisa_type,
       source_path = path,  # Track source file path for inference
-      sample_type = df_group$sample_type[1],
-      sample = df_group$sample[1],
-      sample_code = df_group$sample_code[1],
-      numero_labo = df_group$numero_labo[1],
-      code_barres_kps = df_group$code_barres_kps[1],
+      sample_type = group_keys$sample_type,
+      sample = group_keys$sample,
+      sample_code = group_keys$sample_code,
+      numero_labo = group_keys$numero_labo,
+      code_barres_kps = group_keys$code_barres_kps,
       Ag_plus_1 = Ag_plus_1,
       Ag_plus_2 = Ag_plus_2,
       Ag0_1 = Ag0_1,
@@ -426,11 +428,11 @@ extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
       qc_overall = qc_overall
     )
   }
-  
+
   df_summary <- wells_long %>%
     group_by(plate_id, plate_num, sample_type, sample, sample_code,
              numero_labo, code_barres_kps) %>%
-    group_modify(~ summarize_entry(.x)) %>%
+    group_modify(~ summarize_entry(.x, .y)) %>%
     ungroup()
   
   # 5) Calculate PP% using PC and NC per plate

@@ -300,7 +300,7 @@ calculate_cv <- function(val1, val2) {
 # -----------------------------------------------------------------------------
 # Main extraction function - UNIFIED
 # -----------------------------------------------------------------------------
-extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
+extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max_ag_plus = 15, cv_max_ag0 = 15) {
 
   plate_id <- tools::file_path_sans_ext(basename(path))
   plate_date <- parse_plate_date_from_filename(basename(path))
@@ -399,8 +399,8 @@ extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
     cv_Ag_plus <- calculate_cv(Ag_plus_1, Ag_plus_2)
     cv_Ag0 <- calculate_cv(Ag0_1, Ag0_2)
 
-    qc_Ag_plus <- if(is.na(cv_Ag_plus)) NA else cv_Ag_plus <= cv_max
-    qc_Ag0 <- if(is.na(cv_Ag0)) NA else cv_Ag0 <= cv_max
+    qc_Ag_plus <- if(is.na(cv_Ag_plus)) NA else cv_Ag_plus <= cv_max_ag_plus
+    qc_Ag0 <- if(is.na(cv_Ag0)) NA else cv_Ag0 <= cv_max_ag0
     qc_overall <- if(is.na(qc_Ag_plus) || is.na(qc_Ag0)) NA else (qc_Ag_plus & qc_Ag0)
 
     # NOTE: Do NOT include grouping variables (plate_id, plate_num, sample_type,
@@ -468,7 +468,8 @@ parse_indirect_elisa_folder <- function(dir,
                                         pattern = "\\.xlsx$",
                                         exclude_pattern = NULL,
                                         recursive = FALSE,
-                                        cv_max = 20) {
+                                        cv_max_ag_plus = 20,
+                                        cv_max_ag0 = 20) {
   dir <- unlist(dir)
   
   files <- unlist(lapply(dir, function(path_dir) {
@@ -496,7 +497,7 @@ parse_indirect_elisa_folder <- function(dir,
   
   res_list <- lapply(files, function(f) {
     tryCatch(
-      extract_elisa_plate_summary(f, cv_max = cv_max),
+      extract_elisa_plate_summary(f, cv_max_ag_plus = cv_max_ag_plus, cv_max_ag0 = cv_max_ag0),
       error = function(e) {
         warning("Failed on file: ", f, " — ", conditionMessage(e))
         NULL

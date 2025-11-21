@@ -317,7 +317,8 @@ ensure_elisa_parser <- function() {
 #' @param dirs Character vector of directories to scan
 #' @param exclude_pattern Pattern to exclude files
 #' @param recursive Scan directories recursively
-#' @param cv_max Maximum CV threshold
+#' @param cv_max_ag_plus Maximum CV threshold for Ag+ control
+#' @param cv_max_ag0 Maximum CV threshold for Ag0 control
 #' @param biobank_df Biobank data frame for linking
 #' @return Tibble with ELISA results linked to biobank
 #' @export
@@ -325,7 +326,8 @@ load_elisa_data <- function(
   dirs = c("data/elisa_pe", "data/elisa_vsg"),
   exclude_pattern = "^251021 Résultats indirect ELISA vF\\.5",
   recursive = TRUE,
-  cv_max = 20,
+  cv_max_ag_plus = 20,
+  cv_max_ag0 = 20,
   biobank_df = NULL
 ) {
   ensure_elisa_parser()
@@ -349,7 +351,7 @@ load_elisa_data <- function(
     mtime = suppressWarnings(file.info(file_list)$mtime)
   )
 
-  hash_val <- digest(list(.elisa_cache_version, file_info$path, file_info$mtime, cv_max, recursive, exclude_pattern))
+  hash_val <- digest(list(.elisa_cache_version, file_info$path, file_info$mtime, cv_max_ag_plus, cv_max_ag0, recursive, exclude_pattern))
 
   # Check cache
   cached <- .elisa_cache_env$data
@@ -398,7 +400,8 @@ load_elisa_data <- function(
       dirs,
       exclude_pattern = exclude_pattern,
       recursive = recursive,
-      cv_max = cv_max
+      cv_max_ag_plus = cv_max_ag_plus,
+      cv_max_ag0 = cv_max_ag0
     )
     message("✓ Parsed ", nrow(parsed), " ELISA records")
   }

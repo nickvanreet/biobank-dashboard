@@ -303,6 +303,11 @@ mod_elisa_concordance_server <- function(id,
         # Apply date range filter
         if (!is.null(flt$date_range) && length(flt$date_range) == 2) {
           if ("SampleDate" %in% names(data)) {
+            message("DEBUG: Date range filter - min: ", flt$date_range[1], ", max: ", flt$date_range[2])
+            message("DEBUG: SampleDate column - NA count: ", sum(is.na(data$SampleDate)), " / ", nrow(data))
+            message("DEBUG: SampleDate range in data: ",
+                    min(data$SampleDate, na.rm = TRUE), " to ",
+                    max(data$SampleDate, na.rm = TRUE))
             data <- data %>%
               filter(
                 as.Date(SampleDate) >= flt$date_range[1],

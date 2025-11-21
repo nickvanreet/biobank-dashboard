@@ -241,7 +241,7 @@ mod_elisa_runs_server <- function(id, elisa_data) {
       ) %>%
         formatStyle(
           'QC Pass %',
-          backgroundColor = styleInterval(c(70, 90), c('#fee', '#fff3cd', '#d4edda', '#d1ecf1'))
+          backgroundColor = styleInterval(c(70, 90), c('#fee', '#fff3cd', '#d4edda'))
         ) %>%
         formatStyle(
           'PC OD',

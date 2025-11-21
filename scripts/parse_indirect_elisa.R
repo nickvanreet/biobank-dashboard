@@ -532,21 +532,21 @@ parse_indirect_elisa_folder <- function(dir,
     ))
   }
 
-  # Defensive check: Ensure all rows have valid elisa_type
-  # Infer from source_path if missing
+  # CRITICAL: Always infer elisa_type from source_path (source of truth)
+  # The plate format detection may misclassify VSG files as PE if they lack
+  # "Plaque" markers, so we use the source directory as the authoritative source
   if ("source_path" %in% names(df_all)) {
     df_all <- df_all %>%
       mutate(
         elisa_type = case_when(
-          !is.na(elisa_type) & elisa_type != "" ~ elisa_type,
-          grepl("elisa_vsg|/vsg/|vsg", source_path, ignore.case = TRUE) ~ "ELISA_vsg",
-          grepl("elisa_pe|/pe/|pe", source_path, ignore.case = TRUE) ~ "ELISA_pe",
-          TRUE ~ "ELISA_pe"  # Default to PE
+          grepl("elisa_vsg|/vsg/", source_path, ignore.case = TRUE) ~ "ELISA_vsg",
+          grepl("elisa_pe|/pe/", source_path, ignore.case = TRUE) ~ "ELISA_pe",
+          TRUE ~ "ELISA_pe"  # Default to PE if path doesn't indicate type
         )
       ) %>%
       select(-source_path)  # Remove source_path after using it for inference
   } else {
-    # Fallback if source_path not available
+    # Fallback if source_path not available (shouldn't happen with current code)
     df_all <- df_all %>%
       mutate(
         elisa_type = if_else(is.na(elisa_type) | elisa_type == "", "ELISA_pe", elisa_type)

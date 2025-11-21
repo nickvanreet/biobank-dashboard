@@ -89,6 +89,12 @@ mod_elisa_runs_server <- function(id, elisa_data) {
           mean_NC_DOD = if ("NC_DOD" %in% names(.)) mean(NC_DOD, na.rm = TRUE) else NA_real_,
           mean_PP_percent = if ("PP_percent" %in% names(.)) mean(PP_percent, na.rm = TRUE) else NA_real_,
           qc_pass_rate = if ("qc_overall" %in% names(.)) mean(qc_overall, na.rm = TRUE) else NA_real_,
+          # Plate control validation fields
+          positive_control_od = if ("positive_control_od" %in% names(.)) first(positive_control_od) else NA_real_,
+          negative_control_od = if ("negative_control_od" %in% names(.)) first(negative_control_od) else NA_real_,
+          plate_positive_control_valid = if ("plate_positive_control_valid" %in% names(.)) first(plate_positive_control_valid) else NA,
+          plate_negative_control_valid = if ("plate_negative_control_valid" %in% names(.)) first(plate_negative_control_valid) else NA,
+          plate_valid = if ("plate_valid" %in% names(.)) first(plate_valid) else NA,
           .groups = "drop"
         ) %>%
         arrange(desc(plate_date))
@@ -115,8 +121,21 @@ mod_elisa_runs_server <- function(id, elisa_data) {
         NA_real_
       }
 
+      # Count valid/invalid plates
+      valid_plates <- if ("plate_valid" %in% names(runs)) {
+        sum(runs$plate_valid == TRUE, na.rm = TRUE)
+      } else {
+        NA
+      }
+
+      invalid_plates <- if ("plate_valid" %in% names(runs)) {
+        sum(runs$plate_valid == FALSE, na.rm = TRUE)
+      } else {
+        NA
+      }
+
       layout_column_wrap(
-        width = 1/3,
+        width = 1/4,
         heights_equal = "row",
         value_box(
           title = "Total Plates",
@@ -125,15 +144,21 @@ mod_elisa_runs_server <- function(id, elisa_data) {
           theme = "primary"
         ),
         value_box(
-          title = "Total Samples",
-          value = scales::comma(total_samples),
-          showcase = icon("vial"),
-          theme = "info"
+          title = "Valid Plates",
+          value = if (is.na(valid_plates)) "N/A" else scales::comma(valid_plates),
+          showcase = icon("circle-check"),
+          theme = if (is.na(valid_plates)) "secondary" else "success"
         ),
         value_box(
-          title = "QC Pass Rate",
+          title = "Invalid Plates",
+          value = if (is.na(invalid_plates)) "N/A" else scales::comma(invalid_plates),
+          showcase = icon("circle-xmark"),
+          theme = if (is.na(invalid_plates)) "secondary" else if (invalid_plates > 0) "danger" else "success"
+        ),
+        value_box(
+          title = "Sample QC Pass Rate",
           value = if (is.na(qc_rate)) "N/A" else sprintf("%.1f%%", qc_rate * 100),
-          showcase = icon("check-circle"),
+          showcase = icon("vial-circle-check"),
           theme = if (is.na(qc_rate)) "secondary" else if (qc_rate >= 0.9) "success" else if (qc_rate >= 0.7) "warning" else "danger"
         )
       )
@@ -161,8 +186,27 @@ mod_elisa_runs_server <- function(id, elisa_data) {
           mean_PC_DOD = round(mean_PC_DOD, 3),
           mean_NC_DOD = round(mean_NC_DOD, 3),
           mean_PP_percent = round(mean_PP_percent, 1),
-          qc_pass_rate = round(qc_pass_rate * 100, 1)
+          qc_pass_rate = round(qc_pass_rate * 100, 1),
+          positive_control_od = round(positive_control_od, 3),
+          negative_control_od = round(negative_control_od, 3),
+          # Format validation status as text
+          PC_Valid = case_when(
+            is.na(plate_positive_control_valid) ~ "N/A",
+            plate_positive_control_valid == TRUE ~ "PASS",
+            plate_positive_control_valid == FALSE ~ "FAIL"
+          ),
+          NC_Valid = case_when(
+            is.na(plate_negative_control_valid) ~ "N/A",
+            plate_negative_control_valid == TRUE ~ "PASS",
+            plate_negative_control_valid == FALSE ~ "FAIL"
+          ),
+          Plate_Valid = case_when(
+            is.na(plate_valid) ~ "N/A",
+            plate_valid == TRUE ~ "VALID",
+            plate_valid == FALSE ~ "INVALID"
+          )
         ) %>%
+        select(-plate_positive_control_valid, -plate_negative_control_valid, -plate_valid) %>%
         rename(
           `Plate ID` = plate_id,
           `Plate #` = plate_number,
@@ -172,7 +216,12 @@ mod_elisa_runs_server <- function(id, elisa_data) {
           `Mean PC DOD` = mean_PC_DOD,
           `Mean NC DOD` = mean_NC_DOD,
           `Mean PP%` = mean_PP_percent,
-          `QC Pass %` = qc_pass_rate
+          `QC Pass %` = qc_pass_rate,
+          `PC OD` = positive_control_od,
+          `NC OD` = negative_control_od,
+          `PC QC` = PC_Valid,
+          `NC QC` = NC_Valid,
+          `Plate Status` = Plate_Valid
         )
 
       datatable(
@@ -190,6 +239,49 @@ mod_elisa_runs_server <- function(id, elisa_data) {
         formatStyle(
           'QC Pass %',
           backgroundColor = styleInterval(c(70, 90), c('#fee', '#fff3cd', '#d4edda', '#d1ecf1'))
+        ) %>%
+        formatStyle(
+          'PC OD',
+          backgroundColor = styleInterval(c(0.5, 1.5), c('#fee', '#d4edda', '#fee'))
+        ) %>%
+        formatStyle(
+          'NC OD',
+          backgroundColor = styleEqual(
+            levels = c(TRUE, FALSE),
+            values = c('#d4edda', '#fee'),
+            default = '#fff'
+          ),
+          target = 'cell',
+          backgroundColor = JS(
+            "function(value, type) {",
+            "  if (type === 'display' && value !== null && !isNaN(value)) {",
+            "    return value < 0.5 ? '#d4edda' : '#fee';",
+            "  }",
+            "  return '#fff';",
+            "}"
+          )
+        ) %>%
+        formatStyle(
+          'PC QC',
+          backgroundColor = styleEqual(
+            levels = c('PASS', 'FAIL', 'N/A'),
+            values = c('#d4edda', '#fee', '#f8f9fa')
+          )
+        ) %>%
+        formatStyle(
+          'NC QC',
+          backgroundColor = styleEqual(
+            levels = c('PASS', 'FAIL', 'N/A'),
+            values = c('#d4edda', '#fee', '#f8f9fa')
+          )
+        ) %>%
+        formatStyle(
+          'Plate Status',
+          backgroundColor = styleEqual(
+            levels = c('VALID', 'INVALID', 'N/A'),
+            values = c('#d4edda', '#fee', '#f8f9fa')
+          ),
+          fontWeight = 'bold'
         )
     })
 

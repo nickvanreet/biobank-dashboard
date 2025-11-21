@@ -20,6 +20,27 @@ mod_elisa_coordinator_ui <- function(id, label = "ELISA", elisa_type = "ELISA_pe
   nav_panel(
     title = label,
     icon = icon("vial-virus"),
+    # Add controls above the tabs
+    card(
+      card_body(
+        class = "p-2",
+        div(
+          class = "d-flex justify-content-between align-items-center",
+          div(
+            class = "d-flex flex-column justify-content-end",
+            checkboxInput(
+              ns("exclude_invalid_plates"),
+              "Exclude invalid plates",
+              value = TRUE
+            ),
+            tags$small(
+              class = "text-muted",
+              "Removes plates with failed control QC from all analyses"
+            )
+          )
+        )
+      )
+    ),
     navset_card_tab(
       id = ns("elisa_tabs"),
       # Tab 1: Runs (overview)
@@ -107,37 +128,54 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
 
       # Apply filters if available
       flt <- filters()
-      if (is.null(flt)) return(data)
+      if (!is.null(flt)) {
+        # Apply province filter
+        if (!is.null(flt$province) && flt$province != "all" && flt$province != "") {
+          if ("Province" %in% names(data)) {
+            data <- data %>% filter(Province == !!flt$province)
+          }
+        }
 
-      # Apply province filter
-      if (!is.null(flt$province) && flt$province != "all" && flt$province != "") {
-        if ("Province" %in% names(data)) {
-          data <- data %>% filter(Province == !!flt$province)
+        # Apply health zone filter
+        if (!is.null(flt$zone) && flt$zone != "all" && flt$zone != "") {
+          if ("HealthZone" %in% names(data)) {
+            data <- data %>% filter(HealthZone == !!flt$zone)
+          }
+        }
+
+        # Apply structure filter
+        if (!is.null(flt$structure) && flt$structure != "all" && flt$structure != "") {
+          if ("Structure" %in% names(data)) {
+            data <- data %>% filter(Structure == !!flt$structure)
+          }
+        }
+
+        # Apply date range filter
+        if (!is.null(flt$date_range) && length(flt$date_range) == 2) {
+          if ("plate_date" %in% names(data)) {
+            data <- data %>%
+              filter(
+                as.Date(plate_date) >= flt$date_range[1],
+                as.Date(plate_date) <= flt$date_range[2]
+              )
+          }
         }
       }
 
-      # Apply health zone filter
-      if (!is.null(flt$zone) && flt$zone != "all" && flt$zone != "") {
-        if ("HealthZone" %in% names(data)) {
-          data <- data %>% filter(HealthZone == !!flt$zone)
-        }
-      }
+      # Apply plate validity filter
+      if (isTRUE(input$exclude_invalid_plates)) {
+        if ("plate_valid" %in% names(data)) {
+          # Get list of invalid plate IDs
+          invalid_plates <- data %>%
+            filter(plate_valid == FALSE) %>%
+            pull(plate_id) %>%
+            unique()
 
-      # Apply structure filter
-      if (!is.null(flt$structure) && flt$structure != "all" && flt$structure != "") {
-        if ("Structure" %in% names(data)) {
-          data <- data %>% filter(Structure == !!flt$structure)
-        }
-      }
-
-      # Apply date range filter
-      if (!is.null(flt$date_range) && length(flt$date_range) == 2) {
-        if ("plate_date" %in% names(data)) {
-          data <- data %>%
-            filter(
-              as.Date(plate_date) >= flt$date_range[1],
-              as.Date(plate_date) <= flt$date_range[2]
-            )
+          # Filter out all rows from invalid plates
+          if (length(invalid_plates) > 0) {
+            message("DEBUG [mod_elisa_coordinator]: Excluding ", length(invalid_plates), " invalid plates")
+            data <- data %>% filter(!plate_id %in% invalid_plates)
+          }
         }
       }
 

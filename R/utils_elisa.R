@@ -285,7 +285,7 @@ ensure_elisa_columns <- function(df) {
 .elisa_cache_env <- new.env(parent = emptyenv())
 
 # Cache version - increment this when data structure changes to invalidate old caches
-.elisa_cache_version <- "v6_source_path_is_authority"
+.elisa_cache_version <- "v7_force_elisa_type_fix"
 
 #' Ensure ELISA parser is loaded
 ensure_elisa_parser <- function() {

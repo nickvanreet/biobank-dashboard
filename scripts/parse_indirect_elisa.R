@@ -536,6 +536,7 @@ parse_indirect_elisa_folder <- function(dir,
   # The plate format detection may misclassify VSG files as PE if they lack
   # "Plaque" markers, so we use the source directory as the authoritative source
   if ("source_path" %in% names(df_all)) {
+    message("DEBUG: Applying source_path-based elisa_type classification")
     df_all <- df_all %>%
       mutate(
         elisa_type = case_when(
@@ -545,7 +546,9 @@ parse_indirect_elisa_folder <- function(dir,
         )
       ) %>%
       select(-source_path)  # Remove source_path after using it for inference
+    message("DEBUG: source_path classification complete")
   } else {
+    message("WARNING: source_path column not found, using fallback classification")
     # Fallback if source_path not available (shouldn't happen with current code)
     df_all <- df_all %>%
       mutate(
@@ -555,7 +558,7 @@ parse_indirect_elisa_folder <- function(dir,
 
   # Report elisa_type distribution
   type_counts <- table(df_all$elisa_type)
-  message("ELISA type distribution: ", paste(names(type_counts), "=", type_counts, collapse = ", "))
+  message("✓ ELISA type distribution: ", paste(names(type_counts), "=", type_counts, collapse = ", "))
 
   # Assign unique plate number across all files
   plate_index <- df_all %>%

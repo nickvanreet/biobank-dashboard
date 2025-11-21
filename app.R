@@ -52,6 +52,7 @@ ui <- do.call(
     list(
       mod_elisa_pe_ui("elisa_pe"),
       mod_elisa_vsg_ui("elisa_vsg"),
+      mod_ielisa_ui("ielisa"),
       mod_elisa_concordance_ui("elisa_concordance"),
       mod_drs_rnasep_ui("drs_rnasep")
     )
@@ -111,6 +112,13 @@ server <- function(input, output, session) {
 
   elisa_vsg_data <- mod_elisa_vsg_server(
     "elisa_vsg",
+    biobank_df = data$clean_data,
+    filters = data$filters
+  )
+
+  # iELISA module (inhibition ELISA for LiTat 1.3 and 1.5)
+  ielisa_data <- mod_ielisa_server(
+    "ielisa",
     biobank_df = data$clean_data,
     filters = data$filters
   )

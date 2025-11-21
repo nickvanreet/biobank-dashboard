@@ -201,28 +201,43 @@ mod_elisa_concordance_server <- function(id,
       # Apply global filters if provided
       if (!is.null(filters())) {
         f <- filters()
+        message("DEBUG: PE Filters object: province=", f$province,
+                ", health_zone=", f$health_zone,
+                ", structure=", f$structure,
+                ", date_from=", f$date_from,
+                ", date_to=", f$date_to)
 
         # Province filter
         if (!is.null(f$province) && length(f$province) > 0 && f$province != "All") {
+          before <- nrow(data)
           data <- data %>% filter(Province %in% f$province)
+          message("DEBUG: PE Province filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
 
         # Health Zone filter
         if (!is.null(f$health_zone) && length(f$health_zone) > 0 && f$health_zone != "All") {
+          before <- nrow(data)
           data <- data %>% filter(HealthZone %in% f$health_zone)
+          message("DEBUG: PE HealthZone filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
 
         # Structure filter
         if (!is.null(f$structure) && length(f$structure) > 0 && f$structure != "All") {
+          before <- nrow(data)
           data <- data %>% filter(Structure %in% f$structure)
+          message("DEBUG: PE Structure filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
 
         # Date range filter
         if (!is.null(f$date_from) && !is.na(f$date_from)) {
+          before <- nrow(data)
           data <- data %>% filter(plate_date >= f$date_from)
+          message("DEBUG: PE Date from filter (", f$date_from, ") applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
         if (!is.null(f$date_to) && !is.na(f$date_to)) {
+          before <- nrow(data)
           data <- data %>% filter(plate_date <= f$date_to)
+          message("DEBUG: PE Date to filter (", f$date_to, ") applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
       }
 
@@ -249,25 +264,35 @@ mod_elisa_concordance_server <- function(id,
 
         # Province filter
         if (!is.null(f$province) && length(f$province) > 0 && f$province != "All") {
+          before <- nrow(data)
           data <- data %>% filter(Province %in% f$province)
+          message("DEBUG: VSG Province filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
 
         # Health Zone filter
         if (!is.null(f$health_zone) && length(f$health_zone) > 0 && f$health_zone != "All") {
+          before <- nrow(data)
           data <- data %>% filter(HealthZone %in% f$health_zone)
+          message("DEBUG: VSG HealthZone filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
 
         # Structure filter
         if (!is.null(f$structure) && length(f$structure) > 0 && f$structure != "All") {
+          before <- nrow(data)
           data <- data %>% filter(Structure %in% f$structure)
+          message("DEBUG: VSG Structure filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
 
         # Date range filter
         if (!is.null(f$date_from) && !is.na(f$date_from)) {
+          before <- nrow(data)
           data <- data %>% filter(plate_date >= f$date_from)
+          message("DEBUG: VSG Date from filter (", f$date_from, ") applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
         if (!is.null(f$date_to) && !is.na(f$date_to)) {
+          before <- nrow(data)
           data <- data %>% filter(plate_date <= f$date_to)
+          message("DEBUG: VSG Date to filter (", f$date_to, ") applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
       }
 

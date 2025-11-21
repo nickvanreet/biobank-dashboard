@@ -427,10 +427,10 @@ extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max_ag_plus =
 
   # NOTE: 'sample' column contains PLATE POSITION (e.g., S1, S2, PC1, NC1), not sample ID
   # Actual sample identifiers are in 'numero_labo' (lab ID) and 'code_barres_kps' (barcode)
-  # We preserve 'well_id' (e.g., A1, B2) to maintain well position information
+  # We group by sample identifiers to aggregate across replicates (multiple wells per sample)
   df_summary <- wells_long %>%
     group_by(plate_id, plate_num, sample_type, sample, sample_code,
-             numero_labo, code_barres_kps, well_id) %>%
+             numero_labo, code_barres_kps) %>%
     group_modify(~ summarize_entry(.x, .y)) %>%
     ungroup()
   

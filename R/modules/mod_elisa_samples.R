@@ -120,11 +120,10 @@ mod_elisa_samples_server <- function(id, elisa_data) {
 
       # Select columns to display (only those that exist)
       # Note: "sample" is the PLATE POSITION (e.g., S1, S2, PC1), not the actual sample ID
-      # "well_id" is the WELL POSITION (e.g., A1, B2, C3)
       # Actual sample IDs are in "numero_labo" (lab ID) or "code_barres_kps" (barcode)
+      # Wells are aggregated across replicates, so well_id is not preserved
       available_cols <- c(
-        "plate_number", "plate_date", "numero_labo", "code_barres_kps",
-        "sample", "well_id",
+        "plate_number", "plate_date", "numero_labo", "code_barres_kps", "sample",
         "DOD", "PP_percent", "sample_positive", "cv_Ag_plus", "cv_Ag0", "qc_overall",
         "Province", "HealthZone", "Structure", "Sex", "AgeGroup", "BiobankMatched"
       )
@@ -149,7 +148,6 @@ mod_elisa_samples_server <- function(id, elisa_data) {
       col_names <- tools::toTitleCase(col_names)
       # Clarify specific columns
       col_names[col_names == "Sample"] <- "Plate Position"
-      col_names[col_names == "Well Id"] <- "Well Position"
       col_names[col_names == "Numero Labo"] <- "Sample ID (Numero)"
       col_names[col_names == "Code Barres Kps"] <- "Sample ID (Barcode)"
       names(display_data) <- col_names

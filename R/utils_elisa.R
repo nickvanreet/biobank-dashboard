@@ -265,8 +265,7 @@ ensure_elisa_columns <- function(df) {
     sample = NA_character_,      # NOTE: This is PLATE POSITION, not sample ID
     sample_code = NA_character_,
     numero_labo = NA_character_, # Actual sample ID (lab numero)
-    code_barres_kps = NA_character_, # Actual sample ID (barcode)
-    well_id = NA_character_      # Well position (A1, B2, etc.)
+    code_barres_kps = NA_character_ # Actual sample ID (barcode)
   )
 
   for (col_name in names(required_cols)) {
@@ -286,7 +285,7 @@ ensure_elisa_columns <- function(df) {
 .elisa_cache_env <- new.env(parent = emptyenv())
 
 # Cache version - increment this when data structure changes to invalidate old caches
-.elisa_cache_version <- "v10_fix_sample_vs_plate_position_and_preserve_well_id"
+.elisa_cache_version <- "v10_fix_sample_vs_plate_position"
 
 #' Ensure ELISA parser is loaded
 ensure_elisa_parser <- function() {

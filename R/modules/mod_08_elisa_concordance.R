@@ -191,17 +191,60 @@ mod_elisa_concordance_server <- function(id,
       data <- pe_data()
       message("DEBUG: PE data before filters: ", nrow(data))
 
+      # Apply global filters (if provided)
+      flt <- filters()
+      if (!is.null(flt)) {
+        # Apply province filter
+        if (!is.null(flt$province) && flt$province != "all" && flt$province != "") {
+          if ("Province" %in% names(data)) {
+            data <- data %>% filter(Province == !!flt$province)
+            message("DEBUG: PE data after province filter: ", nrow(data))
+          }
+        }
+
+        # Apply health zone filter
+        if (!is.null(flt$zone) && flt$zone != "all" && flt$zone != "") {
+          if ("HealthZone" %in% names(data)) {
+            data <- data %>% filter(HealthZone == !!flt$zone)
+            message("DEBUG: PE data after zone filter: ", nrow(data))
+          }
+        }
+
+        # Apply structure filter
+        if (!is.null(flt$structure) && flt$structure != "all" && flt$structure != "") {
+          if ("Structure" %in% names(data)) {
+            data <- data %>% filter(Structure == !!flt$structure)
+            message("DEBUG: PE data after structure filter: ", nrow(data))
+          }
+        }
+
+        # Apply cohort filter
+        if (!is.null(flt$cohort) && flt$cohort != "all" && flt$cohort != "") {
+          if ("Cohort" %in% names(data)) {
+            data <- data %>% filter(Cohort == !!flt$cohort)
+            message("DEBUG: PE data after cohort filter: ", nrow(data))
+          }
+        }
+
+        # Apply date range filter
+        if (!is.null(flt$date_range) && length(flt$date_range) == 2) {
+          if ("plate_date" %in% names(data)) {
+            data <- data %>%
+              filter(
+                as.Date(plate_date) >= flt$date_range[1],
+                as.Date(plate_date) <= flt$date_range[2]
+              )
+            message("DEBUG: PE data after date range filter: ", nrow(data))
+          }
+        }
+      }
+
       # Apply QC filter
       if (input$exclude_invalid_qc) {
         data <- data %>%
           filter(qc_overall == TRUE, plate_valid == TRUE)
         message("DEBUG: PE data after QC filter: ", nrow(data))
       }
-
-      # NOTE: Concordance module does NOT apply any global filters
-      # The concordance analysis compares ELISA test results (PE vs VSG) regardless
-      # of patient demographics. Filtering should be done in individual ELISA modules.
-      # Users can filter the concordance table after viewing all matches.
 
       message("DEBUG: PE data after all filters: ", nrow(data))
       message("DEBUG: PE samples (sample_type='sample'): ", sum(data$sample_type == "sample", na.rm = TRUE))
@@ -213,17 +256,60 @@ mod_elisa_concordance_server <- function(id,
       data <- vsg_data()
       message("DEBUG: VSG data before filters: ", nrow(data))
 
+      # Apply global filters (if provided)
+      flt <- filters()
+      if (!is.null(flt)) {
+        # Apply province filter
+        if (!is.null(flt$province) && flt$province != "all" && flt$province != "") {
+          if ("Province" %in% names(data)) {
+            data <- data %>% filter(Province == !!flt$province)
+            message("DEBUG: VSG data after province filter: ", nrow(data))
+          }
+        }
+
+        # Apply health zone filter
+        if (!is.null(flt$zone) && flt$zone != "all" && flt$zone != "") {
+          if ("HealthZone" %in% names(data)) {
+            data <- data %>% filter(HealthZone == !!flt$zone)
+            message("DEBUG: VSG data after zone filter: ", nrow(data))
+          }
+        }
+
+        # Apply structure filter
+        if (!is.null(flt$structure) && flt$structure != "all" && flt$structure != "") {
+          if ("Structure" %in% names(data)) {
+            data <- data %>% filter(Structure == !!flt$structure)
+            message("DEBUG: VSG data after structure filter: ", nrow(data))
+          }
+        }
+
+        # Apply cohort filter
+        if (!is.null(flt$cohort) && flt$cohort != "all" && flt$cohort != "") {
+          if ("Cohort" %in% names(data)) {
+            data <- data %>% filter(Cohort == !!flt$cohort)
+            message("DEBUG: VSG data after cohort filter: ", nrow(data))
+          }
+        }
+
+        # Apply date range filter
+        if (!is.null(flt$date_range) && length(flt$date_range) == 2) {
+          if ("plate_date" %in% names(data)) {
+            data <- data %>%
+              filter(
+                as.Date(plate_date) >= flt$date_range[1],
+                as.Date(plate_date) <= flt$date_range[2]
+              )
+            message("DEBUG: VSG data after date range filter: ", nrow(data))
+          }
+        }
+      }
+
       # Apply QC filter
       if (input$exclude_invalid_qc) {
         data <- data %>%
           filter(qc_overall == TRUE, plate_valid == TRUE)
         message("DEBUG: VSG data after QC filter: ", nrow(data))
       }
-
-      # NOTE: Concordance module does NOT apply any global filters
-      # The concordance analysis compares ELISA test results (PE vs VSG) regardless
-      # of patient demographics. Filtering should be done in individual ELISA modules.
-      # Users can filter the concordance table after viewing all matches.
 
       message("DEBUG: VSG data after all filters: ", nrow(data))
       message("DEBUG: VSG samples (sample_type='sample'): ", sum(data$sample_type == "sample", na.rm = TRUE))

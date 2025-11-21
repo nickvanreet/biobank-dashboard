@@ -31,7 +31,8 @@ config <- list(
     biobank_dir = "data/biobank",
     extractions_dir = "data/extractions",
     pcr_dir = "data/PCR",
-    mic_dir = "data/MIC"  # Note: uppercase MIC to match your directory
+    mic_dir = "data/MIC",  # Note: uppercase MIC to match your directory
+    ielisa_dir = "data/ielisa"
   ),
   ui = list(
     theme_primary = "#3498DB",
@@ -99,6 +100,14 @@ source("R/modules/mod_elisa_concordance_summary.R")
 source("R/modules/mod_elisa_concordance_table.R")
 source("R/modules/mod_elisa_concordance_analysis.R")
 source("R/modules/mod_08_elisa_concordance.R")
+
+# iELISA modules (inhibition ELISA for LiTat 1.3 and 1.5)
+source("R/utils_ielisa.R")
+source("R/modules/mod_ielisa_coordinator.R")
+source("R/modules/mod_ielisa_runs.R")
+source("R/modules/mod_ielisa_samples.R")
+source("R/modules/mod_ielisa_analysis.R")
+source("R/modules/mod_09_ielisa.R")
 
 # ============================================================================
 # SOURCE MIC SUB-MODULES
@@ -250,6 +259,43 @@ app_theme <- bslib::bs_add_rules(
   }
 
   [id*='elisa'] .plotly {
+    width: 100% !important;
+  }
+
+  /* iELISA Module Styling - Enhanced figure visibility with scrolling */
+  .ielisa-panel {
+    max-height: calc(100vh - 160px);
+    overflow-y: auto;
+    padding-right: 0.5rem;
+    padding-bottom: 1rem;
+  }
+
+  .ielisa-panel::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .ielisa-panel::-webkit-scrollbar-thumb {
+    background-color: rgba(79, 70, 229, 0.4);
+    border-radius: 4px;
+  }
+
+  .ielisa-panel::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  @media (max-width: 991.98px) {
+    .ielisa-panel {
+      max-height: none;
+      padding-right: 0;
+    }
+  }
+
+  /* Ensure iELISA cards have proper spacing and visibility */
+  [id*='ielisa'] .card {
+    margin-bottom: 1rem;
+  }
+
+  [id*='ielisa'] .plotly {
     width: 100% !important;
   }
   "

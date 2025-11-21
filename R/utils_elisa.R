@@ -285,18 +285,31 @@ ensure_elisa_columns <- function(df) {
 .elisa_cache_env <- new.env(parent = emptyenv())
 
 # Cache version - increment this when data structure changes to invalidate old caches
-.elisa_cache_version <- "v8_fix_column_warnings_and_elisa_type"
+.elisa_cache_version <- "v9_force_parser_reload_and_fix_elisa_type"
 
 #' Ensure ELISA parser is loaded
 ensure_elisa_parser <- function() {
-  if (!exists("parse_indirect_elisa_folder", mode = "function")) {
-    parser_path <- file.path("scripts", "parse_indirect_elisa.R")
-    if (file.exists(parser_path)) {
-      source(parser_path, local = .GlobalEnv)
-      message("✓ Loaded ELISA parser from ", parser_path)
-    } else {
-      stop("ELISA parser script not found: ", parser_path)
-    }
+  parser_path <- file.path("scripts", "parse_indirect_elisa.R")
+
+  if (!file.exists(parser_path)) {
+    stop("ELISA parser script not found: ", parser_path)
+  }
+
+  parser_digest <- digest(file = parser_path)
+  cached_digest <- .elisa_cache_env$parser_digest
+
+  # Always (re)load when the function is missing or when the parser file changed
+  if (!exists("parse_indirect_elisa_folder", mode = "function") ||
+      is.null(cached_digest) || !identical(cached_digest, parser_digest)) {
+    source(parser_path, local = .GlobalEnv)
+    .elisa_cache_env$parser_digest <- parser_digest
+
+    # Invalidate ELISA cache when the parser changes to avoid stale structures
+    .elisa_cache_env$data <- NULL
+    .elisa_cache_env$hash <- NULL
+    .elisa_cache_env$version <- NULL
+
+    message("✓ Loaded ELISA parser from ", parser_path, " (digest: ", parser_digest, ")")
   }
 }
 

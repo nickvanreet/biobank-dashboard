@@ -379,31 +379,32 @@ extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
   summarize_entry <- function(df_group) {
     plus <- df_group$od[df_group$ag_state == "Ag_plus"]
     zero <- df_group$od[df_group$ag_state == "Ag0"]
-    
+
     if (length(plus) < 2) plus <- c(plus, rep(NA_real_, 2 - length(plus)))
     if (length(zero) < 2) zero <- c(zero, rep(NA_real_, 2 - length(zero)))
-    
+
     Ag_plus_1 <- plus[1]
     Ag_plus_2 <- plus[2]
     Ag0_1 <- zero[1]
     Ag0_2 <- zero[2]
-    
+
     mean_Ag_plus <- mean(plus, na.rm = TRUE)
     mean_Ag0 <- mean(zero, na.rm = TRUE)
     DOD <- mean_Ag_plus - mean_Ag0
-    
+
     cv_Ag_plus <- calculate_cv(Ag_plus_1, Ag_plus_2)
     cv_Ag0 <- calculate_cv(Ag0_1, Ag0_2)
-    
+
     qc_Ag_plus <- if(is.na(cv_Ag_plus)) NA else cv_Ag_plus <= cv_max
     qc_Ag0 <- if(is.na(cv_Ag0)) NA else cv_Ag0 <= cv_max
     qc_overall <- if(is.na(qc_Ag_plus) || is.na(qc_Ag0)) NA else (qc_Ag_plus & qc_Ag0)
-    
+
     tibble(
       plate_id = df_group$plate_id[1],
       plate_num = df_group$plate_num[1],
       plate_date = plate_date,
       elisa_type = elisa_type,
+      source_path = path,  # Track source file path for inference
       sample_type = df_group$sample_type[1],
       sample = df_group$sample[1],
       sample_code = df_group$sample_code[1],
@@ -532,16 +533,25 @@ parse_indirect_elisa_folder <- function(dir,
   }
 
   # Defensive check: Ensure all rows have valid elisa_type
-  # Infer from plate_id if missing
-  df_all <- df_all %>%
-    mutate(
-      elisa_type = case_when(
-        !is.na(elisa_type) & elisa_type != "" ~ elisa_type,
-        grepl("vsg", plate_id, ignore.case = TRUE) ~ "ELISA_vsg",
-        grepl("pe", plate_id, ignore.case = TRUE) ~ "ELISA_pe",
-        TRUE ~ "ELISA_pe"  # Default to PE
+  # Infer from source_path if missing
+  if ("source_path" %in% names(df_all)) {
+    df_all <- df_all %>%
+      mutate(
+        elisa_type = case_when(
+          !is.na(elisa_type) & elisa_type != "" ~ elisa_type,
+          grepl("elisa_vsg|/vsg/|vsg", source_path, ignore.case = TRUE) ~ "ELISA_vsg",
+          grepl("elisa_pe|/pe/|pe", source_path, ignore.case = TRUE) ~ "ELISA_pe",
+          TRUE ~ "ELISA_pe"  # Default to PE
+        )
+      ) %>%
+      select(-source_path)  # Remove source_path after using it for inference
+  } else {
+    # Fallback if source_path not available
+    df_all <- df_all %>%
+      mutate(
+        elisa_type = if_else(is.na(elisa_type) | elisa_type == "", "ELISA_pe", elisa_type)
       )
-    )
+  }
 
   # Report elisa_type distribution
   type_counts <- table(df_all$elisa_type)

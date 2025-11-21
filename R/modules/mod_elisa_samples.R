@@ -52,6 +52,21 @@ mod_elisa_samples_server <- function(id, elisa_data) {
       data <- elisa_data()
 
       n_total <- nrow(data)
+
+      # Calculate unique samples and screening stats (only for samples, not controls)
+      samples_only <- data %>% filter(sample_type == "sample")
+      n_unique <- samples_only %>%
+        mutate(sample_id = coalesce(code_barres_kps, numero_labo)) %>%
+        filter(!is.na(sample_id)) %>%
+        distinct(sample_id) %>%
+        nrow()
+
+      n_first <- if ("is_first_screening" %in% names(samples_only)) {
+        sum(samples_only$is_first_screening, na.rm = TRUE)
+      } else {
+        0
+      }
+
       n_matched <- if ("BiobankMatched" %in% names(data)) {
         sum(data$BiobankMatched, na.rm = TRUE)
       } else {
@@ -74,25 +89,31 @@ mod_elisa_samples_server <- function(id, elisa_data) {
       pos_pct <- if (n_total > 0) round(100 * n_positive / n_total, 1) else 0
 
       layout_column_wrap(
-        width = 1/4,
+        width = 1/5,
         heights_equal = "row",
         value_box(
-          title = "Samples",
+          title = "Total Tests",
           value = scales::comma(n_total),
           showcase = icon("vial"),
           theme = "secondary"
+        ),
+        value_box(
+          title = "Unique Samples",
+          value = scales::comma(n_unique),
+          showcase = icon("fingerprint"),
+          theme = "info"
+        ),
+        value_box(
+          title = "First Screenings",
+          value = scales::comma(n_first),
+          showcase = icon("1-circle"),
+          theme = "success"
         ),
         value_box(
           title = "Positive Samples",
           value = sprintf("%d (%.1f%%)", n_positive, pos_pct),
           showcase = icon("plus-circle"),
           theme = "primary"
-        ),
-        value_box(
-          title = "Biobank Match",
-          value = sprintf("%d (%.1f%%)", n_matched, match_pct),
-          showcase = icon("link"),
-          theme = if (match_pct >= 80) "success" else if (match_pct >= 50) "warning" else "danger"
         ),
         value_box(
           title = "QC Pass",
@@ -123,7 +144,7 @@ mod_elisa_samples_server <- function(id, elisa_data) {
       # Actual sample IDs are in "numero_labo" (lab ID) or "code_barres_kps" (barcode)
       # Wells are aggregated across replicates, so well_id is not preserved
       available_cols <- c(
-        "plate_number", "plate_date", "numero_labo", "code_barres_kps", "sample",
+        "screening_num", "plate_number", "plate_date", "numero_labo", "code_barres_kps", "sample",
         "DOD", "PP_percent", "sample_positive", "cv_Ag_plus", "cv_Ag0", "qc_overall",
         "Province", "HealthZone", "Structure", "Sex", "AgeGroup", "BiobankMatched"
       )

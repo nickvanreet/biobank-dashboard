@@ -148,6 +148,7 @@ match_elisa_samples <- function(pe_data, vsg_data) {
       pe_barcode, vsg_barcode,
       pe_numero, vsg_numero,
       match_method,
+      barcode_norm, numero_norm,
       # PE Results
       pe_plate_id, pe_plate_date,
       pe_DOD, pe_PP_percent,
@@ -161,6 +162,27 @@ match_elisa_samples <- function(pe_data, vsg_data) {
       Sex, Age, AgeGroup, SampleDate, Cohort,
       BiobankMatched
     )
+
+  # Add screening numbers for PE tests (rank by date for each unique sample)
+  # Use the matching identifier (barcode or numero) to group samples
+  all_matches <- all_matches %>%
+    mutate(
+      sample_id = coalesce(barcode_norm, numero_norm)
+    ) %>%
+    group_by(sample_id) %>%
+    arrange(pe_plate_date, .by_group = TRUE) %>%
+    mutate(
+      pe_screening_num = dense_rank(pe_plate_date),
+      pe_is_first_screening = (pe_screening_num == 1)
+    ) %>%
+    arrange(vsg_plate_date, .by_group = TRUE) %>%
+    mutate(
+      vsg_screening_num = dense_rank(vsg_plate_date),
+      vsg_is_first_screening = (vsg_screening_num == 1)
+    ) %>%
+    ungroup() %>%
+    arrange(sample_id, pe_plate_date, vsg_plate_date) %>%
+    select(-sample_id)  # Remove temporary column
 
   return(all_matches)
 }
@@ -193,6 +215,9 @@ calculate_concordance <- function(matched_data,
       data = tibble(),
       metrics = list(
         n_total = 0,
+        n_unique_samples = 0,
+        n_first_screenings = 0,
+        n_repeat_tests = 0,
         n_concordant = 0,
         n_discordant = 0,
         n_both_positive = 0,
@@ -242,6 +267,21 @@ calculate_concordance <- function(matched_data,
   n_vsg_only_positive <- sum(!classified$pe_positive & classified$vsg_positive, na.rm = TRUE)
   n_concordant <- n_both_positive + n_both_negative
   n_discordant <- n_pe_only_positive + n_vsg_only_positive
+
+  # Calculate unique sample counts
+  n_unique_samples <- classified %>%
+    mutate(sample_id = coalesce(
+      normalize_elisa_id(pe_barcode),
+      normalize_elisa_id(vsg_barcode),
+      normalize_elisa_id(pe_numero),
+      normalize_elisa_id(vsg_numero)
+    )) %>%
+    filter(!is.na(sample_id)) %>%
+    distinct(sample_id) %>%
+    nrow()
+
+  n_first_screenings <- sum(classified$pe_is_first_screening & classified$vsg_is_first_screening, na.rm = TRUE)
+  n_repeat_tests <- n_total - n_first_screenings
 
   # Percentages
   pct_concordant <- (n_concordant / n_total) * 100
@@ -301,6 +341,9 @@ calculate_concordance <- function(matched_data,
     data = classified,
     metrics = list(
       n_total = n_total,
+      n_unique_samples = n_unique_samples,
+      n_first_screenings = n_first_screenings,
+      n_repeat_tests = n_repeat_tests,
       n_concordant = n_concordant,
       n_discordant = n_discordant,
       n_both_positive = n_both_positive,

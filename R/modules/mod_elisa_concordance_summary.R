@@ -6,16 +6,40 @@ mod_elisa_concordance_summary_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
-    # KPI Cards
-    h4("Overview Metrics", class = "mt-3 mb-3"),
+    # KPI Cards - Sample counts
+    h4("Sample Metrics", class = "mt-3 mb-3"),
     layout_columns(
       col_widths = c(3, 3, 3, 3),
       value_box(
-        title = "Total Matched Samples",
-        value = textOutput(ns("kpi_total")),
-        showcase = bsicons::bs_icon("link-45deg"),
+        title = "Unique Samples",
+        value = textOutput(ns("kpi_unique_samples")),
+        showcase = bsicons::bs_icon("fingerprint"),
         theme = "primary"
       ),
+      value_box(
+        title = "Total Tests",
+        value = textOutput(ns("kpi_total")),
+        showcase = bsicons::bs_icon("link-45deg"),
+        theme = "info"
+      ),
+      value_box(
+        title = "First Screenings",
+        value = textOutput(ns("kpi_first_screenings")),
+        showcase = bsicons::bs_icon("1-circle"),
+        theme = "success"
+      ),
+      value_box(
+        title = "Repeat Tests",
+        value = textOutput(ns("kpi_repeat_tests")),
+        showcase = bsicons::bs_icon("arrow-repeat"),
+        theme = "secondary"
+      )
+    ),
+
+    # Concordance KPI Cards
+    h4("Concordance Metrics", class = "mt-4 mb-3"),
+    layout_columns(
+      col_widths = c(3, 3, 3, 3),
       value_box(
         title = "Concordant",
         value = textOutput(ns("kpi_concordant")),
@@ -33,6 +57,12 @@ mod_elisa_concordance_summary_ui <- function(id) {
         value = textOutput(ns("kpi_copositivity")),
         showcase = bsicons::bs_icon("plus-circle"),
         theme = "info"
+      ),
+      value_box(
+        title = "Agreement Rate",
+        value = textOutput(ns("kpi_agreement")),
+        showcase = bsicons::bs_icon("percent"),
+        theme = "success"
       )
     ),
 
@@ -178,12 +208,28 @@ mod_elisa_concordance_summary_server <- function(id, concordance_results) {
       concordance_results()$metrics
     })
 
-    # KPI outputs
+    # Sample metrics KPI outputs
+    output$kpi_unique_samples <- renderText({
+      m <- metrics()
+      format(m$n_unique_samples, big.mark = ",")
+    })
+
     output$kpi_total <- renderText({
       m <- metrics()
       format(m$n_total, big.mark = ",")
     })
 
+    output$kpi_first_screenings <- renderText({
+      m <- metrics()
+      format_count_pct(m$n_first_screenings, m$n_total)
+    })
+
+    output$kpi_repeat_tests <- renderText({
+      m <- metrics()
+      format_count_pct(m$n_repeat_tests, m$n_total)
+    })
+
+    # Concordance KPI outputs
     output$kpi_concordant <- renderText({
       m <- metrics()
       format_count_pct(m$n_concordant, m$n_total)
@@ -197,6 +243,11 @@ mod_elisa_concordance_summary_server <- function(id, concordance_results) {
     output$kpi_copositivity <- renderText({
       m <- metrics()
       format_count_pct(m$n_both_positive, m$n_total)
+    })
+
+    output$kpi_agreement <- renderText({
+      m <- metrics()
+      format_pct(m$pct_concordant)
     })
 
     # Breakdown outputs

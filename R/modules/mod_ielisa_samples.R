@@ -20,48 +20,6 @@ mod_ielisa_samples_ui <- function(id) {
     div(
       class = "ielisa-panel",
 
-      # Filters
-      card(
-        card_header("Sample Filters"),
-        card_body(
-          class = "p-3",
-          layout_columns(
-            col_widths = c(3, 3, 3, 3),
-            textInput(
-              ns("filter_labid"),
-              "LabID contains:",
-              value = "",
-              placeholder = "e.g., KPS-"
-            ),
-            textInput(
-              ns("filter_barcode"),
-              "Barcode contains:",
-              value = "",
-              placeholder = "e.g., 12345"
-            ),
-            selectInput(
-              ns("filter_file"),
-              "File:",
-              choices = NULL,
-              selected = NULL
-            ),
-            selectInput(
-              ns("filter_qc"),
-              "QC Status:",
-              choices = c("All", "Pass (both)", "Fail (either)", "Pass L13", "Pass L15"),
-              selected = "All"
-            )
-          ),
-          div(
-            class = "d-flex justify-content-end",
-            actionButton(ns("reset_filters"), "Reset Filters", class = "btn-sm btn-outline-secondary")
-          )
-        )
-      ),
-
-      # Spacer
-      tags$div(style = "height: 16px;"),
-
       # Sample results table
       card(
         card_header("Sample Results"),
@@ -113,83 +71,17 @@ mod_ielisa_samples_server <- function(id, ielisa_data) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # ========================================================================
-    # UPDATE FILE FILTER CHOICES
-    # ========================================================================
-
-    observe({
-      data <- ielisa_data()
-
-      if (nrow(data) > 0 && "file" %in% names(data)) {
-        file_choices <- c("All", sort(unique(data$file)))
-        updateSelectInput(session, "filter_file", choices = file_choices, selected = "All")
-      }
-    })
-
-    # ========================================================================
-    # FILTERED DATA
-    # ========================================================================
-
-    filtered_data <- reactive({
-      data <- ielisa_data()
-
-      if (!nrow(data)) {
-        return(tibble())
-      }
-
-      # Apply LabID filter
-      if (!is.null(input$filter_labid) && input$filter_labid != "") {
-        data <- data %>%
-          filter(str_detect(LabID, fixed(input$filter_labid, ignore_case = TRUE)))
-      }
-
-      # Apply Barcode filter
-      if (!is.null(input$filter_barcode) && input$filter_barcode != "") {
-        data <- data %>%
-          filter(str_detect(as.character(Barcode), fixed(input$filter_barcode, ignore_case = TRUE)))
-      }
-
-      # Apply File filter
-      if (!is.null(input$filter_file) && input$filter_file != "All") {
-        data <- data %>%
-          filter(file == input$filter_file)
-      }
-
-      # Apply QC filter
-      if (!is.null(input$filter_qc) && input$filter_qc != "All") {
-        data <- switch(input$filter_qc,
-          "Pass (both)" = data %>% filter(qc_sample_L13 & qc_sample_L15),
-          "Fail (either)" = data %>% filter(!qc_sample_L13 | !qc_sample_L15),
-          "Pass L13" = data %>% filter(qc_sample_L13),
-          "Pass L15" = data %>% filter(qc_sample_L15),
-          data
-        )
-      }
-
-      data
-    })
-
-    # ========================================================================
-    # RESET FILTERS
-    # ========================================================================
-
-    observeEvent(input$reset_filters, {
-      updateTextInput(session, "filter_labid", value = "")
-      updateTextInput(session, "filter_barcode", value = "")
-      updateSelectInput(session, "filter_file", selected = "All")
-      updateSelectInput(session, "filter_qc", selected = "All")
-    })
 
     # ========================================================================
     # SAMPLES TABLE
     # ========================================================================
 
     output$samples_table <- renderDT({
-      data <- filtered_data()
+      data <- ielisa_data()
 
       if (!nrow(data)) {
         return(datatable(
-          tibble(Message = "No samples match the current filters"),
+          tibble(Message = "No data available"),
           options = list(dom = 't'),
           rownames = FALSE
         ))
@@ -206,14 +98,14 @@ mod_ielisa_samples_server <- function(id, ielisa_data) {
           pct_inh_f2_15 = round(pct_inh_f2_15, 1),
           diff_f1_f2_13 = round(diff_f1_f2_13, 1),
           diff_f1_f2_15 = round(diff_f1_f2_15, 1),
-          # Format QC status
-          L13_QC = ifelse(qc_sample_L13, "✓ PASS", "✗ FAIL"),
-          L15_QC = ifelse(qc_sample_L15, "✓ PASS", "✗ FAIL"),
+          # Format positivity status
+          L13_Result = ifelse(positive_L13, "✓ POS", "✗ NEG"),
+          L15_Result = ifelse(positive_L15, "✓ POS", "✗ NEG"),
           # Positivity indicator
           Positive_For = case_when(
-            qc_sample_L13 & qc_sample_L15 ~ "Both",
-            qc_sample_L13 ~ "LiTat 1.3",
-            qc_sample_L15 ~ "LiTat 1.5",
+            positive_L13 & positive_L15 ~ "Both",
+            positive_L13 ~ "LiTat 1.3",
+            positive_L15 ~ "LiTat 1.5",
             TRUE ~ "Neither"
           ),
           # Format duplicate flags
@@ -232,11 +124,11 @@ mod_ielisa_samples_server <- function(id, ielisa_data) {
           `OD L13` = OD_L13,
           `Inh% L13 (F1)` = pct_inh_f1_13,
           `Inh% L13 (F2)` = pct_inh_f2_13,
-          `L13 QC` = L13_QC,
+          `L13 Result` = L13_Result,
           `OD L15` = OD_L15,
           `Inh% L15 (F1)` = pct_inh_f1_15,
           `Inh% L15 (F2)` = pct_inh_f2_15,
-          `L15 QC` = L15_QC,
+          `L15 Result` = L15_Result,
           `Δ F1-F2 L13` = diff_f1_f2_13,
           `Δ F1-F2 L15` = diff_f1_f2_15,
           Flags = Dup_Flag
@@ -263,12 +155,12 @@ mod_ielisa_samples_server <- function(id, ielisa_data) {
           fontWeight = 'bold'
         ) %>%
         formatStyle(
-          'L13 QC',
-          backgroundColor = styleEqual(c("✓ PASS", "✗ FAIL"), c("#d4edda", "#f8d7da"))
+          'L13 Result',
+          backgroundColor = styleEqual(c("✓ POS", "✗ NEG"), c("#d4edda", "#f8d7da"))
         ) %>%
         formatStyle(
-          'L15 QC',
-          backgroundColor = styleEqual(c("✓ PASS", "✗ FAIL"), c("#d4edda", "#f8d7da"))
+          'L15 Result',
+          backgroundColor = styleEqual(c("✓ POS", "✗ NEG"), c("#d4edda", "#f8d7da"))
         ) %>%
         formatStyle(
           'Flags',
@@ -281,7 +173,7 @@ mod_ielisa_samples_server <- function(id, ielisa_data) {
     # ========================================================================
 
     output$plot_inhibition_dist <- renderPlotly({
-      data <- filtered_data()
+      data <- ielisa_data()
 
       if (!nrow(data)) {
         return(plotly_empty("No data available"))
@@ -336,7 +228,7 @@ mod_ielisa_samples_server <- function(id, ielisa_data) {
     # ========================================================================
 
     output$plot_formula_agreement <- renderPlotly({
-      data <- filtered_data()
+      data <- ielisa_data()
 
       if (!nrow(data)) {
         return(plotly_empty("No data available"))
@@ -389,7 +281,7 @@ mod_ielisa_samples_server <- function(id, ielisa_data) {
     # ========================================================================
 
     output$plot_inh_vs_od_13 <- renderPlotly({
-      data <- filtered_data()
+      data <- ielisa_data()
 
       if (!nrow(data)) {
         return(plotly_empty("No data available"))
@@ -399,7 +291,7 @@ mod_ielisa_samples_server <- function(id, ielisa_data) {
                    type = "scatter", mode = "markers",
                    marker = list(
                      size = 8,
-                     color = ~qc_sample_L13,
+                     color = ~positive_L13,
                      colors = c("FALSE" = "#e74c3c", "TRUE" = "#2ecc71"),
                      opacity = 0.7
                    ),
@@ -432,7 +324,7 @@ mod_ielisa_samples_server <- function(id, ielisa_data) {
     # ========================================================================
 
     output$plot_inh_vs_od_15 <- renderPlotly({
-      data <- filtered_data()
+      data <- ielisa_data()
 
       if (!nrow(data)) {
         return(plotly_empty("No data available"))
@@ -442,7 +334,7 @@ mod_ielisa_samples_server <- function(id, ielisa_data) {
                    type = "scatter", mode = "markers",
                    marker = list(
                      size = 8,
-                     color = ~qc_sample_L15,
+                     color = ~positive_L15,
                      colors = c("FALSE" = "#e74c3c", "TRUE" = "#2ecc71"),
                      opacity = 0.7
                    ),

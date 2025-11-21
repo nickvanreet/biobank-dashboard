@@ -71,7 +71,7 @@ mod_ielisa_analysis_ui <- function(id) {
           div(
             class = "d-flex gap-2",
             downloadButton(ns("export_full"), "Full Dataset", class = "btn-primary"),
-            downloadButton(ns("export_qc_failed"), "QC Failed Only", class = "btn-warning"),
+            downloadButton(ns("export_qc_failed"), "Negative Samples", class = "btn-warning"),
             downloadButton(ns("export_duplicates"), "Duplicates Only", class = "btn-info")
           )
         )
@@ -127,8 +127,8 @@ mod_ielisa_analysis_server <- function(id, ielisa_data) {
           sd_inh_15 = sd(pct_inh_f2_15, na.rm = TRUE),
           cv_inh_15 = ifelse(mean_inh_15 != 0, (sd_inh_15 / mean_inh_15) * 100, NA),
           # Concordance
-          concordant_13 = all(qc_sample_L13) | all(!qc_sample_L13),
-          concordant_15 = all(qc_sample_L15) | all(!qc_sample_L15),
+          concordant_13 = all(positive_L13) | all(!positive_L13),
+          concordant_15 = all(positive_L15) | all(!positive_L15),
           .groups = "drop"
         )
     })
@@ -498,11 +498,11 @@ mod_ielisa_analysis_server <- function(id, ielisa_data) {
 
     output$export_qc_failed <- downloadHandler(
       filename = function() {
-        paste0("ielisa_qc_failed_", Sys.Date(), ".xlsx")
+        paste0("ielisa_negative_", Sys.Date(), ".xlsx")
       },
       content = function(file) {
         failed_data <- ielisa_data() %>%
-          filter(!qc_sample_L13 | !qc_sample_L15)
+          filter(!positive_L13 | !positive_L15)
         writexl::write_xlsx(failed_data, file)
       }
     )

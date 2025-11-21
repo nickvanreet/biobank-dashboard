@@ -107,9 +107,9 @@ mod_ielisa_runs_server <- function(id, ielisa_data) {
           plate_valid_L13 = first(plate_valid_L13),
           plate_valid_L15 = first(plate_valid_L15),
 
-          # Sample QC rates
-          qc_rate_L13 = mean(qc_sample_L13, na.rm = TRUE),
-          qc_rate_L15 = mean(qc_sample_L15, na.rm = TRUE),
+          # Sample positivity rates
+          pos_rate_L13 = mean(positive_L13, na.rm = TRUE),
+          pos_rate_L15 = mean(positive_L15, na.rm = TRUE),
 
           # Mean inhibition values
           mean_inh_f2_13 = mean(pct_inh_f2_13, na.rm = TRUE),
@@ -163,28 +163,28 @@ mod_ielisa_runs_server <- function(id, ielisa_data) {
       }
 
       # Sample positivity (threshold-based)
-      positive_L13 <- if ("qc_sample_L13" %in% names(data)) {
-        sum(data$qc_sample_L13 == TRUE, na.rm = TRUE)
+      positive_L13 <- if ("positive_L13" %in% names(data)) {
+        sum(data$positive_L13 == TRUE, na.rm = TRUE)
       } else {
         0
       }
 
-      positive_L15 <- if ("qc_sample_L15" %in% names(data)) {
-        sum(data$qc_sample_L15 == TRUE, na.rm = TRUE)
+      positive_L15 <- if ("positive_L15" %in% names(data)) {
+        sum(data$positive_L15 == TRUE, na.rm = TRUE)
       } else {
         0
       }
 
       # Both antigens positive (L13 AND L15)
-      both_positive <- if (all(c("qc_sample_L13", "qc_sample_L15") %in% names(data))) {
-        sum(data$qc_sample_L13 & data$qc_sample_L15, na.rm = TRUE)
+      both_positive <- if (all(c("positive_L13", "positive_L15") %in% names(data))) {
+        sum(data$positive_L13 & data$positive_L15, na.rm = TRUE)
       } else {
         0
       }
 
       # Either antigen positive (L13 OR L15)
-      either_positive <- if (all(c("qc_sample_L13", "qc_sample_L15") %in% names(data))) {
-        sum(data$qc_sample_L13 | data$qc_sample_L15, na.rm = TRUE)
+      either_positive <- if (all(c("positive_L13", "positive_L15") %in% names(data))) {
+        sum(data$positive_L13 | data$positive_L15, na.rm = TRUE)
       } else {
         0
       }
@@ -285,8 +285,8 @@ mod_ielisa_runs_server <- function(id, ielisa_data) {
           OD_L15_pos_cv = round(OD_L15_pos_cv, 1),
           pct_inh_pos_13 = round(pct_inh_pos_13, 1),
           pct_inh_pos_15 = round(pct_inh_pos_15, 1),
-          qc_rate_L13 = round(qc_rate_L13 * 100, 1),
-          qc_rate_L15 = round(qc_rate_L15 * 100, 1),
+          pos_rate_L13 = round(pos_rate_L13 * 100, 1),
+          pos_rate_L15 = round(pos_rate_L15 * 100, 1),
           # Format validation status
           L13_Valid = ifelse(plate_valid_L13, "✓ PASS", "✗ FAIL"),
           L15_Valid = ifelse(plate_valid_L15, "✓ PASS", "✗ FAIL")
@@ -303,8 +303,8 @@ mod_ielisa_runs_server <- function(id, ielisa_data) {
           `L15 POS OD` = OD_L15_pos_mean,
           `L15 NEG CV%` = OD_L15_neg_cv,
           `L15 Valid` = L15_Valid,
-          `L13 QC%` = qc_rate_L13,
-          `L15 QC%` = qc_rate_L15
+          `L13 Pos%` = pos_rate_L13,
+          `L15 Pos%` = pos_rate_L15
         )
 
       datatable(

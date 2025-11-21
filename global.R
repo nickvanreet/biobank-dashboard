@@ -93,6 +93,13 @@ source("R/modules/mod_elisa_analysis.R")
 source("R/modules/mod_06_elisa_pe.R")
 source("R/modules/mod_07_elisa_vsg.R")
 
+# ELISA Concordance module
+source("R/utils_elisa_concordance.R")
+source("R/modules/mod_elisa_concordance_summary.R")
+source("R/modules/mod_elisa_concordance_table.R")
+source("R/modules/mod_elisa_concordance_analysis.R")
+source("R/modules/mod_08_elisa_concordance.R")
+
 # ============================================================================
 # SOURCE MIC SUB-MODULES
 # ============================================================================

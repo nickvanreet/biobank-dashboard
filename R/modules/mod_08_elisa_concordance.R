@@ -241,10 +241,67 @@ mod_elisa_concordance_server <- function(id,
       matched
     })
 
+    # Apply global demographic filters to matched data
+    matched_filtered <- reactive({
+      data <- matched_data()
+      message("DEBUG: Matched data before global filters: ", nrow(data))
+
+      # Apply global filters (if provided)
+      flt <- filters()
+      if (!is.null(flt)) {
+        # Apply province filter
+        if (!is.null(flt$province) && flt$province != "all" && flt$province != "") {
+          if ("Province" %in% names(data)) {
+            data <- data %>% filter(Province == !!flt$province)
+            message("DEBUG: Matched data after province filter: ", nrow(data))
+          }
+        }
+
+        # Apply health zone filter
+        if (!is.null(flt$zone) && flt$zone != "all" && flt$zone != "") {
+          if ("HealthZone" %in% names(data)) {
+            data <- data %>% filter(HealthZone == !!flt$zone)
+            message("DEBUG: Matched data after zone filter: ", nrow(data))
+          }
+        }
+
+        # Apply structure filter
+        if (!is.null(flt$structure) && flt$structure != "all" && flt$structure != "") {
+          if ("Structure" %in% names(data)) {
+            data <- data %>% filter(Structure == !!flt$structure)
+            message("DEBUG: Matched data after structure filter: ", nrow(data))
+          }
+        }
+
+        # Apply cohort filter
+        if (!is.null(flt$cohort) && flt$cohort != "all" && flt$cohort != "") {
+          if ("Cohort" %in% names(data)) {
+            data <- data %>% filter(Cohort == !!flt$cohort)
+            message("DEBUG: Matched data after cohort filter: ", nrow(data))
+          }
+        }
+
+        # Apply date range filter
+        if (!is.null(flt$date_range) && length(flt$date_range) == 2) {
+          if ("SampleDate" %in% names(data)) {
+            data <- data %>%
+              filter(
+                as.Date(SampleDate) >= flt$date_range[1],
+                as.Date(SampleDate) <= flt$date_range[2]
+              )
+            message("DEBUG: Matched data after date range filter: ", nrow(data))
+          }
+        }
+      }
+
+      message("DEBUG: Matched data after all global filters: ", nrow(data))
+      data
+    })
+
     # Calculate concordance with current thresholds
     concordance_results <- reactive({
       calculate_concordance(
-        matched_data(),
+        matched_filtered(),
         pe_pp_cutoff = thresholds$pe_pp_cutoff,
         pe_dod_cutoff = thresholds$pe_dod_cutoff,
         vsg_pp_cutoff = thresholds$vsg_pp_cutoff,

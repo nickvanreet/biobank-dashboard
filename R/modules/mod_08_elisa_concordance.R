@@ -301,10 +301,40 @@ mod_elisa_concordance_server <- function(id,
         }
 
         # Apply date range filter
+        # For ELISA concordance, use PE plate date if SampleDate is not available
         if (!is.null(flt$date_range) && length(flt$date_range) == 2) {
+          message("DEBUG: Date range filter - min: ", flt$date_range[1], ", max: ", flt$date_range[2])
+
+          # Try SampleDate first (biobank collection date)
           if ("SampleDate" %in% names(data)) {
+            message("DEBUG: SampleDate column - NA count: ", sum(is.na(data$SampleDate)), " / ", nrow(data))
+            if (sum(!is.na(data$SampleDate)) > 0) {
+              message("DEBUG: SampleDate range in data: ",
+                      min(data$SampleDate, na.rm = TRUE), " to ",
+                      max(data$SampleDate, na.rm = TRUE))
+            }
+          }
+
+          # Use PE plate date as the primary date for filtering (most representative)
+          if ("pe_plate_date" %in% names(data)) {
+            message("DEBUG: Using pe_plate_date for date filtering")
+            message("DEBUG: pe_plate_date - NA count: ", sum(is.na(data$pe_plate_date)), " / ", nrow(data))
+            message("DEBUG: pe_plate_date range in data: ",
+                    min(data$pe_plate_date, na.rm = TRUE), " to ",
+                    max(data$pe_plate_date, na.rm = TRUE))
             data <- data %>%
               filter(
+                !is.na(pe_plate_date),
+                as.Date(pe_plate_date) >= flt$date_range[1],
+                as.Date(pe_plate_date) <= flt$date_range[2]
+              )
+            message("DEBUG: Matched data after date range filter: ", nrow(data))
+          } else if ("SampleDate" %in% names(data)) {
+            # Fallback to SampleDate if available
+            message("DEBUG: Using SampleDate for date filtering (fallback)")
+            data <- data %>%
+              filter(
+                !is.na(SampleDate),
                 as.Date(SampleDate) >= flt$date_range[1],
                 as.Date(SampleDate) <= flt$date_range[2]
               )

@@ -36,20 +36,17 @@ Interactive table with:
 ---
 
 ### 2. **Samples Tab**
-Detailed sample-level results with advanced filtering:
+Detailed sample-level results:
 
-#### Filters
-- **LabID**: Search for specific lab identifiers
-- **Barcode**: Search for specific sample barcodes
-- **File**: Filter by specific plate file
-- **QC Status**: Filter by QC outcome (Pass/Fail for each antigen)
+- Filterable table using global filters from the coordinator
+- No local filters - all filtering done at the module level
 
 #### Sample Results Table
 Comprehensive table showing:
 - LabID and Barcode
 - OD values for both antigens
 - Inhibition percentages using both formulas (F1 and F2)
-- QC status (✓ PASS / ✗ FAIL)
+- Positivity status (✓ POS / ✗ NEG)
 - Formula agreement (Δ F1-F2)
 - Duplicate flags (🔄 DUP, ⚠️ BC for barcode conflicts, ⚠️ LID for LabID conflicts)
 
@@ -91,7 +88,7 @@ Scatter plots comparing first vs. second test results for paired duplicates:
 #### Data Export
 Three export options:
 - **Full Dataset**: Export all iELISA data
-- **QC Failed Only**: Export only samples that failed QC
+- **Negative Samples**: Export only samples that are negative (below threshold)
 - **Duplicates Only**: Export only duplicate samples
 
 ---
@@ -124,7 +121,7 @@ Each iELISA Excel file contains:
 
 ### Quality Control Criteria
 
-#### Plate-Level QC
+#### Plate-Level QC (Control Validation)
 A plate is valid if ALL of the following are met:
 - NEG control OD: 1.0 - 3.0
 - POS control OD: 0.3 - 0.7
@@ -132,9 +129,11 @@ A plate is valid if ALL of the following are met:
 - Control CVs: < 20%
 - Formula 1 and Formula 2 agreement: < 25% difference
 
-#### Sample-Level QC
-A sample is positive if:
+#### Sample-Level Positivity
+A sample is considered positive if:
 - **Inhibition (Formula 2) ≥ 30%**
+
+Note: "QC" in this module refers to plate-level control validation, not sample positivity. Sample results are reported as positive (POS) or negative (NEG) based on the inhibition threshold.
 
 ### Caching
 Data is cached using MD5 hashing for performance:

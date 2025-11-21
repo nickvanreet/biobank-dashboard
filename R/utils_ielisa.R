@@ -224,12 +224,12 @@ parse_ielisa_file <- function(path,
   )
 
   # ---------------------------------------------------------
-  # SAMPLE QC (30% inhibition threshold)
+  # SAMPLE POSITIVITY (30% inhibition threshold)
   # ---------------------------------------------------------
   samples <- samples %>%
     mutate(
-      qc_sample_L13 = pct_inh_f2_13 >= 30,
-      qc_sample_L15 = pct_inh_f2_15 >= 30
+      positive_L13 = pct_inh_f2_13 >= 30,
+      positive_L15 = pct_inh_f2_15 >= 30
     )
 
   # ---------------------------------------------------------
@@ -377,14 +377,14 @@ add_duplicate_detection <- function(ielisa_data) {
 # RECALCULATE SAMPLE QC WITH CUSTOM SETTINGS
 # ============================================================================
 
-#' Recalculate sample QC with custom threshold and formula
+#' Recalculate sample positivity with custom threshold and formula
 #'
 #' Applies user-selected threshold and formula to determine sample positivity
 #'
 #' @param ielisa_data iELISA data frame with both formulas calculated
 #' @param threshold Positivity threshold (% inhibition, default 30)
-#' @param formula Formula to use for QC ("f1" or "f2", default "f2")
-#' @return Data frame with updated qc_sample_L13 and qc_sample_L15 columns
+#' @param formula Formula to use ("f1" or "f2", default "f2")
+#' @return Data frame with updated positive_L13 and positive_L15 columns
 apply_custom_qc <- function(ielisa_data, threshold = 30, formula = "f2") {
   if (nrow(ielisa_data) == 0) {
     return(ielisa_data)
@@ -394,14 +394,14 @@ apply_custom_qc <- function(ielisa_data, threshold = 30, formula = "f2") {
   if (formula == "f1") {
     ielisa_data <- ielisa_data %>%
       mutate(
-        qc_sample_L13 = pct_inh_f1_13 >= threshold,
-        qc_sample_L15 = pct_inh_f1_15 >= threshold
+        positive_L13 = pct_inh_f1_13 >= threshold,
+        positive_L15 = pct_inh_f1_15 >= threshold
       )
   } else {  # f2
     ielisa_data <- ielisa_data %>%
       mutate(
-        qc_sample_L13 = pct_inh_f2_13 >= threshold,
-        qc_sample_L15 = pct_inh_f2_15 >= threshold
+        positive_L13 = pct_inh_f2_13 >= threshold,
+        positive_L15 = pct_inh_f2_15 >= threshold
       )
   }
 

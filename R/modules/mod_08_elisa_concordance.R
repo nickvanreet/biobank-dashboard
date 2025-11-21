@@ -208,21 +208,24 @@ mod_elisa_concordance_server <- function(id,
                 ", structure=", f$structure)
 
         # Province filter (only for biobank-matched samples)
-        if (!is.null(f$province) && length(f$province) > 0 && f$province != "All") {
+        if (!is.null(f$province) && length(f$province) > 0 &&
+            !tolower(f$province) %in% c("all", "")) {
           before <- nrow(data)
           data <- data %>% filter(is.na(Province) | Province %in% f$province)
           message("DEBUG: PE Province filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
 
         # Health Zone filter (only for biobank-matched samples)
-        if (!is.null(f$health_zone) && length(f$health_zone) > 0 && f$health_zone != "All") {
+        if (!is.null(f$health_zone) && length(f$health_zone) > 0 &&
+            !tolower(f$health_zone) %in% c("all", "")) {
           before <- nrow(data)
           data <- data %>% filter(is.na(HealthZone) | HealthZone %in% f$health_zone)
           message("DEBUG: PE HealthZone filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
 
         # Structure filter (only for biobank-matched samples)
-        if (!is.null(f$structure) && length(f$structure) > 0 && f$structure != "All") {
+        if (!is.null(f$structure) && length(f$structure) > 0 &&
+            !tolower(f$structure) %in% c("all", "")) {
           before <- nrow(data)
           data <- data %>% filter(is.na(Structure) | Structure %in% f$structure)
           message("DEBUG: PE Structure filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
@@ -255,21 +258,24 @@ mod_elisa_concordance_server <- function(id,
         f <- filters()
 
         # Province filter (only for biobank-matched samples)
-        if (!is.null(f$province) && length(f$province) > 0 && f$province != "All") {
+        if (!is.null(f$province) && length(f$province) > 0 &&
+            !tolower(f$province) %in% c("all", "")) {
           before <- nrow(data)
           data <- data %>% filter(is.na(Province) | Province %in% f$province)
           message("DEBUG: VSG Province filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
 
         # Health Zone filter (only for biobank-matched samples)
-        if (!is.null(f$health_zone) && length(f$health_zone) > 0 && f$health_zone != "All") {
+        if (!is.null(f$health_zone) && length(f$health_zone) > 0 &&
+            !tolower(f$health_zone) %in% c("all", "")) {
           before <- nrow(data)
           data <- data %>% filter(is.na(HealthZone) | HealthZone %in% f$health_zone)
           message("DEBUG: VSG HealthZone filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")
         }
 
         # Structure filter (only for biobank-matched samples)
-        if (!is.null(f$structure) && length(f$structure) > 0 && f$structure != "All") {
+        if (!is.null(f$structure) && length(f$structure) > 0 &&
+            !tolower(f$structure) %in% c("all", "")) {
           before <- nrow(data)
           data <- data %>% filter(is.na(Structure) | Structure %in% f$structure)
           message("DEBUG: VSG Structure filter applied - removed ", before - nrow(data), " rows (", nrow(data), " remaining)")

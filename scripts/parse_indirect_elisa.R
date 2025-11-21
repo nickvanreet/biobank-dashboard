@@ -214,9 +214,10 @@ read_elisa_layout <- function(path) {
         plate_id = plate_id,
         plate_num = as.integer(elisa),
         sample_type = "sample",
+        sample_code = NA_character_,  # Add sample_code column for samples
         well_id = .data[[dw_col_s]]  # Direct mapping in 4-plate
       ) %>%
-      select(plate_id, plate_num, sample_type, sample, 
+      select(plate_id, plate_num, sample_type, sample, sample_code,
              numero_labo, code_barres_kps, well_id, everything())
   } else {
     # Single-plate format
@@ -226,10 +227,11 @@ read_elisa_layout <- function(path) {
         plate_id = plate_id,
         plate_num = 1,
         sample_type = "sample",
+        sample_code = NA_character_,  # Add sample_code column for samples
         wells_raw = .data[[dw_col_s]],
         wells = map(wells_raw, parse_deepwell_pattern)
       ) %>%
-      select(plate_id, plate_num, sample_type, sample,
+      select(plate_id, plate_num, sample_type, sample, sample_code,
              numero_labo, code_barres_kps, wells, everything()) %>%
       unnest_longer(wells, values_to = "well_id")
   }
@@ -255,10 +257,12 @@ read_elisa_layout <- function(path) {
         plate_id = plate_id,
         plate_num = as.integer(elisa),
         sample_type = "control",
+        numero_labo = NA_character_,  # Add numero_labo column for controls
+        code_barres_kps = NA_character_,  # Add code_barres_kps column for controls
         well_id = .data[[dw_col_c]]
       ) %>%
-      select(plate_id, plate_num, sample_type, sample, 
-             sample_code, well_id, everything())
+      select(plate_id, plate_num, sample_type, sample, sample_code,
+             numero_labo, code_barres_kps, well_id, everything())
   } else {
     # Single-plate format
     controls_layout <- df_controls %>%
@@ -267,11 +271,13 @@ read_elisa_layout <- function(path) {
         plate_id = plate_id,
         plate_num = 1,
         sample_type = "control",
+        numero_labo = NA_character_,  # Add numero_labo column for controls
+        code_barres_kps = NA_character_,  # Add code_barres_kps column for controls
         wells_raw = .data[[dw_col_c]],
         wells = map(wells_raw, parse_deepwell_pattern)
       ) %>%
-      select(plate_id, plate_num, sample_type, sample,
-             sample_code, wells, everything()) %>%
+      select(plate_id, plate_num, sample_type, sample, sample_code,
+             numero_labo, code_barres_kps, wells, everything()) %>%
       unnest_longer(wells, values_to = "well_id")
   }
   
@@ -339,24 +345,20 @@ extract_elisa_plate_summary <- function(path, delta_max = 0.15, cv_max = 15) {
   )
 
   # Harmonize columns - ensure they're character type
-  # Convert columns if they exist, create them if they don't
-  if ("numero_labo" %in% names(samples_layout)) {
-    samples_layout$numero_labo <- as.character(samples_layout$numero_labo)
-  } else {
-    samples_layout$numero_labo <- NA_character_
-  }
+  # (Columns now created in mutate above, just need type conversion)
+  samples_layout <- samples_layout %>%
+    mutate(
+      numero_labo = as.character(numero_labo),
+      code_barres_kps = as.character(code_barres_kps),
+      sample_code = as.character(sample_code)
+    )
 
-  if ("code_barres_kps" %in% names(samples_layout)) {
-    samples_layout$code_barres_kps <- as.character(samples_layout$code_barres_kps)
-  } else {
-    samples_layout$code_barres_kps <- NA_character_
-  }
-
-  samples_layout$sample_code <- NA_character_
-
-  # For controls, ensure these are NA
-  controls_layout$numero_labo <- NA_character_
-  controls_layout$code_barres_kps <- NA_character_
+  controls_layout <- controls_layout %>%
+    mutate(
+      numero_labo = as.character(numero_labo),
+      code_barres_kps = as.character(code_barres_kps),
+      sample_code = as.character(sample_code)
+    )
   
   # 3) Join with OD
   sample_wells <- samples_layout %>%
@@ -537,6 +539,12 @@ parse_indirect_elisa_folder <- function(dir,
   # "Plaque" markers, so we use the source directory as the authoritative source
   if ("source_path" %in% names(df_all)) {
     message("DEBUG: Applying source_path-based elisa_type classification")
+    message("DEBUG: Sample source_paths: ", paste(head(unique(df_all$source_path), 3), collapse = ", "))
+
+    # Show elisa_type BEFORE classification
+    message("DEBUG: elisa_type BEFORE source_path classification: ",
+            paste(unique(df_all$elisa_type), collapse = ", "))
+
     df_all <- df_all %>%
       mutate(
         elisa_type = case_when(
@@ -544,8 +552,13 @@ parse_indirect_elisa_folder <- function(dir,
           grepl("elisa_pe|/pe/", source_path, ignore.case = TRUE) ~ "ELISA_pe",
           TRUE ~ "ELISA_pe"  # Default to PE if path doesn't indicate type
         )
-      ) %>%
-      select(-source_path)  # Remove source_path after using it for inference
+      )
+
+    # Show elisa_type AFTER classification (before removing source_path)
+    message("DEBUG: elisa_type AFTER source_path classification: ",
+            paste(unique(df_all$elisa_type), collapse = ", "))
+
+    df_all <- df_all %>% select(-source_path)  # Remove source_path after using it for inference
     message("DEBUG: source_path classification complete")
   } else {
     message("WARNING: source_path column not found, using fallback classification")

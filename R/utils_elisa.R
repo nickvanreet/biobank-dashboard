@@ -285,7 +285,7 @@ ensure_elisa_columns <- function(df) {
 .elisa_cache_env <- new.env(parent = emptyenv())
 
 # Cache version - increment this when data structure changes to invalidate old caches
-.elisa_cache_version <- "v7_force_elisa_type_fix"
+.elisa_cache_version <- "v8_fix_column_warnings_and_elisa_type"
 
 #' Ensure ELISA parser is loaded
 ensure_elisa_parser <- function() {
@@ -349,12 +349,20 @@ load_elisa_data <- function(
 
   if (cache_valid) {
     message("✓ Using cached ELISA data (", nrow(cached$data), " rows)")
+    message("DEBUG: Cache version: ", cached_version)
+    message("DEBUG: Unique elisa_type values in cache: ", paste(unique(cached$data$elisa_type), collapse = ", "))
 
     # Re-link to biobank in case biobank_df changed
     if (!is.null(biobank_df)) {
       cached$data <- link_elisa_to_biobank(cached$data, biobank_df)
     }
     return(ensure_elisa_columns(cached$data))
+  } else {
+    if (!is.null(cached_version)) {
+      message("DEBUG: Cache invalidated. Old version: ", cached_version, ", New version: ", .elisa_cache_version)
+    } else {
+      message("DEBUG: No cache found, will parse fresh data")
+    }
   }
 
   # Parse ELISA files
@@ -384,9 +392,16 @@ load_elisa_data <- function(
 
   parsed <- ensure_elisa_columns(parsed)
 
-  # Ensure elisa_type column exists (parser should have set this correctly)
+  # Ensure elisa_type column exists and has valid values (parser should have set this correctly)
   if (!"elisa_type" %in% names(parsed)) {
+    warning("elisa_type column missing from parsed data, adding default")
     parsed <- parsed %>% mutate(elisa_type = "ELISA_pe")
+  }
+
+  # Check if all elisa_type values are NA (indicates a parsing problem)
+  if (nrow(parsed) > 0 && all(is.na(parsed$elisa_type))) {
+    warning("All elisa_type values are NA after parsing! This should not happen.")
+    message("DEBUG: Columns in parsed data: ", paste(names(parsed), collapse = ", "))
   }
 
   # Link to biobank

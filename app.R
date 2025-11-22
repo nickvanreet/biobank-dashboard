@@ -54,6 +54,7 @@ ui <- do.call(
       mod_drs_rnasep_ui("drs_rnasep"),
       # New comprehensive analysis modules
       mod_sample_journey_ui("sample_journey"),
+      mod_simple_concordance_ui("simple_concordance"),
       mod_concordance_ui("concordance")
     )
   )
@@ -148,6 +149,16 @@ server <- function(input, output, session) {
     elisa_vsg_df = elisa_vsg_data$samples,
     ielisa_df = ielisa_data$samples,
     filters = data$filters
+  )
+
+  # Simple Concordance module (qualitative positive/negative comparison)
+  mod_simple_concordance_server(
+    "simple_concordance",
+    biobank_df = data$clean_data,
+    mic_df = mic_data$qpcr_samples,
+    elisa_pe_df = elisa_pe_data$samples,
+    elisa_vsg_df = elisa_vsg_data$samples,
+    ielisa_df = ielisa_data$samples
   )
 
   # Concordance Analysis module (comprehensive statistical analysis)

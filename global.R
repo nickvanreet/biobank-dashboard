@@ -183,6 +183,10 @@ source("R/sampleJourneyHelpers.R")
 source("R/sampleJourneyVisualizations.R")
 source("R/modules/mod_10_sample_journey.R")
 
+# Simple Concordance module (qualitative positive/negative comparison)
+source("R/utils_simple_concordance.R")
+source("R/modules/mod_simple_concordance.R")
+
 # Concordance Analysis module (comprehensive statistical analysis)
 source("R/concordanceStatistics.R")
 source("R/concordanceVisualizations.R")

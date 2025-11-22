@@ -245,15 +245,114 @@ plot_mic_detailed <- function(mic_data) {
       "Unknown"
     }
 
+    # Get additional result details
+    final_call <- if ("FinalCall" %in% names(row) && !is.na(row$FinalCall)) {
+      as.character(row$FinalCall)
+    } else {
+      "Unknown"
+    }
+
+    confidence_score <- if ("ConfidenceScore" %in% names(row) && !is.na(row$ConfidenceScore)) {
+      as.character(row$ConfidenceScore)
+    } else {
+      "Unknown"
+    }
+
+    pipeline_quality <- if ("PipelineQualityFlag" %in% names(row) && !is.na(row$PipelineQualityFlag)) {
+      as.character(row$PipelineQualityFlag)
+    } else {
+      NA_character_
+    }
+
+    rna_quality <- if ("RNA_Quality" %in% names(row) && !is.na(row$RNA_Quality)) {
+      as.character(row$RNA_Quality)
+    } else {
+      "Unknown"
+    }
+
+    dna_quality <- if ("DNA_Quality" %in% names(row) && !is.na(row$DNA_Quality)) {
+      as.character(row$DNA_Quality)
+    } else {
+      "Unknown"
+    }
+
+    rna_preservation <- if ("RNA_Preservation_Status" %in% names(row) && !is.na(row$RNA_Preservation_Status)) {
+      as.character(row$RNA_Preservation_Status)
+    } else {
+      NA_character_
+    }
+
+    decision_reason <- if ("DecisionReason" %in% names(row) && !is.na(row$DecisionReason)) {
+      as.character(row$DecisionReason)
+    } else {
+      NA_character_
+    }
+
+    # Determine badge class for final call
+    final_call_badge <- if (grepl("POS|Positive", final_call, ignore.case = TRUE)) {
+      list(class = "bg-danger", text = final_call)
+    } else if (grepl("NEG|Negative", final_call, ignore.case = TRUE)) {
+      list(class = "bg-success", text = final_call)
+    } else if (grepl("INVALID|Invalid", final_call, ignore.case = TRUE)) {
+      list(class = "bg-secondary", text = final_call)
+    } else if (grepl("BORDERLINE|Indeterminate", final_call, ignore.case = TRUE)) {
+      list(class = "bg-warning", text = final_call)
+    } else {
+      list(class = "bg-secondary", text = final_call)
+    }
+
+    # Determine badge class for confidence
+    confidence_badge <- if (confidence_score == "High") {
+      list(class = "bg-success", icon = "check-circle")
+    } else if (confidence_score == "Medium") {
+      list(class = "bg-warning", icon = "exclamation-triangle")
+    } else if (confidence_score == "Low") {
+      list(class = "bg-danger", icon = "exclamation-circle")
+    } else {
+      list(class = "bg-secondary", icon = "question-circle")
+    }
+
     tags$div(
       class = "card mb-3",
       tags$div(
-        class = "card-header bg-light",
-        tags$strong(sprintf("MIC Test #%d", i)),
-        tags$small(class = "text-muted ms-2", paste("Date:", test_date))
+        class = "card-header bg-light d-flex justify-content-between align-items-center",
+        tags$div(
+          tags$strong(sprintf("MIC Test #%d", i)),
+          tags$small(class = "text-muted ms-2", paste("Date:", test_date))
+        ),
+        tags$span(
+          class = sprintf("badge %s", final_call_badge$class),
+          final_call_badge$text
+        )
       ),
       tags$div(
         class = "card-body",
+        # Final Call and Confidence Section
+        tags$div(
+          class = "mb-3",
+          tags$div(
+            class = "d-flex justify-content-between align-items-center mb-2",
+            tags$div(
+              tags$strong("Confidence: "),
+              tags$span(
+                class = sprintf("badge %s ms-2", confidence_badge$class),
+                icon(confidence_badge$icon),
+                " ",
+                confidence_score
+              )
+            )
+          ),
+          if (!is.na(decision_reason)) {
+            tags$div(
+              class = "small text-muted",
+              tags$strong("Decision: "),
+              decision_reason
+            )
+          }
+        ),
+
+        tags$hr(),
+
         tags$h6("Target Detection:", class = "mb-3"),
         create_target_display("177T (DNA)", cq_177t, marker_177t),
         create_target_display("18S2 (RNA)", cq_18s2, marker_18s2),
@@ -263,21 +362,72 @@ plot_mic_detailed <- function(mic_data) {
         tags$hr(),
 
         tags$h6("Quality Metrics:", class = "mb-3"),
+        # RNA and DNA Quality
         tags$div(
-          class = sprintf("alert alert-%s mb-2", rnasep_quality$class),
-          role = "alert",
-          tags$strong("RNA Preservation: "),
-          rnasep_quality$text,
-          if (!is.na(delta_rnasep)) {
-            tags$small(sprintf(" (ΔCq RNAseP: %.1f)", delta_rnasep))
-          }
+          class = "row mb-2",
+          tags$div(
+            class = "col-6",
+            tags$small(
+              tags$strong("RNA Quality: "),
+              tags$span(class = if (rna_quality == "PASS") "text-success" else "text-warning", rna_quality)
+            )
+          ),
+          tags$div(
+            class = "col-6",
+            tags$small(
+              tags$strong("DNA Quality: "),
+              tags$span(class = if (dna_quality == "PASS") "text-success" else "text-warning", dna_quality)
+            )
+          )
         ),
+        # RNA Preservation
+        if (!is.na(rna_preservation)) {
+          tags$div(
+            class = "alert alert-info mb-2 py-2",
+            role = "alert",
+            tags$small(
+              tags$strong("RNA Preservation: "),
+              rna_preservation,
+              if (!is.na(delta_rnasep)) {
+                tags$span(sprintf(" (ΔCq: %.1f)", delta_rnasep))
+              }
+            )
+          )
+        } else {
+          tags$div(
+            class = sprintf("alert alert-%s mb-2 py-2", rnasep_quality$class),
+            role = "alert",
+            tags$small(
+              tags$strong("RNA Preservation: "),
+              rnasep_quality$text,
+              if (!is.na(delta_rnasep)) {
+                tags$span(sprintf(" (ΔCq: %.1f)", delta_rnasep))
+              }
+            )
+          )
+        },
+        # Double Detection
         tags$div(
-          class = sprintf("alert alert-%s mb-0", double_detection$class),
+          class = sprintf("alert alert-%s mb-2 py-2", double_detection$class),
           role = "alert",
-          tags$strong("Trypanozoon Detection: "),
-          double_detection$text
-        )
+          tags$small(
+            tags$strong("Trypanozoon Detection: "),
+            double_detection$text
+          )
+        ),
+        # Pipeline Quality Flags
+        if (!is.na(pipeline_quality)) {
+          tags$div(
+            class = "alert alert-warning mb-0 py-2",
+            role = "alert",
+            tags$small(
+              icon("exclamation-triangle"),
+              " ",
+              tags$strong("Quality Flag: "),
+              pipeline_quality
+            )
+          )
+        }
       )
     )
   })

@@ -18,9 +18,9 @@ mod_data_quality_ui <- function(id) {
     
     div(class = "container-fluid",
         
-        # ==== KPIs (8 cards) ===================================================
+        # ==== KPIs (10 cards) ===================================================
         layout_column_wrap(
-          width = 1/4, fixed_width = TRUE, heights_equal = "row", gap = "12px",
+          width = 1/5, fixed_width = TRUE, heights_equal = "row", gap = "12px",
 
           value_box(
             title  = "Total Rows",
@@ -39,6 +39,12 @@ mod_data_quality_ui <- function(id) {
             value  = textOutput(ns("invalid_rows")),
             showcase = icon("ban"),
             theme  = "danger"
+          ),
+          value_box(
+            title  = "Quality Score",
+            value  = textOutput(ns("quality_score")),
+            showcase = icon("award"),
+            theme  = value_box_theme(bg = "#9B59B6", fg = "#FFFFFF")
           ),
           value_box(
             title  = "Avg. Completeness",
@@ -102,12 +108,28 @@ mod_data_quality_ui <- function(id) {
                        )
         ),
         
-        # ==== COMPLETENESS (full width) =========================================
+        # ==== HEATMAP: Issues by Location and Time ==============================
         card(
-          card_header("Column Completeness Analysis"),
-          card_body(
-            DT::DTOutput(ns("completeness_table"))
+          card_header("Data Quality Issues by Health Zone and Week"),
+          card_body_fill(
+            plotly::plotlyOutput(ns("quality_heatmap"), height = "400px")
           )
+        ),
+
+        # ==== COMPLETENESS (full width) =========================================
+        layout_columns(col_widths = c(7, 5), gap = "16px",
+                       card(
+                         card_header("Column Completeness Table"),
+                         card_body(
+                           DT::DTOutput(ns("completeness_table"))
+                         )
+                       ),
+                       card(
+                         card_header("Completeness Visualization"),
+                         card_body_fill(
+                           plotly::plotlyOutput(ns("completeness_plot"), height = "500px")
+                         )
+                       )
         ),
         
         # ==== INVALID REASONS OVERVIEW (full width) ==============================
@@ -119,6 +141,18 @@ mod_data_quality_ui <- function(id) {
           ),
           card_body(
             DT::DTOutput(ns("invalid_reasons_table"))
+          )
+        ),
+
+        # ==== ALL INVALID ROWS (full width) ====================================
+        card(
+          card_header(
+            class = "d-flex justify-content-between align-items-center",
+            span("All Invalid Rows"),
+            span(class = "text-muted small", textOutput(ns("invalid_rows_count"), inline = TRUE))
+          ),
+          card_body(
+            DT::DTOutput(ns("all_invalid_rows_table"))
           )
         ),
         
@@ -230,6 +264,20 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
         mean(report$completeness$percent_complete, na.rm = TRUE)
       } else NA_real_
 
+      # Calculate overall quality score (0-100)
+      # 70% weight on validity rate, 30% weight on completeness
+      validity_rate <- if (isTRUE(adj_total > 0) && is.finite(valid_rows)) {
+        (valid_rows / adj_total) * 100
+      } else NA_real_
+
+      quality_score <- if (is.finite(validity_rate) && is.finite(avg_comp)) {
+        (validity_rate * 0.7) + (avg_comp * 0.3)
+      } else if (is.finite(validity_rate)) {
+        validity_rate * 0.7
+      } else if (is.finite(avg_comp)) {
+        avg_comp * 0.3
+      } else NA_real_
+
       list(
         total_rows        = adj_total,
         valid_rows        = valid_rows,
@@ -241,7 +289,8 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
         duplicate_count   = nrow(report$duplicates),
         conflict_count    = nrow(report$barcode_conflicts),
         labid_conflict_count = nrow(report$labid_conflicts),
-        avg_completeness  = avg_comp
+        avg_completeness  = avg_comp,
+        quality_score     = quality_score
       )
     })
     
@@ -293,6 +342,17 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
     output$avg_completeness <- renderText({
       m <- quality_metrics()
       if (is.na(m$avg_completeness)) "—" else sprintf("%.1f%%", m$avg_completeness)
+    })
+
+    output$quality_score <- renderText({
+      m <- quality_metrics()
+      if (is.na(m$quality_score)) {
+        "—"
+      } else {
+        score <- round(m$quality_score, 1)
+        grade <- if (score >= 90) "A" else if (score >= 80) "B" else if (score >= 70) "C" else if (score >= 60) "D" else "F"
+        sprintf("%.1f%% (%s)", score, grade)
+      }
     })
     
     # ========================================================================
@@ -408,6 +468,102 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
         DT::formatPercentage("percent_of_excluded", 1)
     })
     
+    # ---- ALL INVALID ROWS TABLE ----------------------------------------------
+    output$invalid_rows_count <- renderText({
+      req(quality_report())
+      report <- quality_report()
+      if (!is.null(report$row_flags_detailed)) {
+        invalid_count <- sum(report$row_flags_detailed$reason != "OK", na.rm = TRUE)
+        sprintf("(%s invalid rows)", scales::comma(invalid_count))
+      } else {
+        "(0 invalid rows)"
+      }
+    })
+
+    output$all_invalid_rows_table <- DT::renderDT({
+      req(quality_report())
+      req(raw_data())
+      report <- quality_report()
+      rd <- raw_data()
+
+      if (is.null(report$row_flags_detailed) || !nrow(report$row_flags_detailed)) {
+        return(DT::datatable(
+          data.frame(Message = "No invalid rows found"),
+          options = list(dom = 't', paging = FALSE),
+          class = "table-sm"
+        ))
+      }
+
+      # Get rows that are invalid
+      invalid_idx <- which(report$row_flags_detailed$reason != "OK")
+
+      if (!length(invalid_idx)) {
+        return(DT::datatable(
+          data.frame(Message = "No invalid rows found"),
+          options = list(dom = 't', paging = FALSE),
+          class = "table-sm"
+        ))
+      }
+
+      # Create a table combining the reason with key data fields from raw data
+      nms <- names(rd)
+
+      # Find key columns
+      barcode_col <- .find_col(nms, c("code.*barres.*kps", "\\bbarcode\\b"))
+      labid_col <- .find_col(nms, c("^num[eé]ro$", "^numero$", "lab.?id"))
+      date_col <- .find_col(nms, c("date.*pr[eé]l[eè]v", "date.*sample"))
+      province_col <- .find_col(nms, c("^province$"))
+      zone_col <- .find_col(nms, c("zone.*sant[eé]", "health.*zone"))
+      study_col <- .find_col(nms, c("^[eé]tude$", "^study$"))
+
+      # Build display table
+      display_df <- data.frame(
+        row_number = invalid_idx,
+        reason = report$row_flags_detailed$reason[invalid_idx],
+        stringsAsFactors = FALSE
+      )
+
+      # Add key fields if they exist
+      if (!is.null(barcode_col)) {
+        display_df$barcode <- rd[[barcode_col]][invalid_idx]
+      }
+      if (!is.null(labid_col)) {
+        display_df$lab_id <- rd[[labid_col]][invalid_idx]
+      }
+      if (!is.null(date_col)) {
+        display_df$date_sample <- rd[[date_col]][invalid_idx]
+      }
+      if (!is.null(study_col)) {
+        display_df$study <- rd[[study_col]][invalid_idx]
+      }
+      if (!is.null(province_col)) {
+        display_df$province <- rd[[province_col]][invalid_idx]
+      }
+      if (!is.null(zone_col)) {
+        display_df$health_zone <- rd[[zone_col]][invalid_idx]
+      }
+
+      DT::datatable(
+        display_df,
+        rownames = FALSE,
+        options = list(
+          pageLength = 25,
+          scrollX = TRUE,
+          dom = 'frtip',
+          order = list(list(0, "asc"))
+        ),
+        class = "table-sm"
+      ) %>%
+        DT::formatStyle(
+          "reason",
+          backgroundColor = DT::styleEqual(
+            c("Missing barcode", "Missing lab ID", "Barcode conflict", "Lab ID conflict", "Duplicate key", "Missing sampling date"),
+            c("#FFEBEE", "#FFF3E0", "#FCE4EC", "#F3E5F5", "#E8EAF6", "#FFF9C4")
+          ),
+          fontWeight = "bold"
+        )
+    })
+
     output$duplicates_table <- DT::renderDT({
       req(quality_report())
       report <- quality_report()
@@ -445,7 +601,7 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
       req(quality_report())
       report <- quality_report()
       if (is.null(report$barcode_conflicts)) report$barcode_conflicts <- data.frame()
-      
+
       if (!nrow(report$barcode_conflicts)) {
         DT::datatable(
           data.frame(Message = "No barcode conflicts found"),
@@ -453,14 +609,51 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
           class = "table-sm"
         )
       } else {
-        cols <- names(report$barcode_conflicts)
-        cols <- cols[!grepl("^\\.__", cols)]
+        # Prioritize showing original values over normalized
+        display_cols <- c()
+        if ("barcode_original" %in% names(report$barcode_conflicts)) {
+          display_cols <- c(display_cols, "barcode_original")
+        } else if ("barcode_norm" %in% names(report$barcode_conflicts)) {
+          display_cols <- c(display_cols, "barcode_norm")
+        }
 
-        report$barcode_conflicts %>%
-          dplyr::select(dplyr::all_of(cols)) %>%
-          DT::datatable(
-            options = list(pageLength = 10, dom = 'frtip'),
-            class = "table-sm"
+        if ("n_lab_ids" %in% names(report$barcode_conflicts)) {
+          display_cols <- c(display_cols, "n_lab_ids")
+        }
+
+        if ("labids_original" %in% names(report$barcode_conflicts)) {
+          display_cols <- c(display_cols, "labids_original")
+        } else if ("labids_norm" %in% names(report$barcode_conflicts)) {
+          display_cols <- c(display_cols, "labids_norm")
+        } else if ("lab_ids" %in% names(report$barcode_conflicts)) {
+          display_cols <- c(display_cols, "lab_ids")
+        }
+
+        if (!length(display_cols)) {
+          # Fallback: show all non-internal columns
+          cols <- names(report$barcode_conflicts)
+          display_cols <- cols[!grepl("^\\.__", cols)]
+        }
+
+        df_display <- report$barcode_conflicts %>%
+          dplyr::select(dplyr::all_of(display_cols))
+
+        # Rename columns for better display
+        names(df_display) <- gsub("_original$", "", names(df_display))
+        names(df_display) <- gsub("_norm$", "", names(df_display))
+        names(df_display) <- gsub("^n_", "Number of ", names(df_display))
+        names(df_display) <- gsub("_", " ", names(df_display))
+        names(df_display) <- tools::toTitleCase(names(df_display))
+
+        DT::datatable(
+          df_display,
+          rownames = FALSE,
+          options = list(pageLength = 10, dom = 'frtip', scrollX = TRUE),
+          class = "table-sm"
+        ) %>%
+          DT::formatStyle(
+            columns = 1:ncol(df_display),
+            backgroundColor = "#FFEBEE"
           )
       }
     })
@@ -477,14 +670,51 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
           class = "table-sm"
         )
       } else {
-        cols <- names(report$labid_conflicts)
-        cols <- cols[!grepl("^\\.__", cols)]
+        # Prioritize showing original values over normalized
+        display_cols <- c()
+        if ("labid_original" %in% names(report$labid_conflicts)) {
+          display_cols <- c(display_cols, "labid_original")
+        } else if ("labid_norm" %in% names(report$labid_conflicts)) {
+          display_cols <- c(display_cols, "labid_norm")
+        }
 
-        report$labid_conflicts %>%
-          dplyr::select(dplyr::all_of(cols)) %>%
-          DT::datatable(
-            options = list(pageLength = 10, scrollX = TRUE, dom = 'frtip'),
-            class = "table-sm"
+        if ("n_barcodes" %in% names(report$labid_conflicts)) {
+          display_cols <- c(display_cols, "n_barcodes")
+        }
+
+        if ("barcodes_original" %in% names(report$labid_conflicts)) {
+          display_cols <- c(display_cols, "barcodes_original")
+        } else if ("barcodes_norm" %in% names(report$labid_conflicts)) {
+          display_cols <- c(display_cols, "barcodes_norm")
+        } else if ("barcodes" %in% names(report$labid_conflicts)) {
+          display_cols <- c(display_cols, "barcodes")
+        }
+
+        if (!length(display_cols)) {
+          # Fallback: show all non-internal columns
+          cols <- names(report$labid_conflicts)
+          display_cols <- cols[!grepl("^\\.__", cols)]
+        }
+
+        df_display <- report$labid_conflicts %>%
+          dplyr::select(dplyr::all_of(display_cols))
+
+        # Rename columns for better display
+        names(df_display) <- gsub("_original$", "", names(df_display))
+        names(df_display) <- gsub("_norm$", "", names(df_display))
+        names(df_display) <- gsub("^n_", "Number of ", names(df_display))
+        names(df_display) <- gsub("_", " ", names(df_display))
+        names(df_display) <- tools::toTitleCase(names(df_display))
+
+        DT::datatable(
+          df_display,
+          rownames = FALSE,
+          options = list(pageLength = 10, scrollX = TRUE, dom = 'frtip'),
+          class = "table-sm"
+        ) %>%
+          DT::formatStyle(
+            columns = 1:ncol(df_display),
+            backgroundColor = "#F3E5F5"
           )
       }
     })
@@ -492,6 +722,162 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
     # ========================================================================
     # OUTPUTS - PLOTS
     # ========================================================================
+
+    # ---- QUALITY HEATMAP ---------------------------------------------------
+    output$quality_heatmap <- plotly::renderPlotly({
+      req(quality_report())
+      req(raw_data())
+      report <- quality_report()
+      rd <- raw_data()
+
+      if (is.null(report$row_flags_detailed) || !nrow(report$row_flags_detailed)) {
+        return(plotly::plotly_empty())
+      }
+
+      # Get zone and date columns
+      nms <- names(rd)
+      zone_col <- .find_col(nms, c("zone.*sant[eé]", "health.*zone"))
+      date_col <- .find_col(nms, c("date.*pr[eé]l[eè]v", "date.*sample"))
+
+      if (is.null(zone_col) || is.null(date_col)) {
+        return(plotly::plot_ly() %>%
+                 plotly::add_text(
+                   x = 0.5, y = 0.5,
+                   text = "Health zone or date information not available",
+                   textposition = "middle center",
+                   showlegend = FALSE
+                 ) %>%
+                 plotly::layout(
+                   xaxis = list(visible = FALSE),
+                   yaxis = list(visible = FALSE)
+                 ))
+      }
+
+      # Combine flags with zone/date info
+      df_heatmap <- data.frame(
+        date_sample = report$row_flags_detailed$date_sample,
+        reason = report$row_flags_detailed$reason,
+        health_zone = rd[[zone_col]],
+        stringsAsFactors = FALSE
+      ) %>%
+        dplyr::filter(!is.na(date_sample), !is.na(health_zone), reason != "OK") %>%
+        dplyr::mutate(
+          week = lubridate::floor_date(date_sample, "week")
+        ) %>%
+        dplyr::count(health_zone, week, name = "issues") %>%
+        dplyr::arrange(week, health_zone)
+
+      if (!nrow(df_heatmap)) {
+        return(plotly::plot_ly() %>%
+                 plotly::add_text(
+                   x = 0.5, y = 0.5,
+                   text = "No quality issues to display",
+                   textposition = "middle center",
+                   showlegend = FALSE
+                 ) %>%
+                 plotly::layout(
+                   xaxis = list(visible = FALSE),
+                   yaxis = list(visible = FALSE)
+                 ))
+      }
+
+      # Create heatmap
+      plotly::plot_ly(
+        df_heatmap,
+        x = ~week,
+        y = ~health_zone,
+        z = ~issues,
+        type = "heatmap",
+        colorscale = list(
+          c(0, "#FFFFFF"),
+          c(0.2, "#FFF9C4"),
+          c(0.4, "#FFE082"),
+          c(0.6, "#FFB74D"),
+          c(0.8, "#FF8A65"),
+          c(1, "#E57373")
+        ),
+        hovertemplate = paste0(
+          "<b>%{y}</b><br>",
+          "Week: %{x|%Y-%m-%d}<br>",
+          "Issues: %{z}<extra></extra>"
+        ),
+        showscale = TRUE,
+        colorbar = list(title = "Issues")
+      ) %>%
+        plotly::layout(
+          xaxis = list(title = "Week"),
+          yaxis = list(title = "Health Zone", automargin = TRUE),
+          margin = list(l = 150)
+        ) %>%
+        plotly::config(displayModeBar = FALSE)
+    })
+
+    # ---- COMPLETENESS PLOT -------------------------------------------------
+    output$completeness_plot <- plotly::renderPlotly({
+      req(quality_report())
+      report <- quality_report()
+      if (is.null(report$completeness) || !nrow(report$completeness)) {
+        return(plotly::plotly_empty())
+      }
+
+      df <- report$completeness %>%
+        dplyr::mutate(
+          percent_complete = round(percent_complete, 1),
+          status = dplyr::case_when(
+            percent_complete >= 90 ~ "Good (≥90%)",
+            percent_complete >= 70 ~ "Fair (70-89%)",
+            percent_complete >= 50 ~ "Poor (50-69%)",
+            TRUE ~ "Critical (<50%)"
+          )
+        ) %>%
+        dplyr::arrange(percent_complete) %>%
+        dplyr::mutate(column = factor(column, levels = column))
+
+      # Color mapping
+      colors <- c(
+        "Good (≥90%)" = "#27AE60",
+        "Fair (70-89%)" = "#F39C12",
+        "Poor (50-69%)" = "#E67E22",
+        "Critical (<50%)" = "#E74C3C"
+      )
+
+      plotly::plot_ly(
+        df,
+        y = ~column,
+        x = ~percent_complete,
+        color = ~status,
+        colors = colors,
+        type = "bar",
+        orientation = "h",
+        hovertemplate = paste0(
+          "<b>%{y}</b><br>",
+          "Completeness: %{x:.1f}%<br>",
+          "Status: %{fullData.name}<extra></extra>"
+        )
+      ) %>%
+        plotly::layout(
+          xaxis = list(
+            title = "Completeness (%)",
+            range = c(0, 100),
+            ticksuffix = "%"
+          ),
+          yaxis = list(
+            title = "",
+            automargin = TRUE
+          ),
+          barmode = "overlay",
+          showlegend = TRUE,
+          legend = list(
+            orientation = "h",
+            y = -0.2,
+            x = 0.5,
+            xanchor = "center"
+          ),
+          margin = list(l = 150)
+        ) %>%
+        plotly::config(displayModeBar = FALSE)
+    })
+
     output$quality_flags_timeline_plot <- plotly::renderPlotly({
       req(quality_report())
       report <- quality_report()

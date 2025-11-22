@@ -141,7 +141,12 @@ safe_sd <- function(x) {
 # =============================================================================
 
 get_mic_cache_dir <- function() {
-  cache_dir <- file.path("data", "MIC_cache")
+  # Use site-aware cache directory
+  cache_dir <- if (!is.null(config$site_paths)) {
+    config$site_paths$cache_dir
+  } else {
+    file.path("data", "MIC_cache")
+  }
   if (!dir.exists(cache_dir)) {
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   }
@@ -1727,7 +1732,7 @@ mod_mic_qpcr_ui <- function(id) {
           textInput(
             ns("mic_dir"),
             NULL,
-            value = "data/MIC",
+            value = if (!is.null(config$site_paths)) config$site_paths$mic_dir else "data/MIC",
             placeholder = "Path to MIC Excel files",
             width = "100%"
           )

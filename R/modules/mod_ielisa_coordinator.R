@@ -194,8 +194,7 @@ mod_ielisa_coordinator_server <- function(id, biobank_df = reactive(NULL), filte
 
       tryCatch({
         data <- load_ielisa_data(
-          ielisa_dir = "data/ielisa",
-          cache_dir = "data/ielisa_cache",
+          # Uses site-aware paths by default (ielisa_dir and cache_dir)
           # Control QC parameters
           neg_od_min = input$neg_od_min,
           neg_od_max = input$neg_od_max,

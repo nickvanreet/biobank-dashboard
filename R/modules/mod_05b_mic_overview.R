@@ -22,7 +22,7 @@ mod_mic_overview_ui <- function(id) {
             textInput(
               parent_ns("mic_dir"),
               NULL,
-              value = "data/MIC",
+              value = if (!is.null(config$site_paths)) config$site_paths$mic_dir else "data/MIC",
               placeholder = "Path to MIC Excel files",
               width = "100%"
             ),

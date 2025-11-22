@@ -1,12 +1,41 @@
-# Mbuji-Mayi Biobank Dashboard Configuration
-# Last updated: 2025-11-09
+# Multi-Site Biobank Dashboard Configuration
+# Last updated: 2025-11-22
 
 app:
-  title: "Mbuji-Mayi Biobank Dashboard"
-  version: "3.1.0"
+  title: "Multi-Site Biobank Dashboard"
+  version: "3.2.0"
   institution: "Institute of Tropical Medicine, Antwerp"
   debug_mode: true
+  default_site: "lsd"  # Default site on startup
 
+# Site definitions
+sites:
+  lsd:
+    name: "Laboratoire de Santé de Dipumba (LSD)"
+    short_name: "LSD"
+    location: "Mbuji-Mayi, DRC"
+    institution: "Dipumba Hospital"
+    folder: "lsd"
+  ipp:
+    name: "Institut Pasteur de Bangui (IPP)"
+    short_name: "IPP"
+    location: "Bangui, CAR"
+    institution: "Institut Pasteur de Bangui"
+    folder: "ipp"
+  inrb:
+    name: "Institut National de Recherche Biomédicale (INRB)"
+    short_name: "INRB"
+    location: "Kinshasa, DRC"
+    institution: "INRB"
+    folder: "inrb"
+  itm:
+    name: "Institute of Tropical Medicine (ITM)"
+    short_name: "ITM"
+    location: "Antwerp, Belgium"
+    institution: "Institute of Tropical Medicine"
+    folder: "itm"
+
+# Legacy paths (for backward compatibility - will be overridden by site-based paths)
 paths:
   biobank_dir: "data/biobank"
   extractions_dir: "data/extractions"

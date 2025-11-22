@@ -23,27 +23,78 @@ for (pkg in required_packages) {
 # CONFIGURATION
 # ============================================================================
 
+# Load configuration from config.yml if available
+if (!require("yaml", quietly = TRUE)) {
+  install.packages("yaml", quietly = TRUE)
+  library(yaml)
+}
+
+config_yml <- if (file.exists("config.yml")) {
+  yaml::read_yaml("config.yml")
+} else {
+  list()
+}
+
+# Build config with site support
 config <- list(
   app = list(
-    title = "Mbuji-Mayi Biobank Dashboard"
+    title = config_yml$app$title %||% "Multi-Site Biobank Dashboard",
+    version = config_yml$app$version %||% "3.2.0",
+    institution = config_yml$app$institution %||% "Institute of Tropical Medicine, Antwerp",
+    debug_mode = config_yml$app$debug_mode %||% TRUE,
+    default_site = config_yml$app$default_site %||% "lsd"
   ),
-  paths = list(
+  sites = config_yml$sites %||% list(
+    lsd = list(
+      name = "Laboratoire de Santé de Dipumba (LSD)",
+      short_name = "LSD",
+      location = "Mbuji-Mayi, DRC",
+      institution = "Dipumba Hospital",
+      folder = "lsd"
+    )
+  ),
+  paths = config_yml$paths %||% list(
     biobank_dir = "data/biobank",
     extractions_dir = "data/extractions",
     pcr_dir = "data/PCR",
-    mic_dir = "data/MIC",  # Note: uppercase MIC to match your directory
+    mic_dir = "data/MIC",
     ielisa_dir = "data/ielisa"
   ),
-  ui = list(
+  ui = config_yml$ui %||% list(
     theme_primary = "#3498DB",
     theme_success = "#27AE60",
     theme_info = "#2980B9",
     theme_warning = "#F39C12"
   ),
-  qc = list(
+  qc = config_yml$qc %||% list(
     max_transport_days = 30
   )
 )
+
+# Helper function to get site-specific paths
+get_site_paths <- function(site_id) {
+  if (is.null(config$sites[[site_id]])) {
+    stop(sprintf("Unknown site: %s", site_id))
+  }
+
+  site_folder <- config$sites[[site_id]]$folder
+  base_path <- file.path("data", site_folder)
+
+  list(
+    biobank_dir = file.path(base_path, "biobank"),
+    extractions_dir = file.path(base_path, "extractions"),
+    elisa_pe_dir = file.path(base_path, "elisa_pe"),
+    elisa_vsg_dir = file.path(base_path, "elisa_vsg"),
+    ielisa_dir = file.path(base_path, "ielisa"),
+    mic_dir = file.path(base_path, "mic"),
+    pcr_dir = file.path(base_path, "pcr"),
+    cache_dir = file.path(base_path, "cache")
+  )
+}
+
+# Set default site paths
+config$current_site <- config$app$default_site
+config$site_paths <- get_site_paths(config$current_site)
 
 # ============================================================================
 # LOAD ALL CORE UTILITIES
@@ -427,16 +478,15 @@ if (length(missing_functions) > 0) {
 }
 
 # Create necessary directories
-dirs_to_create <- c(
-  "outputs",
-  config$paths$biobank_dir,
-  config$paths$extractions_dir,
-  config$paths$pcr_dir,
-  config$paths$mic_dir
-)
+# Create output directory
+dir.create("outputs", showWarnings = FALSE, recursive = TRUE)
 
-for (dir in dirs_to_create) {
-  dir.create(dir, showWarnings = FALSE, recursive = TRUE)
+# Create site-specific directories for all configured sites
+for (site_id in names(config$sites)) {
+  site_paths <- get_site_paths(site_id)
+  for (path in site_paths) {
+    dir.create(path, showWarnings = FALSE, recursive = TRUE)
+  }
 }
 
 # ============================================================================
@@ -444,13 +494,25 @@ for (dir in dirs_to_create) {
 # ============================================================================
 
 message("╔═══════════════════════════════════════════════════════════════╗")
-message("║  Mbuji-Mayi Biobank Dashboard - Global Configuration         ║")
+message("║  Multi-Site Biobank Dashboard - Global Configuration         ║")
 message("╚═══════════════════════════════════════════════════════════════╝")
 message("")
-message(sprintf("📁 Biobank directory:    %s", config$paths$biobank_dir))
-message(sprintf("📁 Extractions directory: %s", config$paths$extractions_dir))
-message(sprintf("📁 PCR directory:        %s", config$paths$pcr_dir))
-message(sprintf("📁 MIC directory:        %s", config$paths$mic_dir))
+message(sprintf("🏥 Current site:         %s (%s)",
+                config$sites[[config$current_site]]$name,
+                config$sites[[config$current_site]]$short_name))
+message(sprintf("📍 Location:             %s", config$sites[[config$current_site]]$location))
+message(sprintf("🏛️  Institution:          %s", config$sites[[config$current_site]]$institution))
+message("")
+message(sprintf("📁 Site data folder:     data/%s/", config$sites[[config$current_site]]$folder))
+message(sprintf("   - Biobank:            %s", config$site_paths$biobank_dir))
+message(sprintf("   - Extractions:        %s", config$site_paths$extractions_dir))
+message(sprintf("   - MIC qPCR:           %s", config$site_paths$mic_dir))
+message(sprintf("   - ELISA PE:           %s", config$site_paths$elisa_pe_dir))
+message(sprintf("   - ELISA VSG:          %s", config$site_paths$elisa_vsg_dir))
+message(sprintf("   - iELISA:             %s", config$site_paths$ielisa_dir))
+message(sprintf("   - Cache:              %s", config$site_paths$cache_dir))
+message("")
+message(sprintf("🌍 Configured sites:     %s", paste(names(config$sites), collapse = ", ")))
 message("")
 message(sprintf("✅ %d packages loaded", length(required_packages)))
 message(sprintf("✅ %d critical functions verified",

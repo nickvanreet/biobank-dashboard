@@ -412,13 +412,13 @@ apply_custom_qc <- function(ielisa_data, threshold = 30, formula = "f2") {
 # CACHED DATA LOADING
 # ============================================================================
 
-#' Load iELISA data with caching
+#' Load iELISA data with caching (site-aware)
 #'
 #' Loads all iELISA files from the specified directory with MD5 hash-based caching
 #' for performance optimization
 #'
-#' @param ielisa_dir Path to iELISA data directory (default: "data/ielisa")
-#' @param cache_dir Path to cache directory (default: "data/ielisa_cache")
+#' @param ielisa_dir Path to iELISA data directory (default: uses site paths)
+#' @param cache_dir Path to cache directory (default: uses site paths)
 #' @param neg_od_min Minimum acceptable negative control OD (default: 1)
 #' @param neg_od_max Maximum acceptable negative control OD (default: 3)
 #' @param pos_od_min Minimum acceptable positive control OD (default: 0.3)
@@ -427,8 +427,8 @@ apply_custom_qc <- function(ielisa_data, threshold = 30, formula = "f2") {
 #' @param ctrl_inh_max Maximum acceptable control inhibition % (default: 80)
 #' @param ctrl_cv_max Maximum acceptable control CV % (default: 20)
 #' @return Tibble with all iELISA data
-load_ielisa_data <- function(ielisa_dir = "data/ielisa",
-                              cache_dir = "data/ielisa_cache",
+load_ielisa_data <- function(ielisa_dir = NULL,
+                              cache_dir = NULL,
                               neg_od_min = 1,
                               neg_od_max = 3,
                               pos_od_min = 0.3,
@@ -436,6 +436,16 @@ load_ielisa_data <- function(ielisa_dir = "data/ielisa",
                               ctrl_inh_min = 50,
                               ctrl_inh_max = 80,
                               ctrl_cv_max = 20) {
+
+  # Use site-aware paths if not specified
+  if (is.null(ielisa_dir) && exists("config") && !is.null(config$site_paths)) {
+    ielisa_dir <- config$site_paths$ielisa_dir
+    cache_dir <- config$site_paths$cache_dir
+  } else {
+    # Fallback to legacy paths
+    if (is.null(ielisa_dir)) ielisa_dir <- "data/ielisa"
+    if (is.null(cache_dir)) cache_dir <- "data/ielisa_cache"
+  }
 
   # Ensure cache directory exists
   if (!dir.exists(cache_dir)) {

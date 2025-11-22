@@ -1426,6 +1426,7 @@ link_to_biobank <- function(samples_df, biobank_df) {
   bb_lookup <- tibble(
     id_norm = normalize_id(biobank_df[[id_col]]),
     LinkedBarcode = fetch_column(biobank_df, c("code_barres_kps", "barcode", "code-barres kps")),
+    LinkedNumero = fetch_column(biobank_df, c("numero_labo", "numero", "lab_number", "lab_id")),
     Province = fetch_column(biobank_df, c("province", "Province", "biobank_province")),
     HealthZone = fetch_column(biobank_df, c("health_zone", "zone_de_sante", "Zone de sante", "biobank_health_zone")),
     Structure = fetch_column(

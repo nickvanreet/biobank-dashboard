@@ -245,6 +245,19 @@ plot_mic_detailed <- function(mic_data) {
       "Unknown"
     }
 
+    # Get sample identifiers
+    linked_barcode <- if ("LinkedBarcode" %in% names(row) && !is.na(row$LinkedBarcode)) {
+      as.character(row$LinkedBarcode)
+    } else {
+      NA_character_
+    }
+
+    linked_numero <- if ("LinkedNumero" %in% names(row) && !is.na(row$LinkedNumero)) {
+      as.character(row$LinkedNumero)
+    } else {
+      NA_character_
+    }
+
     # Get additional result details
     final_call <- if ("FinalCall" %in% names(row) && !is.na(row$FinalCall)) {
       as.character(row$FinalCall)
@@ -327,6 +340,35 @@ plot_mic_detailed <- function(mic_data) {
       ),
       tags$div(
         class = "card-body",
+        # Sample Identifiers Section
+        if (!is.na(linked_barcode) || !is.na(linked_numero)) {
+          tags$div(
+            class = "mb-3 p-2",
+            style = "background-color: rgba(79, 70, 229, 0.05); border-left: 3px solid #4F46E5;",
+            tags$div(
+              class = "row",
+              if (!is.na(linked_barcode)) {
+                tags$div(
+                  class = "col-6",
+                  tags$small(
+                    tags$strong("Barcode: "),
+                    tags$code(class = "text-primary", linked_barcode)
+                  )
+                )
+              },
+              if (!is.na(linked_numero)) {
+                tags$div(
+                  class = "col-6",
+                  tags$small(
+                    tags$strong("Lab Number: "),
+                    tags$code(class = "text-primary", linked_numero)
+                  )
+                )
+              }
+            )
+          )
+        },
+
         # Final Call and Confidence Section
         tags$div(
           class = "mb-3",

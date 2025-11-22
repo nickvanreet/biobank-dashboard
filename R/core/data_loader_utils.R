@@ -59,23 +59,108 @@ load_biobank_file <- function(filepath) {
   if (!file.exists(filepath)) {
     stop(sprintf("File not found: %s", filepath))
   }
-  
+
   tryCatch({
     # Read Excel file
     df <- readxl::read_excel(filepath, sheet = 1)
-    
+
     # Basic validation
     if (nrow(df) == 0) stop("File contains no data")
-    
+
     # Clean column names immediately (retain a copy of original names if needed)
     df <- janitor::clean_names(df)
-    
+
     message(sprintf("Loaded %d rows from %s", nrow(df), basename(filepath)))
     df
-    
+
   }, error = function(e) {
     stop(sprintf("Failed to load file: %s", e$message))
   })
+}
+
+# -----------------------------------------------------------------------------
+#' Get cache path for biobank file
+#' @param filepath Path to Excel file
+#' @param cache_dir Cache directory (default: NULL, will use site-aware path)
+#' @return Path to RDS cache file
+#' @export
+get_biobank_cache_path <- function(filepath, cache_dir = NULL) {
+  # Use site-aware cache directory if not specified
+  if (is.null(cache_dir) && exists("config") && !is.null(config$site_paths)) {
+    cache_dir <- config$site_paths$cache_dir
+  } else if (is.null(cache_dir)) {
+    cache_dir <- "data/biobank_cache"
+  }
+
+  # Ensure cache directory exists
+  if (!dir.exists(cache_dir)) {
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+
+  # Create cache filename based on original filename
+  base_name <- tools::file_path_sans_ext(basename(filepath))
+  cache_file <- file.path(cache_dir, paste0(base_name, ".rds"))
+
+  cache_file
+}
+
+# -----------------------------------------------------------------------------
+#' Check if biobank cache is fresh
+#' @param excel_path Path to Excel file
+#' @param cache_path Path to RDS cache file
+#' @return TRUE if cache exists and is newer than Excel file
+#' @export
+biobank_cache_is_fresh <- function(excel_path, cache_path) {
+  if (!file.exists(cache_path)) return(FALSE)
+  if (!file.exists(excel_path)) return(FALSE)
+
+  # Compare modification times
+  excel_mtime <- file.info(excel_path)$mtime
+  cache_mtime <- file.info(cache_path)$mtime
+
+  cache_mtime >= excel_mtime
+}
+
+# -----------------------------------------------------------------------------
+#' Load biobank file with RDS caching
+#' @param filepath Path to Excel file
+#' @param cache_dir Cache directory (default: NULL, will use site-aware path)
+#' @param force_refresh Force refresh from Excel even if cache exists (default: FALSE)
+#' @return Raw data frame
+#' @export
+load_biobank_file_cached <- function(filepath, cache_dir = NULL, force_refresh = FALSE) {
+  if (!file.exists(filepath)) {
+    stop(sprintf("File not found: %s", filepath))
+  }
+
+  cache_path <- get_biobank_cache_path(filepath, cache_dir)
+
+  # Check if cache is fresh
+  if (!force_refresh && biobank_cache_is_fresh(filepath, cache_path)) {
+    message(sprintf("Loading from cache: %s", basename(cache_path)))
+    tryCatch({
+      df <- readRDS(cache_path)
+      message(sprintf("Loaded %d rows from cache (fast!)", nrow(df)))
+      return(df)
+    }, error = function(e) {
+      warning(sprintf("Failed to load cache, reading Excel: %s", e$message))
+      # Fall through to Excel loading
+    })
+  }
+
+  # Load from Excel
+  message(sprintf("Reading Excel file: %s", basename(filepath)))
+  df <- load_biobank_file(filepath)
+
+  # Save to cache
+  tryCatch({
+    saveRDS(df, cache_path)
+    message(sprintf("Cached to: %s", basename(cache_path)))
+  }, error = function(e) {
+    warning(sprintf("Failed to save cache: %s", e$message))
+  })
+
+  df
 }
 
 # -----------------------------------------------------------------------------
@@ -88,18 +173,41 @@ list_biobank_files <- function(directory) {
     warning(sprintf("Directory not found: %s", directory))
     return(character(0))
   }
-  
+
   files <- list.files(
     directory,
     pattern = "\\.(xlsx|xls)$",
     full.names = TRUE,
     ignore.case = TRUE
   )
-  
+
   # Filter out temporary Excel files
   files <- files[!grepl("^~\\$", basename(files))]
-  
+
   files
+}
+
+# -----------------------------------------------------------------------------
+#' Get the most recent biobank file in directory
+#' @param directory Path to directory containing Excel files
+#' @return Path to the most recent file, or NULL if no files found
+#' @export
+get_latest_biobank_file <- function(directory) {
+  files <- list_biobank_files(directory)
+
+  if (length(files) == 0) {
+    return(NULL)
+  }
+
+  # Get file modification times
+  file_info <- file.info(files)
+  file_info$path <- files
+
+  # Sort by modification time (most recent first)
+  file_info <- file_info[order(file_info$mtime, decreasing = TRUE), ]
+
+  # Return the most recent file
+  file_info$path[1]
 }
 
 # -----------------------------------------------------------------------------

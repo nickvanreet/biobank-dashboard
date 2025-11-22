@@ -11,44 +11,33 @@ mod_data_manager_ui <- function(id) {
   bslib::sidebar(
     width = 280,
 
-    # Site Information Section
-    if (!is.null(config$sites) && !is.null(config$current_site)) {
+    # Biobank Selection Section
+    h5(icon("hospital"), " Select Biobank"),
+    tags$p(
+      class = "text-muted small",
+      "Select a biobank to load all data automatically"
+    ),
+
+    # Biobank buttons
+    if (!is.null(config$sites)) {
       tagList(
-        div(
-          class = "alert alert-info mb-3",
-          style = "padding: 8px 12px; margin-bottom: 12px;",
-          tags$strong(icon("hospital"), " Current Site:"),
-          tags$br(),
-          tags$small(config$sites[[config$current_site]]$short_name),
-          tags$br(),
-          tags$small(
-            class = "text-muted",
-            config$sites[[config$current_site]]$location
+        lapply(names(config$sites), function(site_id) {
+          site_info <- config$sites[[site_id]]
+          actionButton(
+            ns(paste0("load_site_", site_id)),
+            site_info$short_name,
+            icon = icon("database"),
+            class = "btn-primary w-100 mb-2",
+            style = "text-align: left;"
           )
-        ),
-        hr()
+        })
       )
     },
 
-    # Data Loading Section - Biobank
-    h5(icon("folder-open"), " Biobank Data"),
-    textInput(ns("data_dir"), "Directory",
-              value = if (!is.null(config$site_paths)) config$site_paths$biobank_dir else config$paths$biobank_dir),
-    uiOutput(ns("file_selector")),
-    actionButton(ns("load_data"), "Load Biobank Data",
-                 icon = icon("upload"),
-                 class = "btn-primary w-100 mb-3"),
-
     hr(),
 
-    # Data Loading Section - iELISA
-    h5(icon("vial-circle-check"), " iELISA Data"),
-    textInput(ns("ielisa_dir"), "Directory",
-              value = if (!is.null(config$site_paths)) config$site_paths$ielisa_dir else "data/ielisa"),
-    actionButton(ns("load_ielisa"), "Load iELISA Data",
-                 icon = icon("upload"),
-                 class = "btn-primary w-100 mb-3"),
-    uiOutput(ns("ielisa_status")),
+    # Current Site Information
+    uiOutput(ns("current_site_info")),
 
     hr(),
     
@@ -102,56 +91,273 @@ mod_data_manager_server <- function(id) {
     # ========================================================================
     # REACTIVE VALUES
     # ========================================================================
-    
+
     rv <- reactiveValues(
       raw_data = NULL,
       clean_data = NULL,
       extraction_data = NULL,
       quality_report = NULL,
-      files_available = character(0),
-      ielisa_data = NULL
+      ielisa_data = NULL,
+      current_site = config$current_site
     )
-    
+
     # ========================================================================
-    # FILE DISCOVERY
+    # CURRENT SITE INFO UI
     # ========================================================================
-    
-    # Scan directory for files
-    observe({
-      req(input$data_dir)
-      
-      if (dir.exists(input$data_dir)) {
-        rv$files_available <- list_biobank_files(input$data_dir)
+
+    output$current_site_info <- renderUI({
+      site_id <- rv$current_site
+
+      if (!is.null(site_id) && !is.null(config$sites[[site_id]])) {
+        site_info <- config$sites[[site_id]]
+        div(
+          class = "alert alert-success",
+          style = "padding: 8px 12px;",
+          tags$strong(icon("check-circle"), " Active:"),
+          tags$br(),
+          tags$small(site_info$short_name),
+          tags$br(),
+          tags$small(
+            class = "text-muted",
+            site_info$location
+          )
+        )
       } else {
-        rv$files_available <- character(0)
-      }
-    })
-    
-    # File selector UI
-    output$file_selector <- renderUI({
-      ns <- session$ns
-      
-      files <- rv$files_available
-      
-      if (length(files) == 0) {
         div(
           class = "alert alert-warning",
-          icon("exclamation-triangle"),
-          " No Excel files found in directory"
-        )
-      } else {
-        selectInput(
-          ns("selected_file"),
-          "Select File",
-          choices = setNames(files, basename(files))
+          style = "padding: 8px 12px;",
+          icon("info-circle"),
+          " No biobank selected"
         )
       }
     })
     
     # ========================================================================
-    # DATA LOADING
+    # BIOBANK SITE LOADING
     # ========================================================================
-    
+
+    # Helper function to load all data for a site
+    load_site_data <- function(site_id) {
+      # Show loading notification
+      loading_id <- showNotification(
+        paste("Loading data for", config$sites[[site_id]]$short_name, "..."),
+        duration = NULL,
+        type = "message"
+      )
+
+      tryCatch({
+        # Update current site
+        rv$current_site <- site_id
+
+        # Get site-specific paths
+        site_paths <- get_site_paths(site_id)
+
+        # Find latest biobank file
+        biobank_file <- get_latest_biobank_file(site_paths$biobank_dir)
+
+        if (is.null(biobank_file)) {
+          removeNotification(loading_id)
+          showNotification(
+            paste("No biobank files found for", config$sites[[site_id]]$short_name),
+            type = "warning",
+            duration = 5
+          )
+          return()
+        }
+
+        # Load biobank data with RDS caching
+        df_raw <- load_biobank_file_cached(biobank_file, cache_dir = site_paths$cache_dir)
+        rv$raw_data <- df_raw
+
+        # Analyze quality BEFORE cleaning
+        quality <- analyze_data_quality(df_raw)
+
+        # Clean data using the improved cleaner
+        df_clean <- clean_biobank_data_improved(df_raw)
+
+        # Add quality tracking to clean data
+        if (!is.null(quality$invalid_row_indices) && length(quality$invalid_row_indices) > 0) {
+          df_clean$.__has_quality_issues <- FALSE
+
+          nms_raw <- names(df_raw)
+
+          .find_col_local <- function(nms, patterns) {
+            for (p in patterns) {
+              hit <- grep(p, nms, ignore.case = TRUE, value = TRUE)
+              if (length(hit)) return(hit[1])
+            }
+            NULL
+          }
+
+          barcode_col_raw <- .find_col_local(nms_raw, c("code.*barres.*kps", "code.*barre", "\\bbarcode\\b", "kps"))
+          labid_col_raw <- .find_col_local(nms_raw, c("^num[eé]ro$", "^numero$", "^num$", "lab.?id"))
+
+          barcode_col_clean <- if ("barcode" %in% names(df_clean)) "barcode" else NULL
+          labid_col_clean <- if ("lab_id" %in% names(df_clean)) "lab_id" else NULL
+
+          if (!is.null(barcode_col_raw) && !is.null(labid_col_raw) &&
+              !is.null(barcode_col_clean) && !is.null(labid_col_clean)) {
+
+            invalid_rows <- df_raw[quality$invalid_row_indices, , drop = FALSE]
+
+            for (i in seq_len(nrow(invalid_rows))) {
+              bc <- invalid_rows[[barcode_col_raw]][i]
+              lid <- invalid_rows[[labid_col_raw]][i]
+
+              bc_ok <- !is.null(bc) && length(bc) == 1 && !is.na(bc)
+              lid_ok <- !is.null(lid) && length(lid) == 1 && !is.na(lid)
+
+              if (bc_ok && lid_ok) {
+                matches <- which(
+                  !is.na(df_clean[[barcode_col_clean]]) &
+                  !is.na(df_clean[[labid_col_clean]]) &
+                  as.character(df_clean[[barcode_col_clean]]) == as.character(bc) &
+                  as.character(df_clean[[labid_col_clean]]) == as.character(lid)
+                )
+                if (length(matches) > 0) {
+                  df_clean$.__has_quality_issues[matches] <- TRUE
+                }
+              }
+            }
+          }
+        } else {
+          df_clean$.__has_quality_issues <- FALSE
+        }
+
+        rv$clean_data <- df_clean
+
+        # Load extraction data
+        extraction_df <- tryCatch({
+          load_all_extractions(site_paths$extractions_dir)
+        }, error = function(e) {
+          message("Failed to load extraction dataset: ", e$message)
+          tibble::tibble()
+        })
+
+        rv$extraction_data <- tryCatch({
+          link_extraction_to_biobank(extraction_df, df_clean)
+        }, error = function(e) {
+          message("Failed to link extraction dataset: ", e$message)
+          extraction_df
+        })
+
+        # Re-analyze quality AFTER cleaning
+        quality_clean <- analyze_data_quality(df_clean)
+
+        # Combine both reports
+        flags_weekly <- NULL
+        if (is.data.frame(quality$row_flags_detailed) &&
+            all(c("date_sample", "reason") %in% names(quality$row_flags_detailed))) {
+          flags_weekly <- quality$row_flags_detailed %>%
+            dplyr::mutate(
+              date_sample = suppressWarnings(lubridate::as_date(date_sample)),
+              week = lubridate::floor_date(date_sample, "week"),
+              quality_flag = dplyr::case_when(
+                is.na(reason) | reason == "" | reason == "OK" ~ "Valid",
+                reason == "Duplicate key" ~ "Duplicate",
+                reason == "Barcode conflict" ~ "Barcode conflict",
+                reason == "Missing barcode" ~ "Missing barcode",
+                reason == "Missing lab ID" ~ "Missing lab ID",
+                TRUE ~ reason
+              )
+            ) %>%
+            dplyr::filter(!is.na(week)) %>%
+            dplyr::count(week, quality_flag, name = "n") %>%
+            dplyr::arrange(week, quality_flag)
+        }
+
+        rv$quality_report <- list(
+          summary = c(
+            quality$summary,
+            rows_clean = nrow(df_clean),
+            rows_dropped = nrow(df_raw) - nrow(df_clean),
+            drop_rate = round((nrow(df_raw) - nrow(df_clean)) / nrow(df_raw) * 100, 1)
+          ),
+          missing_barcode = quality$missing_barcode,
+          missing_labid = quality$missing_labid,
+          duplicates = quality$duplicates,
+          barcode_conflicts = quality$barcode_conflicts,
+          labid_conflicts = quality$labid_conflicts,
+          completeness = quality_clean$completeness,
+          quality_flags = if (is.data.frame(quality$row_flags_detailed)) {
+            quality$row_flags_detailed %>%
+              dplyr::mutate(
+                flag = dplyr::case_when(
+                  reason == "OK" ~ "Valid",
+                  TRUE ~ "Invalid"
+                )
+              ) %>%
+              dplyr::count(flag, name = "n") %>%
+              dplyr::arrange(dplyr::desc(n)) %>%
+              dplyr::rename(quality_flag = flag)
+          } else {
+            df_clean %>%
+              dplyr::count(quality_flag) %>%
+              dplyr::arrange(dplyr::desc(n))
+          },
+          quality_flags_by_week = flags_weekly,
+          row_flags = quality$row_flags,
+          row_flags_detailed = quality$row_flags_detailed,
+          invalid_reasons = quality$invalid_reasons,
+          invalid_row_indices = quality$invalid_row_indices
+        )
+
+        # Update filter choices
+        update_filter_choices(session, df_clean)
+
+        # Load iELISA data
+        tryCatch({
+          ielisa_data <- load_ielisa_data(
+            ielisa_dir = site_paths$ielisa_dir,
+            cache_dir = site_paths$cache_dir
+          )
+          rv$ielisa_data <- ielisa_data
+        }, error = function(e) {
+          message("Failed to load iELISA data: ", e$message)
+          rv$ielisa_data <- NULL
+        })
+
+        # Success notification
+        removeNotification(loading_id)
+
+        n_ielisa <- if (!is.null(rv$ielisa_data)) nrow(rv$ielisa_data) else 0
+
+        showNotification(
+          HTML(sprintf(
+            "<strong>Loaded %s data:</strong><br/>
+            • Biobank: %d rows (cleaned to %d)<br/>
+            • iELISA: %d samples",
+            config$sites[[site_id]]$short_name,
+            nrow(df_raw), nrow(df_clean),
+            n_ielisa
+          )),
+          type = "message",
+          duration = 5
+        )
+
+      }, error = function(e) {
+        removeNotification(loading_id)
+        showNotification(
+          paste("Error loading data:", e$message),
+          type = "error",
+          duration = 10
+        )
+      })
+    }
+
+    # Create observers for each biobank button
+    if (!is.null(config$sites)) {
+      lapply(names(config$sites), function(site_id) {
+        observeEvent(input[[paste0("load_site_", site_id)]], {
+          load_site_data(site_id)
+        })
+      })
+    }
+
+    # ========================================================================
+    # LEGACY DATA LOADING (KEPT FOR BACKWARD COMPATIBILITY)
+    # ========================================================================
+
     observeEvent(input$load_data, {
       req(input$selected_file)
       

@@ -91,7 +91,13 @@ gather_sample_journey <- function(sample_id, biobank_df = NULL, extraction_df = 
   if (!is.null(mic_df) && nrow(mic_df) > 0) {
     results$mic_data <- mic_df %>%
       mutate(
-        sample_norm = normalize_barcode(as.character(coalesce(SampleID, SampleName, Barcode)))
+        sample_norm = normalize_barcode(
+          as.character(dplyr::coalesce(
+            if ("SampleID" %in% names(.)) .data$SampleID else NA_character_,
+            if ("SampleName" %in% names(.)) .data$SampleName else NA_character_,
+            if ("Barcode" %in% names(.)) .data$Barcode else NA_character_
+          ))
+        )
       ) %>%
       filter(sample_norm == search_id)
     if (nrow(results$mic_data) > 0) results$found <- TRUE

@@ -76,11 +76,17 @@ mod_sample_journey_ui <- function(id) {
           card_header("Search for Sample"),
           card_body(
             layout_column_wrap(
-              width = 1/2,
+              width = 1/3,
               textInput(
-                ns("sample_search"),
-                "Enter Sample ID (Barcode or Numero)",
-                placeholder = "e.g., KPS12345 or LAB001",
+                ns("barcode_search"),
+                "Search by Barcode",
+                placeholder = "e.g., KPS12345",
+                width = "100%"
+              ),
+              textInput(
+                ns("numero_search"),
+                "Search by Lab Number",
+                placeholder = "e.g., LAB001",
                 width = "100%"
               ),
               div(
@@ -130,9 +136,18 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
 
     # Search button handler
     observeEvent(input$search_btn, {
-      req(input$sample_search)
+      # Get both inputs
+      barcode_val <- trimws(input$barcode_search)
+      numero_val <- trimws(input$numero_search)
 
-      sample_id <- trimws(input$sample_search)
+      # Determine which input to use (prioritize barcode if both filled)
+      sample_id <- if (!is.null(barcode_val) && barcode_val != "") {
+        barcode_val
+      } else if (!is.null(numero_val) && numero_val != "") {
+        numero_val
+      } else {
+        ""
+      }
 
       if (sample_id == "") {
         journey_data(NULL)

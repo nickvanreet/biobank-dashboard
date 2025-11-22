@@ -39,10 +39,17 @@ calculate_concordance_metrics <- function(test1, test2,
     n <- length(test1)
 
     if (n == 0) {
+      # Create empty confusion matrix with proper row/column names
+      cm_empty <- matrix(0, nrow = 2, ncol = 2)
+      rownames(cm_empty) <- c("Positive", "Negative")
+      colnames(cm_empty) <- c("Positive", "Negative")
+
       return(list(
         n = 0,
+        test1_name = test1_name,
+        test2_name = test2_name,
         metrics = data.frame(),
-        confusion_matrix = matrix(0, nrow = 2, ncol = 2)
+        confusion_matrix = cm_empty
       ))
     }
 
@@ -166,10 +173,18 @@ calculate_concordance_metrics <- function(test1, test2,
 
   }, error = function(e) {
     warning(paste("Error in calculate_concordance_metrics:", e$message))
+
+    # Create empty confusion matrix with proper row/column names
+    cm_empty <- matrix(0, nrow = 2, ncol = 2)
+    rownames(cm_empty) <- c("Positive", "Negative")
+    colnames(cm_empty) <- c("Positive", "Negative")
+
     list(
       n = 0,
+      test1_name = test1_name,
+      test2_name = test2_name,
       metrics = data.frame(metric = character(), value = numeric()),
-      confusion_matrix = matrix(0, nrow = 2, ncol = 2),
+      confusion_matrix = cm_empty,
       error = e$message
     )
   })

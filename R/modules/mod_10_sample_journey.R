@@ -16,6 +16,9 @@ if (!exists("gather_sample_journey")) {
 if (!exists("plot_sample_timeline")) {
   source("R/sampleJourneyVisualizations.R")
 }
+if (!exists("generate_sample_journey_pdf_simple")) {
+  source("R/sampleJourneyPdfExport.R")
+}
 
 #' Sample Journey UI
 #' @param id Module namespace ID
@@ -103,6 +106,9 @@ mod_sample_journey_ui <- function(id) {
             uiOutput(ns("search_status"))
           )
         ),
+
+        # Download PDF button
+        uiOutput(ns("download_section")),
 
         # Timeline visualization
         uiOutput(ns("timeline_card")),
@@ -224,6 +230,31 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
           )
         )
       }
+    })
+
+    # Download section
+    output$download_section <- renderUI({
+      data <- journey_data()
+
+      if (is.null(data) || !data$found) {
+        return(NULL)
+      }
+
+      card(
+        class = "mb-3",
+        card_header(
+          div(
+            class = "d-flex justify-content-between align-items-center",
+            tags$span("Export Report"),
+            downloadButton(
+              ns("download_pdf"),
+              "Download PDF",
+              icon = icon("file-pdf"),
+              class = "btn-primary"
+            )
+          )
+        )
+      )
     })
 
     # Timeline card
@@ -574,5 +605,73 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
         )
       )
     })
+
+    # Download PDF handler
+    output$download_pdf <- downloadHandler(
+      filename = function() {
+        data <- journey_data()
+        sample_id <- if (!is.null(data) && data$found) {
+          # Get the search input that was used
+          barcode_val <- trimws(input$barcode_search)
+          numero_val <- trimws(input$numero_search)
+
+          if (!is.null(barcode_val) && barcode_val != "") {
+            barcode_val
+          } else if (!is.null(numero_val) && numero_val != "") {
+            numero_val
+          } else {
+            "unknown"
+          }
+        } else {
+          "unknown"
+        }
+
+        sprintf("sample_journey_%s_%s.pdf",
+                gsub("[^A-Za-z0-9]", "_", sample_id),
+                format(Sys.time(), "%Y%m%d_%H%M%S"))
+      },
+      content = function(file) {
+        data <- journey_data()
+        req(data, data$found)
+
+        # Get the sample ID
+        barcode_val <- trimws(input$barcode_search)
+        numero_val <- trimws(input$numero_search)
+
+        sample_id <- if (!is.null(barcode_val) && barcode_val != "") {
+          barcode_val
+        } else if (!is.null(numero_val) && numero_val != "") {
+          numero_val
+        } else {
+          "unknown"
+        }
+
+        # Show progress
+        withProgress(message = "Generating PDF report...", value = 0, {
+          incProgress(0.2, detail = "Preparing data...")
+
+          # Generate the PDF using the simple method (better compatibility)
+          incProgress(0.3, detail = "Rendering report...")
+
+          tryCatch({
+            pdf_path <- generate_sample_journey_pdf_simple(sample_id, data)
+
+            incProgress(0.4, detail = "Finalizing...")
+
+            # Copy the generated PDF to the download location
+            file.copy(pdf_path, file, overwrite = TRUE)
+
+            incProgress(1.0, detail = "Complete!")
+          }, error = function(e) {
+            showNotification(
+              paste("Error generating PDF:", e$message),
+              type = "error",
+              duration = 10
+            )
+            stop(e)
+          })
+        })
+      }
+    )
   })
 }

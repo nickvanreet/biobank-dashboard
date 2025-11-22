@@ -28,6 +28,36 @@ plot_confusion_matrix <- function(confusion_matrix,
                plotly::layout(title = "No data available for confusion matrix"))
     }
 
+    # Check if total count is zero
+    total <- sum(cm, na.rm = TRUE)
+    if (total == 0) {
+      return(plotly::plot_ly() %>%
+               plotly::layout(
+                 title = "No samples available for comparison",
+                 xaxis = list(title = test2_name),
+                 yaxis = list(title = test1_name),
+                 annotations = list(
+                   list(
+                     text = "No matched samples found between these tests",
+                     xref = "paper",
+                     yref = "paper",
+                     x = 0.5,
+                     y = 0.5,
+                     showarrow = FALSE,
+                     font = list(size = 14, color = "gray")
+                   )
+                 )
+               ))
+    }
+
+    # Ensure row and column names exist
+    if (is.null(rownames(cm))) {
+      rownames(cm) <- c("Positive", "Negative")
+    }
+    if (is.null(colnames(cm))) {
+      colnames(cm) <- c("Positive", "Negative")
+    }
+
     # Create data for heatmap
     heatmap_data <- expand.grid(
       test1 = rownames(cm),
@@ -36,7 +66,6 @@ plot_confusion_matrix <- function(confusion_matrix,
     heatmap_data$count <- as.vector(cm)
 
     # Calculate percentages
-    total <- sum(cm)
     heatmap_data$pct <- (heatmap_data$count / total) * 100
 
     # Main heatmap

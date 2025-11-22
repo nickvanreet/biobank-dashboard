@@ -626,10 +626,17 @@ mod_concordance_server <- function(id,
       data <- stratified_data()
 
       if (nrow(data) == 0) {
+        # Create empty confusion matrix with proper row/column names
+        cm_empty <- matrix(0, nrow = 2, ncol = 2)
+        rownames(cm_empty) <- c("Positive", "Negative")
+        colnames(cm_empty) <- c("Positive", "Negative")
+
         return(list(
           n = 0,
+          test1_name = "Test1",
+          test2_name = "Test2",
           metrics = data.frame(),
-          confusion_matrix = matrix(0, nrow = 2, ncol = 2)
+          confusion_matrix = cm_empty
         ))
       }
 
@@ -644,10 +651,18 @@ mod_concordance_server <- function(id,
         )
       }, error = function(e) {
         warning(paste("Error calculating concordance:", e$message))
+
+        # Create empty confusion matrix with proper row/column names
+        cm_empty <- matrix(0, nrow = 2, ncol = 2)
+        rownames(cm_empty) <- c("Positive", "Negative")
+        colnames(cm_empty) <- c("Positive", "Negative")
+
         list(
           n = 0,
+          test1_name = "Test1",
+          test2_name = "Test2",
           metrics = data.frame(),
-          confusion_matrix = matrix(0, nrow = 2, ncol = 2)
+          confusion_matrix = cm_empty
         )
       })
     })

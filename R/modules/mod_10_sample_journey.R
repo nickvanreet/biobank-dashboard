@@ -23,85 +23,90 @@ if (!exists("plot_sample_timeline")) {
 mod_sample_journey_ui <- function(id) {
   ns <- NS(id)
 
-  tagList(
-    tags$style(HTML("
-      .sample-journey-panel {
-        max-height: calc(100vh - 160px);
-        overflow-y: auto;
-        padding-right: 0.5rem;
-        padding-bottom: 1rem;
-      }
+  nav_panel(
+    title = "Sample Journey",
+    icon = icon("route"),
 
-      .sample-journey-panel::-webkit-scrollbar {
-        width: 8px;
-      }
+    tagList(
+      tags$style(HTML("
+        .sample-journey-panel {
+          max-height: calc(100vh - 160px);
+          overflow-y: auto;
+          padding-right: 0.5rem;
+          padding-bottom: 1rem;
+        }
 
-      .sample-journey-panel::-webkit-scrollbar-thumb {
-        background-color: rgba(79, 70, 229, 0.4);
-        border-radius: 4px;
-      }
+        .sample-journey-panel::-webkit-scrollbar {
+          width: 8px;
+        }
 
-      .sample-journey-panel::-webkit-scrollbar-track {
-        background: transparent;
-      }
+        .sample-journey-panel::-webkit-scrollbar-thumb {
+          background-color: rgba(79, 70, 229, 0.4);
+          border-radius: 4px;
+        }
 
-      .alert-card {
-        border-left: 4px solid;
-        margin-bottom: 0.5rem;
-      }
+        .sample-journey-panel::-webkit-scrollbar-track {
+          background: transparent;
+        }
 
-      .alert-card.alert-danger {
-        border-left-color: #e41a1c;
-      }
+        .alert-card {
+          border-left: 4px solid;
+          margin-bottom: 0.5rem;
+        }
 
-      .alert-card.alert-warning {
-        border-left-color: #ff7f00;
-      }
+        .alert-card.alert-danger {
+          border-left-color: #e41a1c;
+        }
 
-      .alert-card.alert-info {
-        border-left-color: #06B6D4;
-      }
-    ")),
+        .alert-card.alert-warning {
+          border-left-color: #ff7f00;
+        }
 
-    div(
-      class = "sample-journey-panel",
+        .alert-card.alert-info {
+          border-left-color: #06B6D4;
+        }
+      ")),
 
-      # Search box
-      card(
-        class = "mb-3",
-        card_header("Search for Sample"),
-        card_body(
-          layout_column_wrap(
-            width = 1/2,
-            textInput(
-              ns("sample_search"),
-              "Enter Sample ID (Barcode or Numero)",
-              placeholder = "e.g., KPS12345 or LAB001",
-              width = "100%"
-            ),
-            div(
-              style = "padding-top: 25px;",
-              actionButton(
-                ns("search_btn"),
-                "Search",
-                icon = icon("search"),
-                class = "btn-primary",
+      div(
+        class = "sample-journey-panel",
+
+        # Search box
+        card(
+          class = "mb-3",
+          card_header("Search for Sample"),
+          card_body(
+            layout_column_wrap(
+              width = 1/2,
+              textInput(
+                ns("sample_search"),
+                "Enter Sample ID (Barcode or Numero)",
+                placeholder = "e.g., KPS12345 or LAB001",
                 width = "100%"
+              ),
+              div(
+                style = "padding-top: 25px;",
+                actionButton(
+                  ns("search_btn"),
+                  "Search",
+                  icon = icon("search"),
+                  class = "btn-primary",
+                  width = "100%"
+                )
               )
-            )
-          ),
-          uiOutput(ns("search_status"))
-        )
-      ),
+            ),
+            uiOutput(ns("search_status"))
+          )
+        ),
 
-      # Timeline visualization
-      uiOutput(ns("timeline_card")),
+        # Timeline visualization
+        uiOutput(ns("timeline_card")),
 
-      # Results layout (4 columns)
-      uiOutput(ns("results_section")),
+        # Results layout (4 columns)
+        uiOutput(ns("results_section")),
 
-      # Alerts section
-      uiOutput(ns("alerts_section"))
+        # Alerts section
+        uiOutput(ns("alerts_section"))
+      )
     )
   )
 }

@@ -131,10 +131,10 @@ parse_ielisa_file <- function(path,
 
   # --- Read flexible sample list ---------------------------------------------------
   samples <- ech %>%
-    slice(-(1:14)) %>%            # skip first 14 rows (headers)
-    filter(!is.na(X2)) %>%       # LabID present
-    transmute(
-      SampleIndex = row_number(),
+    dplyr::slice(-(1:14)) %>%            # skip first 14 rows (headers)
+    dplyr::filter(!is.na(X2)) %>%       # LabID present
+    dplyr::transmute(
+      SampleIndex = dplyr::row_number(),
       LabID = X2,
       Barcode = X3,
       # Add aliases for consistency with other modules

@@ -82,8 +82,20 @@ gather_sample_journey <- function(sample_id, biobank_df = NULL, extraction_df = 
   # Search extraction/QC data
   if (!is.null(extraction_df) && nrow(extraction_df) > 0) {
     results$extraction_data <- extraction_df %>%
-      mutate(sample_norm = normalize_barcode(as.character(sample_id))) %>%
-      filter(sample_norm == search_id)
+      mutate(
+        sample_norm = normalize_barcode(as.character(sample_id)),
+        barcode_norm = normalize_barcode(
+          as.character(
+            if ("barcode" %in% names(.)) .data$barcode else NA_character_
+          )
+        ),
+        numero_norm = normalize_barcode(
+          as.character(
+            if ("numero" %in% names(.)) .data$numero else NA_character_
+          )
+        )
+      ) %>%
+      filter(sample_norm == search_id | barcode_norm == search_id | numero_norm == search_id)
     if (nrow(results$extraction_data) > 0) results$found <- TRUE
   }
 

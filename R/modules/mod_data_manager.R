@@ -162,20 +162,35 @@ mod_data_manager_server <- function(id) {
         df_clean <- clean_biobank_data_improved(df_raw)
 
         # Step 3a: Add quality tracking to clean data
-        # Map quality flags from raw data to clean data using row numbers
+        # Mark rows that had quality issues in the raw data analysis
         if (!is.null(quality$invalid_row_indices) && length(quality$invalid_row_indices) > 0) {
           # Add a column to track if row had quality issues in raw data
           df_clean$.__has_quality_issues <- FALSE
 
           # Find which rows in clean data correspond to invalid rows in raw data
-          # This requires matching on identifiers since row numbers may have shifted
+          # We need to find the column names in the raw data (before janitor::clean_names)
           nms_raw <- names(df_raw)
-          nms_clean <- names(df_clean)
 
-          barcode_col_raw <- if ("barcode" %in% nms_clean) "barcode" else NULL
-          labid_col_raw <- if ("lab_id" %in% nms_clean) "lab_id" else NULL
+          # Helper function to detect columns
+          .find_col_local <- function(nms, patterns) {
+            for (p in patterns) {
+              hit <- grep(p, nms, ignore.case = TRUE, value = TRUE)
+              if (length(hit)) return(hit[1])
+            }
+            NULL
+          }
 
-          if (!is.null(barcode_col_raw) && !is.null(labid_col_raw)) {
+          # Detect barcode and lab_id columns in RAW data (original column names)
+          barcode_col_raw <- .find_col_local(nms_raw, c("code.*barres.*kps", "code.*barre", "\\bbarcode\\b", "kps"))
+          labid_col_raw <- .find_col_local(nms_raw, c("^num[eé]ro$", "^numero$", "^num$", "lab.?id"))
+
+          # Column names in clean data (after cleaning)
+          barcode_col_clean <- if ("barcode" %in% names(df_clean)) "barcode" else NULL
+          labid_col_clean <- if ("lab_id" %in% names(df_clean)) "lab_id" else NULL
+
+          if (!is.null(barcode_col_raw) && !is.null(labid_col_raw) &&
+              !is.null(barcode_col_clean) && !is.null(labid_col_clean)) {
+
             # Get invalid rows from raw data
             invalid_rows <- df_raw[quality$invalid_row_indices, , drop = FALSE]
 
@@ -184,12 +199,16 @@ mod_data_manager_server <- function(id) {
               bc <- invalid_rows[[barcode_col_raw]][i]
               lid <- invalid_rows[[labid_col_raw]][i]
 
-              if (!is.na(bc) && !is.na(lid)) {
+              # Safely check for NA values - handle NULL and length issues
+              bc_ok <- !is.null(bc) && length(bc) == 1 && !is.na(bc)
+              lid_ok <- !is.null(lid) && length(lid) == 1 && !is.na(lid)
+
+              if (bc_ok && lid_ok) {
                 matches <- which(
-                  !is.na(df_clean[[barcode_col_raw]]) &
-                  !is.na(df_clean[[labid_col_raw]]) &
-                  df_clean[[barcode_col_raw]] == bc &
-                  df_clean[[labid_col_raw]] == lid
+                  !is.na(df_clean[[barcode_col_clean]]) &
+                  !is.na(df_clean[[labid_col_clean]]) &
+                  as.character(df_clean[[barcode_col_clean]]) == as.character(bc) &
+                  as.character(df_clean[[labid_col_clean]]) == as.character(lid)
                 )
                 if (length(matches) > 0) {
                   df_clean$.__has_quality_issues[matches] <- TRUE

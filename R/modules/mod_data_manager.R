@@ -30,15 +30,26 @@ mod_data_manager_ui <- function(id) {
       )
     },
 
-    # Data Loading Section
-    h5(icon("folder-open"), " Data Source"),
+    # Data Loading Section - Biobank
+    h5(icon("folder-open"), " Biobank Data"),
     textInput(ns("data_dir"), "Directory",
               value = if (!is.null(config$site_paths)) config$site_paths$biobank_dir else config$paths$biobank_dir),
     uiOutput(ns("file_selector")),
-    actionButton(ns("load_data"), "Load Data", 
+    actionButton(ns("load_data"), "Load Biobank Data",
                  icon = icon("upload"),
                  class = "btn-primary w-100 mb-3"),
-    
+
+    hr(),
+
+    # Data Loading Section - iELISA
+    h5(icon("vial-circle-check"), " iELISA Data"),
+    textInput(ns("ielisa_dir"), "Directory",
+              value = if (!is.null(config$site_paths)) config$site_paths$ielisa_dir else "data/ielisa"),
+    actionButton(ns("load_ielisa"), "Load iELISA Data",
+                 icon = icon("upload"),
+                 class = "btn-primary w-100 mb-3"),
+    uiOutput(ns("ielisa_status")),
+
     hr(),
     
     # Filters Section
@@ -97,7 +108,8 @@ mod_data_manager_server <- function(id) {
       clean_data = NULL,
       extraction_data = NULL,
       quality_report = NULL,
-      files_available = character(0)
+      files_available = character(0),
+      ielisa_data = NULL
     )
     
     # ========================================================================
@@ -319,7 +331,88 @@ mod_data_manager_server <- function(id) {
         )
       })
     })
-    
+
+    # ========================================================================
+    # iELISA DATA LOADING
+    # ========================================================================
+
+    observeEvent(input$load_ielisa, {
+      req(input$ielisa_dir)
+
+      # Show loading notification
+      loading_id <- showNotification(
+        "Loading iELISA data...",
+        duration = NULL,
+        type = "message"
+      )
+
+      tryCatch({
+        # Load iELISA data using the utility function
+        ielisa_data <- load_ielisa_data(
+          ielisa_dir = input$ielisa_dir,
+          # Use default QC parameters
+          neg_od_min = 1,
+          neg_od_max = 3,
+          pos_od_min = 0.3,
+          pos_od_max = 0.7,
+          ctrl_inh_min = 50,
+          ctrl_inh_max = 80,
+          ctrl_cv_max = 20
+        )
+
+        rv$ielisa_data <- ielisa_data
+
+        # Success notification
+        removeNotification(loading_id)
+
+        if (nrow(ielisa_data) > 0) {
+          n_files <- dplyr::n_distinct(ielisa_data$file)
+          showNotification(
+            sprintf("Loaded %d iELISA samples from %d files",
+                    nrow(ielisa_data), n_files),
+            type = "message",
+            duration = 5
+          )
+        } else {
+          showNotification(
+            "No iELISA files found in directory",
+            type = "warning",
+            duration = 5
+          )
+        }
+
+      }, error = function(e) {
+        removeNotification(loading_id)
+        showNotification(
+          paste("Error loading iELISA data:", e$message),
+          type = "error",
+          duration = 10
+        )
+      })
+    })
+
+    # iELISA status output
+    output$ielisa_status <- renderUI({
+      if (is.null(rv$ielisa_data)) {
+        div(
+          class = "alert alert-info mt-2",
+          style = "padding: 6px 10px; font-size: 0.875rem;",
+          icon("info-circle"),
+          " No iELISA data loaded"
+        )
+      } else {
+        n_samples <- nrow(rv$ielisa_data)
+        n_files <- dplyr::n_distinct(rv$ielisa_data$file)
+
+        div(
+          class = "alert alert-success mt-2",
+          style = "padding: 6px 10px; font-size: 0.875rem;",
+          icon("check-circle"),
+          sprintf(" Loaded: %d samples from %d files", n_samples, n_files)
+        )
+      }
+    })
+
     # ========================================================================
     # DATA FILTERING
     # ========================================================================
@@ -676,7 +769,8 @@ mod_data_manager_server <- function(id) {
       extraction_data = reactive(rv$extraction_data),
       filtered_extractions = filtered_extractions,
       quality_report = reactive(rv$quality_report),
-      filters = filters
+      filters = filters,
+      ielisa_data = reactive(rv$ielisa_data)
     ))
   })
 }

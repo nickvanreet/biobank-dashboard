@@ -180,6 +180,22 @@ create_sample_timeline <- function(journey_data) {
         details = "Recorded in biobank"
       )
     }
+
+    # Date sent to INRB
+    date_inrb <- journey_data$biobank_info %>%
+      select(any_of(c("date_sent_inrb", "date_envoi_inrb", "date_inrb"))) %>%
+      dplyr::slice(1) %>%
+      unlist() %>%
+      as.Date()
+
+    if (!is.na(date_inrb[1])) {
+      events[[length(events) + 1]] <- tibble(
+        event = "Sent to INRB",
+        date = date_inrb[1],
+        category = "Biobank",
+        details = "Sample sent to INRB"
+      )
+    }
   }
 
   # Extractions

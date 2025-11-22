@@ -14,14 +14,14 @@ mic_panels <- mod_mic_qpcr_ui("mic_qpcr")  # Returns list of nav_panels
 # Create compact header with site information
 current_site_info <- config$sites[[config$current_site]]
 app_header <- tags$div(
-  style = "display: flex; align-items: center; gap: 6px; margin: 0; padding: 0;",
+  style = "display: flex; align-items: center; gap: 8px;",
   tags$span(
     icon("dna"),
-    style = "font-size: 0.9rem; color: #4F46E5;"
+    style = "font-size: 1.1rem; color: #4F46E5;"
   ),
   tags$span(
     paste0(current_site_info$short_name, " - ", current_site_info$location),
-    style = "font-weight: 600; font-size: 0.85rem; letter-spacing: -0.01em;"
+    style = "font-weight: 600; font-size: 1rem; letter-spacing: -0.01em;"
   )
 )
 

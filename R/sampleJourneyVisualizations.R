@@ -55,7 +55,7 @@ plot_sample_timeline <- function(timeline_data) {
     )
 
   # Create horizontal timeline
-  p <- plot_ly(timeline_data) %>%
+  p <- plot_ly(timeline_data, type = "scatter", mode = "markers") %>%
     add_markers(
       x = ~date,
       y = ~event_id,

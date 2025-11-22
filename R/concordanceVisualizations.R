@@ -22,6 +22,12 @@ plot_confusion_matrix <- function(confusion_matrix,
       cm <- as.matrix(confusion_matrix)
     }
 
+    # Check if matrix is empty or has no dimensions
+    if (is.null(cm) || length(cm) == 0 || nrow(cm) == 0 || ncol(cm) == 0) {
+      return(plotly::plot_ly() %>%
+               plotly::layout(title = "No data available for confusion matrix"))
+    }
+
     # Create data for heatmap
     heatmap_data <- expand.grid(
       test1 = rownames(cm),

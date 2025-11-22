@@ -572,24 +572,33 @@ match_mic_elisa <- function(mic_data, elisa_data, elisa_type) {
   }
 
   # Prepare MIC data
+  # Note: MIC data has SampleName (barcode), SampleID (normalized), ControlType
   mic_samples <- mic_data %>%
-    filter(if ("is_control" %in% names(.)) !is_control else TRUE) %>%
+    filter(
+      if ("ControlType" %in% names(.)) {
+        ControlType == "Sample"
+      } else if ("is_control" %in% names(.)) {
+        !is_control
+      } else {
+        TRUE
+      }
+    ) %>%
     mutate(
-      barcode_norm = normalize_elisa_id(Barcode),
-      numero_norm = normalize_elisa_id(TestNumber)
+      barcode_norm = normalize_elisa_id(SampleName),
+      numero_norm = normalize_elisa_id(SampleID)
     ) %>%
     select(
       # Identifiers
       mic_sample_name = SampleName,
-      mic_barcode = Barcode,
-      mic_test_number = TestNumber,
+      mic_barcode = SampleName,
+      mic_test_number = SampleID,
       barcode_norm,
       numero_norm,
       # MIC Results
       mic_final_call = FinalCall,
       mic_confidence = ConfidenceScore,
       mic_run_id = RunID,
-      mic_date = if ("PlateDate" %in% names(.)) PlateDate else if ("Date" %in% names(.)) Date else NA,
+      mic_date = if ("RunDate" %in% names(.)) RunDate else if ("PlateDate" %in% names(.)) PlateDate else if ("Date" %in% names(.)) Date else NA,
       # Biobank data (if available)
       Province = if ("Province" %in% names(.)) Province else NA_character_,
       HealthZone = if ("HealthZone" %in% names(.)) HealthZone else NA_character_,

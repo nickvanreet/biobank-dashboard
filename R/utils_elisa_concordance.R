@@ -534,3 +534,160 @@ match_ielisa_elisa <- function(ielisa_data, elisa_data, ielisa_antigen, elisa_ty
 
   return(result)
 }
+
+#' Match MIC qPCR samples with ELISA samples
+#' @param mic_data Data frame with MIC qPCR results
+#' @param elisa_data Data frame with ELISA results (PE or VSG)
+#' @param elisa_type ELISA type ("PE" or "VSG")
+#' @return Data frame with matched samples in concordance format
+match_mic_elisa <- function(mic_data, elisa_data, elisa_type) {
+
+  # Check if mic_data is null or empty
+  if (is.null(mic_data) || nrow(mic_data) == 0) {
+    return(tibble::tibble(
+      test1_value = numeric(),
+      test2_value = numeric(),
+      test1_binary = logical(),
+      test2_binary = logical(),
+      test1_name = character(),
+      test2_name = character()
+    ))
+  }
+
+  # Prepare MIC data
+  mic_samples <- mic_data %>%
+    filter(SampleType == "sample") %>%
+    mutate(
+      barcode_norm = normalize_elisa_id(Barcode),
+      numero_norm = normalize_elisa_id(TestNumber)
+    ) %>%
+    select(
+      # Identifiers
+      mic_sample_name = SampleName,
+      mic_barcode = Barcode,
+      mic_test_number = TestNumber,
+      barcode_norm,
+      numero_norm,
+      # MIC Results
+      mic_final_call = FinalCall,
+      mic_confidence = ConfidenceScore,
+      mic_run_id = RunID,
+      mic_date = if ("PlateDate" %in% names(.)) PlateDate else if ("Date" %in% names(.)) Date else NA,
+      # Biobank data (if available)
+      Province = if ("Province" %in% names(.)) Province else NA_character_,
+      HealthZone = if ("HealthZone" %in% names(.)) HealthZone else NA_character_,
+      Structure = if ("Structure" %in% names(.)) Structure else NA_character_,
+      Sex = if ("Sex" %in% names(.)) Sex else NA_character_,
+      Age = if ("Age" %in% names(.)) Age else NA_real_
+    )
+
+  # Prepare ELISA data
+  elisa_samples <- elisa_data %>%
+    filter(sample_type == "sample") %>%
+    mutate(
+      barcode_norm = normalize_elisa_id(code_barres_kps),
+      numero_norm = normalize_elisa_id(coalesce(numero_labo, sample_code))
+    ) %>%
+    select(
+      # Identifiers
+      elisa_sample = sample,
+      elisa_barcode = code_barres_kps,
+      elisa_numero = numero_labo,
+      barcode_norm,
+      numero_norm,
+      # ELISA Results
+      elisa_plate_id = plate_id,
+      elisa_plate_date = plate_date,
+      elisa_DOD = DOD,
+      elisa_PP_percent = PP_percent,
+      elisa_qc_overall = qc_overall,
+      elisa_plate_valid = plate_valid,
+      # Biobank data (if available)
+      elisa_Province = Province,
+      elisa_HealthZone = HealthZone,
+      elisa_Structure = Structure,
+      elisa_Sex = Sex,
+      elisa_Age = Age
+    )
+
+  # Match by barcode
+  matched_by_barcode <- mic_samples %>%
+    filter(!is.na(barcode_norm)) %>%
+    inner_join(
+      elisa_samples %>% filter(!is.na(barcode_norm)),
+      by = "barcode_norm",
+      suffix = c("_mic", "_elisa"),
+      relationship = "many-to-many"
+    ) %>%
+    mutate(match_method = "barcode")
+
+  # Match remaining by numero
+  unmatched_mic <- mic_samples %>%
+    filter(!barcode_norm %in% matched_by_barcode$barcode_norm | is.na(barcode_norm)) %>%
+    filter(!is.na(numero_norm))
+
+  unmatched_elisa <- elisa_samples %>%
+    filter(!barcode_norm %in% matched_by_barcode$barcode_norm | is.na(barcode_norm)) %>%
+    filter(!is.na(numero_norm))
+
+  matched_by_numero <- unmatched_mic %>%
+    inner_join(
+      unmatched_elisa,
+      by = "numero_norm",
+      suffix = c("_mic", "_elisa"),
+      relationship = "many-to-many"
+    ) %>%
+    mutate(match_method = "numero_labo")
+
+  # Combine matches
+  all_matches <- bind_rows(
+    matched_by_barcode,
+    matched_by_numero
+  )
+
+  if (nrow(all_matches) == 0) {
+    return(tibble::tibble(
+      test1_value = numeric(),
+      test2_value = numeric(),
+      test1_binary = logical(),
+      test2_binary = logical(),
+      test1_name = character(),
+      test2_name = character()
+    ))
+  }
+
+  # Create concordance data format
+  # MIC uses FinalCall: "Positive", "Negative", "Indeterminate", etc.
+  # Convert confidence score to a numeric value (0-100)
+  result <- all_matches %>%
+    mutate(
+      # MIC test1: Use confidence score as continuous value, FinalCall for binary
+      test1_value = as.numeric(gsub("%", "", mic_confidence)),
+      test1_binary = mic_final_call == "Positive",
+      test1_name = "MIC",
+      # ELISA test2
+      test2_value = elisa_PP_percent,
+      test2_binary = (elisa_PP_percent >= 20) | (elisa_DOD >= 0.3),
+      test2_name = paste0("ELISA-", elisa_type),
+      # Geographic data (prefer ELISA biobank match, fall back to MIC)
+      health_zone = coalesce(elisa_HealthZone, HealthZone),
+      province = coalesce(elisa_Province, Province),
+      date = coalesce(as.Date(mic_date), elisa_plate_date)
+    ) %>%
+    # Filter to valid MIC calls only
+    filter(mic_final_call %in% c("Positive", "Negative")) %>%
+    select(
+      test1_value, test2_value,
+      test1_binary, test2_binary,
+      test1_name, test2_name,
+      health_zone, province, date,
+      match_method,
+      mic_sample_name, mic_barcode, mic_test_number,
+      elisa_sample, elisa_barcode, elisa_numero,
+      Sex = coalesce(elisa_Sex, Sex),
+      Age = coalesce(elisa_Age, Age),
+      Structure = coalesce(elisa_Structure, Structure)
+    )
+
+  return(result)
+}

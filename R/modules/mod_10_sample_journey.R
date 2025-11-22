@@ -386,9 +386,64 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
         "Unknown"
       }
 
+      # Get sample identifiers
+      ext_barcode <- if ("barcode" %in% names(extraction) && !is.na(extraction$barcode)) {
+        as.character(extraction$barcode)
+      } else {
+        NA_character_
+      }
+
+      ext_numero <- if ("numero" %in% names(extraction) && !is.na(extraction$numero)) {
+        as.character(extraction$numero)
+      } else {
+        NA_character_
+      }
+
+      ext_sample_id <- if ("sample_id" %in% names(extraction) && !is.na(extraction$sample_id)) {
+        as.character(extraction$sample_id)
+      } else {
+        NA_character_
+      }
+
       tagList(
         tags$h6(sprintf("Extraction (%d total)", nrow(data$extraction_data)), class = "fw-bold"),
         tags$p(tags$strong("Latest Date: "), ext_date),
+
+        # Sample Identifiers Section
+        if (!is.na(ext_barcode) || !is.na(ext_numero) || !is.na(ext_sample_id)) {
+          tags$div(
+            class = "mb-3 p-2",
+            style = "background-color: rgba(16, 185, 129, 0.05); border-left: 3px solid #10B981;",
+            if (!is.na(ext_barcode)) {
+              tags$p(
+                class = "mb-1",
+                tags$small(
+                  tags$strong("Barcode: "),
+                  tags$code(class = "text-success", ext_barcode)
+                )
+              )
+            },
+            if (!is.na(ext_numero)) {
+              tags$p(
+                class = "mb-1",
+                tags$small(
+                  tags$strong("Lab Number: "),
+                  tags$code(class = "text-success", ext_numero)
+                )
+              )
+            },
+            if (!is.na(ext_sample_id) && ext_sample_id != ext_barcode && ext_sample_id != ext_numero) {
+              tags$p(
+                class = "mb-0",
+                tags$small(
+                  tags$strong("Sample ID: "),
+                  tags$code(class = "text-success", ext_sample_id)
+                )
+              )
+            }
+          )
+        },
+
         if (!is.na(drs_volume)) {
           plotlyOutput(ns("drs_gauge"), height = "200px")
         } else {

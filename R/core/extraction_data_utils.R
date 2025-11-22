@@ -436,8 +436,16 @@ remove_duplicates <- function(df, keep_first = FALSE) {
 #' @param validate Should validation flags be added?
 #' @return Tibble with combined extraction records
 #' @export
-load_all_extractions <- function(directory = config$paths$extractions_dir,
+load_all_extractions <- function(directory = NULL,
                                  validate = TRUE) {
+  # Use site-aware paths if not specified
+  if (is.null(directory)) {
+    directory <- if (!is.null(config$site_paths)) {
+      config$site_paths$extractions_dir
+    } else {
+      config$paths$extractions_dir
+    }
+  }
   files <- list_extraction_files(directory)
   files <- files[grepl("\\.(xlsx|xls)$", files, ignore.case = TRUE)]
   if (!length(files)) {

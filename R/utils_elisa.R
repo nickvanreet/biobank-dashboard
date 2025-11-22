@@ -343,7 +343,12 @@ ensure_elisa_columns <- function(df) {
 #' Get ELISA cache directory
 #' @return Path to cache directory
 get_elisa_cache_dir <- function() {
-  cache_dir <- file.path("data", "ELISA_cache")
+  # Use site-aware cache directory
+  cache_dir <- if (!is.null(config$site_paths)) {
+    config$site_paths$cache_dir
+  } else {
+    file.path("data", "ELISA_cache")
+  }
   if (!dir.exists(cache_dir)) {
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   }
@@ -495,13 +500,22 @@ parse_single_elisa_file <- function(file_path, cv_max_ag_plus = 20, cv_max_ag0 =
 #' @return Tibble with ELISA results linked to biobank
 #' @export
 load_elisa_data <- function(
-  dirs = c("data/elisa_pe", "data/elisa_vsg"),
+  dirs = NULL,
   exclude_pattern = "^251021 Résultats indirect ELISA vF\\.5",
   recursive = TRUE,
   cv_max_ag_plus = 20,
   cv_max_ag0 = 20,
   biobank_df = NULL
 ) {
+  # Use site-aware paths if not specified
+  if (is.null(dirs)) {
+    dirs <- if (!is.null(config$site_paths)) {
+      c(config$site_paths$elisa_pe_dir, config$site_paths$elisa_vsg_dir)
+    } else {
+      c("data/elisa_pe", "data/elisa_vsg")
+    }
+  }
+
   ensure_elisa_parser()
 
   # Build file list

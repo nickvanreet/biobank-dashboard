@@ -10,10 +10,30 @@ mod_data_manager_ui <- function(id) {
   
   bslib::sidebar(
     width = 280,
-    
+
+    # Site Information Section
+    if (!is.null(config$sites) && !is.null(config$current_site)) {
+      tagList(
+        div(
+          class = "alert alert-info mb-3",
+          style = "padding: 8px 12px; margin-bottom: 12px;",
+          tags$strong(icon("hospital"), " Current Site:"),
+          tags$br(),
+          tags$small(config$sites[[config$current_site]]$short_name),
+          tags$br(),
+          tags$small(
+            class = "text-muted",
+            config$sites[[config$current_site]]$location
+          )
+        ),
+        hr()
+      )
+    },
+
     # Data Loading Section
     h5(icon("folder-open"), " Data Source"),
-    textInput(ns("data_dir"), "Directory", value = config$paths$biobank_dir),
+    textInput(ns("data_dir"), "Directory",
+              value = if (!is.null(config$site_paths)) config$site_paths$biobank_dir else config$paths$biobank_dir),
     uiOutput(ns("file_selector")),
     actionButton(ns("load_data"), "Load Data", 
                  icon = icon("upload"),
@@ -128,7 +148,7 @@ mod_data_manager_server <- function(id) {
 
         # Step 3b: Load extraction quality data and link to biobank
         extraction_df <- tryCatch({
-          load_all_extractions(config$paths$extractions_dir)
+          load_all_extractions()  # Uses site-aware paths by default
         }, error = function(e) {
           message("Failed to load extraction dataset: ", e$message)
           tibble::tibble()

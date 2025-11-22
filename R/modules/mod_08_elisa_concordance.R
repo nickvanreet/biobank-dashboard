@@ -167,8 +167,7 @@ mod_elisa_concordance_server <- function(id,
     # Load all ELISA data
     all_elisa_data <- reactive({
       data <- load_elisa_data(
-        dirs = c("data/elisa_pe", "data/elisa_vsg"),
-        biobank_df = biobank_df()
+        biobank_df = biobank_df()  # Uses site-aware paths by default
       )
       message("DEBUG: Loaded ", nrow(data), " total ELISA records")
       message("DEBUG: elisa_type values: ", paste(unique(data$elisa_type), collapse = ", "))

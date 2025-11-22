@@ -147,95 +147,139 @@ plot_drs_gauge <- function(volume_ul) {
   return(p)
 }
 
-#' Plot MIC targets as heatmap
+#' Display detailed MIC results with Cq values and delta calculations
 #' @param mic_data MIC data row(s) for the sample
-#' @return Plotly heatmap
+#' @return HTML div with detailed MIC information
 #' @export
-plot_mic_heatmap <- function(mic_data) {
+plot_mic_detailed <- function(mic_data) {
   if (is.null(mic_data) || nrow(mic_data) == 0) {
-    return(plotly_empty() %>%
-      layout(title = "No MIC data available"))
+    return(tags$div(
+      class = "alert alert-info",
+      "No MIC data available"
+    ))
   }
 
-  # Define targets to display
-  targets <- c("TNA", "gTNA", "TBG", "gTBG", "TCO", "TEV", "RNAseP")
+  # Create detailed cards for each MIC test
+  cards <- lapply(1:nrow(mic_data), function(i) {
+    row <- mic_data[i, ]
 
-  # Extract Cq values for each target
-  results <- tibble(
-    test_num = seq_len(nrow(mic_data)),
-    test_label = paste0("Test ", seq_len(nrow(mic_data)))
-  )
+    # Extract Cq values for main targets
+    cq_177t <- if ("Cq_177T" %in% names(row)) row$Cq_177T else NA_real_
+    cq_18s2 <- if ("Cq_18S2" %in% names(row)) row$Cq_18S2 else NA_real_
+    cq_rnasep_dna <- if ("Cq_RNAseP_DNA" %in% names(row)) row$Cq_RNAseP_DNA else
+                     if ("RNAseP_DNA_Cq" %in% names(row)) row$RNAseP_DNA_Cq else NA_real_
+    cq_rnasep_rna <- if ("Cq_RNAseP_RNA" %in% names(row)) row$Cq_RNAseP_RNA else
+                     if ("RNAseP_RNA_Cq" %in% names(row)) row$RNAseP_RNA_Cq else NA_real_
 
-  # Add columns for each target
-  for (target in targets) {
-    # Try multiple column name patterns
-    col_patterns <- c(
-      paste0("Cq_median_", target),
-      paste0("Cq_", target),
-      paste0(target, "_Ct"),
-      paste0(target, "_Cq")
-    )
+    # Get interpretation/marker columns
+    marker_177t <- if ("marker_177T" %in% names(row)) row$marker_177T else "Unknown"
+    marker_18s2 <- if ("marker_18S2" %in% names(row)) row$marker_18S2 else "Unknown"
+    marker_rnasep_dna <- if ("RNAseP_DNA" %in% names(row)) row$RNAseP_DNA else "Unknown"
+    marker_rnasep_rna <- if ("RNAseP_RNA" %in% names(row)) row$RNAseP_RNA else "Unknown"
 
-    value <- rep(NA_real_, nrow(mic_data))
-    for (pattern in col_patterns) {
-      if (pattern %in% names(mic_data)) {
-        value <- mic_data[[pattern]]
-        break
-      }
+    # Calculate deltas
+    delta_rnasep <- if (!is.na(cq_rnasep_rna) && !is.na(cq_rnasep_dna)) {
+      cq_rnasep_rna - cq_rnasep_dna
+    } else {
+      NA_real_
     }
 
-    results[[target]] <- value
-  }
+    delta_177t_18s2 <- if (!is.na(cq_177t) && !is.na(cq_18s2)) {
+      abs(cq_177t - cq_18s2)
+    } else {
+      NA_real_
+    }
 
-  # Reshape to long format for heatmap
-  results_long <- results %>%
-    pivot_longer(
-      cols = all_of(targets),
-      names_to = "target",
-      values_to = "cq_value"
-    ) %>%
-    mutate(
-      status = case_when(
-        is.na(cq_value) ~ "Not Detected",
-        cq_value < 40 ~ "Detected",
-        TRUE ~ "Not Detected"
+    # Helper function to create target display
+    create_target_display <- function(name, cq, status) {
+      cq_text <- if (!is.na(cq)) sprintf("Cq: %.1f", cq) else "ND"
+      status_badge <- if (!is.na(status) && status == "Positive") {
+        tags$span(class = "badge bg-danger ms-2", "Positive")
+      } else if (!is.na(status) && status == "Negative") {
+        tags$span(class = "badge bg-success ms-2", "Negative")
+      } else {
+        tags$span(class = "badge bg-secondary ms-2", "Unknown")
+      }
+
+      tags$div(
+        class = "d-flex justify-content-between align-items-center mb-2",
+        tags$span(tags$strong(paste0(name, ":")), " ", cq_text),
+        status_badge
+      )
+    }
+
+    # Determine RNA preservation quality
+    rnasep_quality <- if (!is.na(delta_rnasep)) {
+      if (delta_rnasep <= 5) {
+        list(text = "Good RNA preservation", class = "success")
+      } else if (delta_rnasep <= 8) {
+        list(text = "Moderate RNA loss", class = "warning")
+      } else {
+        list(text = "Poor RNA preservation", class = "danger")
+      }
+    } else {
+      list(text = "Unknown", class = "secondary")
+    }
+
+    # Determine double detection status
+    double_detection <- if (!is.na(delta_177t_18s2) &&
+                           marker_177t == "Positive" &&
+                           marker_18s2 == "Positive") {
+      list(text = sprintf("Double detection confirmed (Δ: %.1f)", delta_177t_18s2),
+           class = "success")
+    } else if (marker_177t == "Positive" || marker_18s2 == "Positive") {
+      list(text = "Single target detection", class = "warning")
+    } else {
+      list(text = "No detection", class = "secondary")
+    }
+
+    # Get test date
+    test_date <- if ("RunDate" %in% names(row)) {
+      format(as.Date(row$RunDate), "%Y-%m-%d")
+    } else if ("RunDateTime" %in% names(row)) {
+      format(as.Date(row$RunDateTime), "%Y-%m-%d")
+    } else {
+      "Unknown"
+    }
+
+    tags$div(
+      class = "card mb-3",
+      tags$div(
+        class = "card-header bg-light",
+        tags$strong(sprintf("MIC Test #%d", i)),
+        tags$small(class = "text-muted ms-2", paste("Date:", test_date))
       ),
-      color_value = case_when(
-        is.na(cq_value) ~ 0,
-        cq_value < 40 ~ 40 - cq_value,  # Lower Cq = stronger signal
-        TRUE ~ 0
-      ),
-      tooltip_text = ifelse(
-        is.na(cq_value),
-        paste0(target, ": Not Detected"),
-        sprintf("%s: Cq = %.1f", target, cq_value)
+      tags$div(
+        class = "card-body",
+        tags$h6("Target Detection:", class = "mb-3"),
+        create_target_display("177T (DNA)", cq_177t, marker_177t),
+        create_target_display("18S2 (RNA)", cq_18s2, marker_18s2),
+        create_target_display("RNAseP-DNA", cq_rnasep_dna, marker_rnasep_dna),
+        create_target_display("RNAseP-RNA", cq_rnasep_rna, marker_rnasep_rna),
+
+        tags$hr(),
+
+        tags$h6("Quality Metrics:", class = "mb-3"),
+        tags$div(
+          class = sprintf("alert alert-%s mb-2", rnasep_quality$class),
+          role = "alert",
+          tags$strong("RNA Preservation: "),
+          rnasep_quality$text,
+          if (!is.na(delta_rnasep)) {
+            tags$small(sprintf(" (ΔCq RNAseP: %.1f)", delta_rnasep))
+          }
+        ),
+        tags$div(
+          class = sprintf("alert alert-%s mb-0", double_detection$class),
+          role = "alert",
+          tags$strong("Trypanozoon Detection: "),
+          double_detection$text
+        )
       )
     )
+  })
 
-  # Create heatmap
-  p <- plot_ly(
-    data = results_long,
-    x = ~target,
-    y = ~test_label,
-    z = ~color_value,
-    type = "heatmap",
-    colorscale = list(
-      c(0, "#f0f0f0"),      # Gray for not detected
-      c(0.5, COLORS$borderline),  # Orange for weak
-      c(1, COLORS$positive)       # Red for strong
-    ),
-    text = ~tooltip_text,
-    hoverinfo = "text",
-    showscale = FALSE
-  ) %>%
-    layout(
-      title = "MIC Target Detection",
-      xaxis = list(title = "Target"),
-      yaxis = list(title = "Test"),
-      margin = list(l = 80, r = 50, t = 50, b = 80)
-    )
-
-  return(p)
+  return(tagList(cards))
 }
 
 #' Plot ELISA results as cards

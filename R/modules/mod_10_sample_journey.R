@@ -223,7 +223,7 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
         class = "mb-3",
         card_header("Sample Timeline"),
         card_body(
-          plotlyOutput(ns("timeline_plot"), height = "300px")
+          plotlyOutput(ns("timeline_plot"), height = "400px")
         )
       )
     })
@@ -260,7 +260,7 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
                 tags$hr(),
                 uiOutput(ns("extraction_info"))
               ),
-              height = "400px",
+              height = "700px",
               style = "overflow-y: auto;"
             ),
 
@@ -270,7 +270,7 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
               card_body(
                 uiOutput(ns("mic_results"))
               ),
-              height = "400px",
+              height = "700px",
               style = "overflow-y: auto;"
             ),
 
@@ -280,7 +280,7 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
               card_body(
                 uiOutput(ns("elisa_cards"))
               ),
-              height = "400px",
+              height = "700px",
               style = "overflow-y: auto;"
             ),
 
@@ -290,7 +290,7 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
               card_body(
                 uiOutput(ns("ielisa_results"))
               ),
-              height = "400px",
+              height = "700px",
               style = "overflow-y: auto;"
             )
           )

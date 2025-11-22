@@ -293,7 +293,7 @@ mod_ielisa_coordinator_server <- function(id, biobank_df = reactive(NULL), filte
     # ========================================================================
 
     return(list(
-      ielisa_data = filtered_ielisa_data,
+      samples = filtered_ielisa_data,
       raw_data = raw_ielisa_data
     ))
 

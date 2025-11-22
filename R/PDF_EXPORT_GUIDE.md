@@ -78,14 +78,42 @@ Example: `sample_journey_KPS12345_20250122_143022.pdf`
 
 ### PDF Generation Fails
 
+**Error: "LaTeX failed to compile"**
+This is the most common error and usually means LaTeX packages are missing.
+
+**Quick Fix:**
+```r
+source("R/fix_latex_packages.R")
+```
+
+This script will automatically install all required LaTeX packages.
+
+**Manual Fix:**
+1. Ensure TinyTeX is installed:
+   ```r
+   tinytex::install_tinytex()
+   ```
+
+2. Install required LaTeX packages:
+   ```r
+   tinytex::tlmgr_install(c(
+     "booktabs", "longtable", "array", "multirow", "wrapfig",
+     "float", "colortbl", "pdflscape", "tabu", "threeparttable",
+     "threeparttablex", "ulem", "makecell", "xcolor", "fancyhdr"
+   ))
+   ```
+
 **Error: "LaTeX not found"**
-- Solution: Install TinyTeX as described above
+- Solution: Install TinyTeX: `tinytex::install_tinytex()`
 
 **Error: "Package not found"**
-- Solution: Install the missing package using `install.packages()`
+- Solution: Install the missing R package using `install.packages()`
 
 **Error: "Template file not found"**
 - Solution: Ensure `R/sample_journey_report_template.Rmd` exists in your project
+
+**Error: "kableExtra not found"**
+- Solution: Install kableExtra package: `install.packages("kableExtra")`
 
 ### Plots Not Showing in PDF
 

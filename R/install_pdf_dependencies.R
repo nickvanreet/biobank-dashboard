@@ -60,6 +60,39 @@ if (requireNamespace("tinytex", quietly = TRUE)) {
   } else {
     cat("✓ TinyTeX already installed\n\n")
   }
+
+  # Install required LaTeX packages for kableExtra
+  if (tinytex::is_tinytex()) {
+    cat("=== Installing Required LaTeX Packages ===\n")
+    latex_packages <- c(
+      "booktabs",
+      "longtable",
+      "array",
+      "multirow",
+      "wrapfig",
+      "float",
+      "colortbl",
+      "pdflscape",
+      "tabu",
+      "threeparttable",
+      "threeparttablex",
+      "ulem",
+      "makecell",
+      "xcolor",
+      "fancyhdr"
+    )
+
+    for (pkg in latex_packages) {
+      cat(sprintf("Installing LaTeX package: %s... ", pkg))
+      tryCatch({
+        tinytex::tlmgr_install(pkg)
+        cat("✓\n")
+      }, error = function(e) {
+        cat("(may already be installed)\n")
+      })
+    }
+    cat("\n")
+  }
 } else {
   cat("⚠ Warning: tinytex package not found\n")
   cat("Please install: install.packages('tinytex')\n\n")

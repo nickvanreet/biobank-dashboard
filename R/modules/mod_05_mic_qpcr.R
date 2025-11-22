@@ -839,6 +839,23 @@ aggregate_samples_from_replicates <- function(replicates_long, sample_summary, s
       .after = Avg_18S2_Positive_Cq
     )
 
+  # Add column aliases for sample journey visualization compatibility
+  # plot_mic_detailed expects Cq_* and marker_* column names
+  samples_wide <- samples_wide %>%
+    mutate(
+      # Cq value aliases (use median for display)
+      Cq_177T = Cq_median_177T,
+      Cq_18S2 = Cq_median_18S2,
+      Cq_RNAseP_DNA = Cq_median_RNAseP_DNA,
+      Cq_RNAseP_RNA = Cq_median_RNAseP_RNA,
+      # Marker aliases (Call_* columns)
+      marker_177T = Call_177T,
+      marker_18S2 = Call_18S2,
+      # RNAseP marker aliases (plot_mic_detailed looks for these exact names)
+      RNAseP_DNA = Call_RNAseP_DNA,
+      RNAseP_RNA = Call_RNAseP_RNA
+    )
+
   samples_wide
 }
 

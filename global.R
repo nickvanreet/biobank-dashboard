@@ -11,7 +11,9 @@ required_packages <- c(
   "DT", "plotly", "lubridate", "scales", "stringr", "stringi",
   "purrr", "dplyr", "tidyr", "ggplot2", "jsonlite", "digest", "glue",
   # New packages for Sample Journey and Concordance modules
-  "irr", "pROC", "randomForest", "xgboost", "rmarkdown", "openxlsx", "officer"
+  "irr", "pROC", "randomForest", "xgboost", "rmarkdown", "openxlsx", "officer",
+  # Packages for PDF export functionality
+  "knitr", "kableExtra"
 )
 
 for (pkg in required_packages) {
@@ -19,6 +21,20 @@ for (pkg in required_packages) {
     install.packages(pkg, quietly = TRUE)
     require(pkg, quietly = TRUE, character.only = TRUE)
   }
+}
+
+# Check for TinyTeX (required for PDF export)
+if (!require("tinytex", quietly = TRUE)) {
+  message("Installing tinytex package for PDF export functionality...")
+  install.packages("tinytex", quietly = TRUE)
+  require("tinytex", quietly = TRUE)
+}
+
+# Check if TinyTeX is installed
+if (!tinytex::is_tinytex()) {
+  message("Note: TinyTeX (LaTeX) is not installed. PDF export will not work.")
+  message("To enable PDF export, run: tinytex::install_tinytex()")
+  message("Or use: source('R/install_pdf_dependencies.R')")
 }
 
 # ============================================================================

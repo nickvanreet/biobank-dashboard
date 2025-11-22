@@ -6,7 +6,7 @@ suppressPackageStartupMessages({
   library(tidyverse)
   library(plotly)
   library(rmarkdown)
-  library(webshot2)
+  # webshot2 is optional - only loaded if available
 })
 
 #' Generate PDF report for sample journey

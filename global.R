@@ -9,7 +9,9 @@
 required_packages <- c(
   "shiny", "bslib", "tidyverse", "readxl", "writexl", "janitor",
   "DT", "plotly", "lubridate", "scales", "stringr", "stringi",
-  "purrr", "dplyr", "tidyr", "ggplot2", "jsonlite", "digest", "glue"
+  "purrr", "dplyr", "tidyr", "ggplot2", "jsonlite", "digest", "glue",
+  # New packages for Sample Journey and Concordance modules
+  "irr", "pROC", "randomForest", "xgboost", "rmarkdown", "openxlsx", "officer"
 )
 
 for (pkg in required_packages) {
@@ -159,6 +161,17 @@ source("R/modules/mod_ielisa_runs.R")
 source("R/modules/mod_ielisa_samples.R")
 source("R/modules/mod_ielisa_analysis.R")
 source("R/modules/mod_09_ielisa.R")
+
+# Sample Journey module (individual sample tracking)
+source("R/sampleJourneyHelpers.R")
+source("R/sampleJourneyVisualizations.R")
+source("R/modules/mod_10_sample_journey.R")
+
+# Concordance Analysis module (comprehensive statistical analysis)
+source("R/concordanceStatistics.R")
+source("R/concordanceVisualizations.R")
+source("R/concordancePredictive.R")
+source("R/modules/mod_11_concordance.R")
 
 # ============================================================================
 # SOURCE MIC SUB-MODULES

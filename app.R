@@ -11,25 +11,17 @@ source("global.R")
 # Build UI with dynamic MIC panels
 mic_panels <- mod_mic_qpcr_ui("mic_qpcr")  # Returns list of nav_panels
 
-# Create elegant header with site information
+# Create compact header with site information
 current_site_info <- config$sites[[config$current_site]]
 app_header <- tags$div(
-  style = "display: flex; align-items: center; gap: 12px;",
+  style = "display: flex; align-items: center; gap: 8px;",
   tags$span(
     icon("dna"),
-    style = "font-size: 1.5rem; color: #4F46E5;"
+    style = "font-size: 1.1rem; color: #4F46E5;"
   ),
   tags$span(
-    config$app$title,
-    style = "font-weight: 600; font-size: 1.25rem; letter-spacing: -0.02em;"
-  ),
-  tags$span(
-    "Analytics Platform",
-    style = "font-size: 0.875rem; color: #64748b; font-weight: 500; margin-left: 8px;"
-  ),
-  tags$span(
-    paste0("| ", current_site_info$short_name, " - ", current_site_info$location),
-    style = "font-size: 0.875rem; color: #4F46E5; font-weight: 600; margin-left: 12px;"
+    paste0(current_site_info$short_name, " - ", current_site_info$location),
+    style = "font-weight: 600; font-size: 1rem; letter-spacing: -0.01em;"
   )
 )
 

@@ -7,7 +7,7 @@ mod_elisa_concordance_ui <- function(id) {
 
   nav_panel(
     title = "ELISA Concordance",
-    icon = icon("diagram-3"),
+    icon = icon("project-diagram"),
     page_fluid(
       # Header with settings button
       layout_columns(

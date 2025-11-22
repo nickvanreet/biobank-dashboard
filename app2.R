@@ -38,7 +38,10 @@ ui <- do.call(
       mod_elisa_pe_ui("elisa_pe"),
       mod_elisa_vsg_ui("elisa_vsg"),
       mod_elisa_concordance_ui("concordance"),
-      mod_drs_rnasep_ui("drs_rnasep")
+      mod_drs_rnasep_ui("drs_rnasep"),
+      # New comprehensive analysis modules
+      mod_sample_journey_ui("sample_journey"),
+      mod_concordance_ui("concordance_analysis")
     )
   )
 )
@@ -93,13 +96,13 @@ server <- function(input, output, session) {
     filters = data$filters
   )
 
-  # ELISA modules - using new coordinator architecture
-  mod_elisa_pe_server(
+  # ELISA modules - using new coordinator architecture (capture return values for downstream modules)
+  elisa_pe_data <- mod_elisa_pe_server(
     "elisa_pe",
     biobank_df = data$clean_data,
     filters = data$filters
   )
-  mod_elisa_vsg_server(
+  elisa_vsg_data <- mod_elisa_vsg_server(
     "elisa_vsg",
     biobank_df = data$clean_data,
     filters = data$filters
@@ -118,6 +121,29 @@ server <- function(input, output, session) {
     extractions_df = data$filtered_extractions, # ← Extractions data from data manager
     qpcr_data = mic_data$qpcr_samples,          # ← qPCR data from MIC module
     filters = data$filters                      # ← Filters from data manager
+  )
+
+  # Sample Journey module (comprehensive sample tracking)
+  mod_sample_journey_server(
+    "sample_journey",
+    biobank_df = data$clean_data,
+    extraction_df = data$filtered_extractions,
+    mic_df = mic_data$qpcr_samples,
+    elisa_pe_df = elisa_pe_data$samples,
+    elisa_vsg_df = elisa_vsg_data$samples,
+    ielisa_df = ielisa_data$samples,
+    filters = data$filters
+  )
+
+  # Concordance Analysis module (comprehensive statistical analysis)
+  mod_concordance_server(
+    "concordance_analysis",
+    biobank_df = data$clean_data,
+    mic_df = mic_data$qpcr_samples,
+    elisa_pe_df = elisa_pe_data$samples,
+    elisa_vsg_df = elisa_vsg_data$samples,
+    ielisa_df = ielisa_data$samples,
+    filters = data$filters
   )
 
   # Session management

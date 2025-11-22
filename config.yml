@@ -42,7 +42,7 @@ paths:
   pcr_dir: "data/pcr"
   elisa_pe_dir: "data/elisa_pe"
   elisa_vsg_dir: "data/elisa_vsg"
-  ielisa_dir: "data/ielisa"
+  ielisa_dir: "data/lsd/ielisa"
 
 ui:
   theme_primary: "#2C3E50"

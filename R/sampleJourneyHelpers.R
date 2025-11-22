@@ -71,7 +71,7 @@ gather_sample_journey <- function(sample_id, biobank_df = NULL, extraction_df = 
         )
       ) %>%
       filter(barcode_norm == search_id | numero_norm == search_id) %>%
-      slice(1)
+      dplyr::slice(1)
 
     if (nrow(biobank_match) > 0) {
       results$found <- TRUE
@@ -162,7 +162,7 @@ create_sample_timeline <- function(journey_data) {
   if (!is.null(journey_data$biobank_info) && nrow(journey_data$biobank_info) > 0) {
     date_col <- journey_data$biobank_info %>%
       select(any_of(c("date_sample", "date_prelevement", ".__date_sample"))) %>%
-      slice(1) %>%
+      dplyr::slice(1) %>%
       unlist() %>%
       as.Date()
 

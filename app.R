@@ -51,7 +51,10 @@ ui <- do.call(
       mod_elisa_vsg_ui("elisa_vsg"),
       mod_ielisa_ui("ielisa"),
       mod_elisa_concordance_ui("elisa_concordance"),
-      mod_drs_rnasep_ui("drs_rnasep")
+      mod_drs_rnasep_ui("drs_rnasep"),
+      # New comprehensive analysis modules
+      mod_sample_journey_ui("sample_journey"),
+      mod_concordance_ui("concordance")
     )
   )
 )
@@ -134,12 +137,30 @@ server <- function(input, output, session) {
     qpcr_data = mic_data$qpcr_samples,  # Now linked to qPCR data from MIC module
     filters = data$filters
   )
-  
-  # Add other module servers here:
-  # mod_transport_server("transport", filtered_data = data$filtered_data)
-  # mod_lab_results_server("lab_results", biobank_data = data$clean_data)
-  # etc.
-  
+
+  # Sample Journey module (comprehensive sample tracking)
+  mod_sample_journey_server(
+    "sample_journey",
+    biobank_df = data$clean_data,
+    extraction_df = data$filtered_extractions,
+    mic_df = mic_data$qpcr_samples,
+    elisa_pe_df = elisa_pe_data$samples,
+    elisa_vsg_df = elisa_vsg_data$samples,
+    ielisa_df = ielisa_data$samples,
+    filters = data$filters
+  )
+
+  # Concordance Analysis module (comprehensive statistical analysis)
+  mod_concordance_server(
+    "concordance",
+    biobank_df = data$clean_data,
+    mic_df = mic_data$qpcr_samples,
+    elisa_pe_df = elisa_pe_data$samples,
+    elisa_vsg_df = elisa_vsg_data$samples,
+    ielisa_df = ielisa_data$samples,
+    filters = data$filters
+  )
+
   # Session management
   session$onSessionEnded(function() {
     # Clean up temporary files or connections if needed

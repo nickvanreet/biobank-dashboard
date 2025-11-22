@@ -3,7 +3,7 @@ title: "Sample Journey Report"
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
 output:
   pdf_document:
-    latex_engine: xelatex
+    latex_engine: pdflatex
     toc: false
     keep_tex: false
 params:

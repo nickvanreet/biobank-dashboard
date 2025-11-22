@@ -365,10 +365,18 @@ mod_concordance_ui <- function(id) {
 #'
 #' @param id Module namespace ID
 #' @param biobank_df Reactive containing biobank data
+#' @param mic_df Reactive containing MIC qPCR data
+#' @param elisa_pe_df Reactive containing ELISA-PE data (optional, for future use)
+#' @param elisa_vsg_df Reactive containing ELISA-VSG data (optional, for future use)
+#' @param ielisa_df Reactive containing iELISA data (optional, for future use)
 #' @param filters Reactive containing filter settings
 #' @export
 mod_concordance_server <- function(id,
                                    biobank_df = reactive(NULL),
+                                   mic_df = reactive(NULL),
+                                   elisa_pe_df = reactive(NULL),
+                                   elisa_vsg_df = reactive(NULL),
+                                   ielisa_df = reactive(NULL),
                                    filters = reactive(NULL)) {
 
   moduleServer(id, function(input, output, session) {
@@ -501,26 +509,32 @@ mod_concordance_server <- function(id,
             )
 
         } else if (comparison == "mic_pe") {
-          # Placeholder for MIC vs ELISA-PE
-          tibble::tibble(
-            test1_value = numeric(),
-            test2_value = numeric(),
-            test1_binary = logical(),
-            test2_binary = logical(),
-            test1_name = "MIC",
-            test2_name = "ELISA-PE"
-          )
+          # MIC vs ELISA-PE
+          mic_data <- mic_df()
+          pe_data <- load_elisa_data(biobank_df = biobank_df()) %>%
+            dplyr::filter(elisa_type == "ELISA_pe", sample_type == "sample")
+
+          # Apply QC filters
+          if (input$exclude_qc_fail) {
+            pe_data <- pe_data %>% dplyr::filter(qc_overall == TRUE)
+          }
+
+          # Match and create concordance data
+          match_mic_elisa(mic_data, pe_data, "PE")
 
         } else if (comparison == "mic_vsg") {
-          # Placeholder for MIC vs ELISA-VSG
-          tibble::tibble(
-            test1_value = numeric(),
-            test2_value = numeric(),
-            test1_binary = logical(),
-            test2_binary = logical(),
-            test1_name = "MIC",
-            test2_name = "ELISA-VSG"
-          )
+          # MIC vs ELISA-VSG
+          mic_data <- mic_df()
+          vsg_data <- load_elisa_data(biobank_df = biobank_df()) %>%
+            dplyr::filter(elisa_type == "ELISA_vsg", sample_type == "sample")
+
+          # Apply QC filters
+          if (input$exclude_qc_fail) {
+            vsg_data <- vsg_data %>% dplyr::filter(qc_overall == TRUE)
+          }
+
+          # Match and create concordance data
+          match_mic_elisa(mic_data, vsg_data, "VSG")
 
         } else {
           # Multi-way comparison

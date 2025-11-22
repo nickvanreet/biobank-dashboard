@@ -1,0 +1,578 @@
+---
+title: "Sample Journey Report"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: false
+    keep_tex: false
+params:
+  sample_id: "Unknown"
+  journey_data: NULL
+  timeline_plot_path: NULL
+  drs_gauge_path: NULL
+geometry: margin=1in
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{longtable}
+  - \usepackage{array}
+  - \usepackage{multirow}
+  - \usepackage{xcolor}
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+  - \fancyhead[L]{Sample Journey Report}
+  - \fancyhead[R]{\thepage}
+  - \fancyfoot[C]{}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = 'center'
+)
+
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+
+# Extract data from params
+data <- params$journey_data
+sample_id <- params$sample_id
+```
+
+# Sample Journey Report
+
+**Sample ID:** `r sample_id`
+**Report Generated:** `r format(Sys.time(), '%Y-%m-%d %H:%M:%S')`
+
+---
+
+## Summary
+
+```{r summary, results='asis'}
+# Count data sources
+n_sources <- sum(
+  !is.null(data$biobank_info) && nrow(data$biobank_info) > 0,
+  nrow(data$extraction_data) > 0,
+  nrow(data$mic_data) > 0,
+  nrow(data$elisa_pe_data) > 0,
+  nrow(data$elisa_vsg_data) > 0,
+  nrow(data$ielisa_data) > 0
+)
+
+cat(sprintf("- **Data sources found:** %d\n", n_sources))
+cat(sprintf("- **Biobank records:** %d\n", if (!is.null(data$biobank_info)) nrow(data$biobank_info) else 0))
+cat(sprintf("- **Extraction records:** %d\n", nrow(data$extraction_data)))
+cat(sprintf("- **MIC tests:** %d\n", nrow(data$mic_data)))
+cat(sprintf("- **ELISA PE tests:** %d\n", nrow(data$elisa_pe_data)))
+cat(sprintf("- **ELISA VSG tests:** %d\n", nrow(data$elisa_vsg_data)))
+cat(sprintf("- **iELISA tests:** %d\n", nrow(data$ielisa_data)))
+cat(sprintf("- **Quality alerts:** %d\n", length(data$alerts)))
+```
+
+\newpage
+
+## Timeline
+
+```{r timeline, out.width='100%', fig.height=5}
+if (!is.null(params$timeline_plot_path) && file.exists(params$timeline_plot_path)) {
+  knitr::include_graphics(params$timeline_plot_path)
+} else {
+  cat("Timeline visualization not available.\n")
+}
+```
+
+\newpage
+
+## Biobank Information
+
+```{r biobank}
+if (!is.null(data$biobank_info) && nrow(data$biobank_info) > 0) {
+  info <- data$biobank_info[1, ]
+
+  biobank_df <- data.frame(
+    Field = c("Province", "Health Zone", "Health Structure", "Collection Date", "Date Sent to INRB"),
+    Value = c(
+      if ("province" %in% names(info)) info$province else "Unknown",
+      if ("health_zone" %in% names(info)) info$health_zone else "Unknown",
+      if ("health_structure" %in% names(info)) info$health_structure else if ("structure_sanitaire" %in% names(info)) info$structure_sanitaire else "Unknown",
+      if ("date_sample" %in% names(info)) format(as.Date(info$date_sample), "%Y-%m-%d") else if (".__date_sample" %in% names(info)) format(as.Date(info$.__date_sample), "%Y-%m-%d") else "Unknown",
+      if ("date_sent_inrb" %in% names(info)) format(as.Date(info$date_sent_inrb), "%Y-%m-%d") else if ("date_envoi_inrb" %in% names(info)) format(as.Date(info$date_envoi_inrb), "%Y-%m-%d") else if ("date_inrb" %in% names(info)) format(as.Date(info$date_inrb), "%Y-%m-%d") else "Not recorded"
+    )
+  )
+
+  kable(biobank_df,
+        booktabs = TRUE,
+        col.names = c("Field", "Value")) %>%
+    kable_styling(latex_options = c("striped", "hold_position"))
+} else {
+  cat("No biobank records found.\n")
+}
+```
+
+## Extraction Information
+
+```{r extraction}
+if (nrow(data$extraction_data) > 0) {
+  extraction <- data$extraction_data[nrow(data$extraction_data), ]
+
+  extraction_df <- data.frame(
+    Field = c("Total Extractions", "Latest Extraction Date", "DRS Volume"),
+    Value = c(
+      nrow(data$extraction_data),
+      if ("extraction_date" %in% names(extraction)) format(as.Date(extraction$extraction_date), "%Y-%m-%d") else "Unknown",
+      if ("drs_volume_ml" %in% names(extraction) && !is.na(extraction$drs_volume_ml)) {
+        sprintf("%.2f mL (%.0f µL)", extraction$drs_volume_ml, extraction$drs_volume_ml * 1000)
+      } else {
+        "Not recorded"
+      }
+    )
+  )
+
+  # Add sample identifiers if available
+  if ("barcode" %in% names(extraction) && !is.na(extraction$barcode)) {
+    extraction_df <- rbind(extraction_df, data.frame(
+      Field = "Barcode",
+      Value = as.character(extraction$barcode)
+    ))
+  }
+
+  if ("numero" %in% names(extraction) && !is.na(extraction$numero)) {
+    extraction_df <- rbind(extraction_df, data.frame(
+      Field = "Lab Number",
+      Value = as.character(extraction$numero)
+    ))
+  }
+
+  kable(extraction_df,
+        booktabs = TRUE,
+        col.names = c("Field", "Value")) %>%
+    kable_styling(latex_options = c("striped", "hold_position"))
+} else {
+  cat("No extraction records found.\n")
+}
+```
+
+```{r drs_gauge, out.width='60%', fig.height=3}
+if (!is.null(params$drs_gauge_path) && file.exists(params$drs_gauge_path)) {
+  knitr::include_graphics(params$drs_gauge_path)
+}
+```
+
+\newpage
+
+## MIC qPCR Results
+
+```{r mic}
+if (nrow(data$mic_data) > 0) {
+  for (i in 1:nrow(data$mic_data)) {
+    row <- data$mic_data[i, ]
+
+    cat(sprintf("\n### Test #%d\n\n", i))
+
+    # Get test date
+    test_date <- if ("RunDate" %in% names(row)) {
+      format(as.Date(row$RunDate), "%Y-%m-%d")
+    } else if ("RunDateTime" %in% names(row)) {
+      format(as.Date(row$RunDateTime), "%Y-%m-%d")
+    } else {
+      "Unknown"
+    }
+
+    cat(sprintf("**Date:** %s\n\n", test_date))
+
+    # Get final call
+    final_call <- if ("FinalCall" %in% names(row) && !is.na(row$FinalCall)) {
+      as.character(row$FinalCall)
+    } else {
+      "Unknown"
+    }
+
+    confidence_score <- if ("ConfidenceScore" %in% names(row) && !is.na(row$ConfidenceScore)) {
+      as.character(row$ConfidenceScore)
+    } else {
+      "Unknown"
+    }
+
+    cat(sprintf("**Final Call:** %s (Confidence: %s)\n\n", final_call, confidence_score))
+
+    # Sample identifiers
+    if ("LinkedBarcode" %in% names(row) && !is.na(row$LinkedBarcode)) {
+      cat(sprintf("**Barcode:** %s\n\n", row$LinkedBarcode))
+    }
+    if ("LinkedNumero" %in% names(row) && !is.na(row$LinkedNumero)) {
+      cat(sprintf("**Lab Number:** %s\n\n", row$LinkedNumero))
+    }
+
+    # Target detection results
+    mic_results_df <- data.frame(
+      Target = character(),
+      Cq = character(),
+      Status = character(),
+      stringsAsFactors = FALSE
+    )
+
+    # 177T
+    cq_177t <- if ("Cq_177T" %in% names(row)) row$Cq_177T else NA_real_
+    marker_177t <- if ("marker_177T" %in% names(row)) row$marker_177T else "Unknown"
+    mic_results_df <- rbind(mic_results_df, data.frame(
+      Target = "177T (DNA)",
+      Cq = if (!is.na(cq_177t)) sprintf("%.1f", cq_177t) else "ND",
+      Status = marker_177t
+    ))
+
+    # 18S2
+    cq_18s2 <- if ("Cq_18S2" %in% names(row)) row$Cq_18S2 else NA_real_
+    marker_18s2 <- if ("marker_18S2" %in% names(row)) row$marker_18S2 else "Unknown"
+    mic_results_df <- rbind(mic_results_df, data.frame(
+      Target = "18S2 (RNA)",
+      Cq = if (!is.na(cq_18s2)) sprintf("%.1f", cq_18s2) else "ND",
+      Status = marker_18s2
+    ))
+
+    # RNAseP DNA
+    cq_rnasep_dna <- if ("Cq_RNAseP_DNA" %in% names(row)) row$Cq_RNAseP_DNA else
+                     if ("RNAseP_DNA_Cq" %in% names(row)) row$RNAseP_DNA_Cq else NA_real_
+    marker_rnasep_dna <- if ("RNAseP_DNA" %in% names(row)) row$RNAseP_DNA else "Unknown"
+    mic_results_df <- rbind(mic_results_df, data.frame(
+      Target = "RNAseP-DNA",
+      Cq = if (!is.na(cq_rnasep_dna)) sprintf("%.1f", cq_rnasep_dna) else "ND",
+      Status = marker_rnasep_dna
+    ))
+
+    # RNAseP RNA
+    cq_rnasep_rna <- if ("Cq_RNAseP_RNA" %in% names(row)) row$Cq_RNAseP_RNA else
+                     if ("RNAseP_RNA_Cq" %in% names(row)) row$RNAseP_RNA_Cq else NA_real_
+    marker_rnasep_rna <- if ("RNAseP_RNA" %in% names(row)) row$RNAseP_RNA else "Unknown"
+    mic_results_df <- rbind(mic_results_df, data.frame(
+      Target = "RNAseP-RNA",
+      Cq = if (!is.na(cq_rnasep_rna)) sprintf("%.1f", cq_rnasep_rna) else "ND",
+      Status = marker_rnasep_rna
+    ))
+
+    print(kable(mic_results_df,
+                booktabs = TRUE,
+                col.names = c("Target", "Cq Value", "Status")) %>%
+            kable_styling(latex_options = c("striped", "hold_position")))
+
+    # Quality metrics
+    cat("\n**Quality Metrics:**\n\n")
+
+    rna_quality <- if ("RNA_Quality" %in% names(row) && !is.na(row$RNA_Quality)) {
+      as.character(row$RNA_Quality)
+    } else {
+      "Unknown"
+    }
+
+    dna_quality <- if ("DNA_Quality" %in% names(row) && !is.na(row$DNA_Quality)) {
+      as.character(row$DNA_Quality)
+    } else {
+      "Unknown"
+    }
+
+    cat(sprintf("- RNA Quality: %s\n", rna_quality))
+    cat(sprintf("- DNA Quality: %s\n", dna_quality))
+
+    # RNA preservation
+    delta_rnasep <- if (!is.na(cq_rnasep_rna) && !is.na(cq_rnasep_dna)) {
+      cq_rnasep_rna - cq_rnasep_dna
+    } else {
+      NA_real_
+    }
+
+    if (!is.na(delta_rnasep)) {
+      rnasep_status <- if (delta_rnasep <= 5) {
+        "Good RNA preservation"
+      } else if (delta_rnasep <= 8) {
+        "Moderate RNA loss"
+      } else {
+        "Poor RNA preservation"
+      }
+      cat(sprintf("- RNA Preservation: %s (ΔCq: %.1f)\n", rnasep_status, delta_rnasep))
+    }
+
+    # Double detection
+    delta_177t_18s2 <- if (!is.na(cq_177t) && !is.na(cq_18s2)) {
+      abs(cq_177t - cq_18s2)
+    } else {
+      NA_real_
+    }
+
+    if (!is.na(delta_177t_18s2) && marker_177t == "Positive" && marker_18s2 == "Positive") {
+      cat(sprintf("- Double detection confirmed (Δ: %.1f)\n", delta_177t_18s2))
+    }
+
+    if (i < nrow(data$mic_data)) {
+      cat("\n---\n")
+    }
+  }
+} else {
+  cat("No MIC qPCR tests found.\n")
+}
+```
+
+\newpage
+
+## ELISA Results
+
+### ELISA PE
+
+```{r elisa_pe}
+if (nrow(data$elisa_pe_data) > 0) {
+  elisa_pe_summary <- data.frame(
+    Test = integer(),
+    Date = character(),
+    DOD = character(),
+    PP_Percent = character(),
+    Result = character(),
+    stringsAsFactors = FALSE
+  )
+
+  for (i in 1:nrow(data$elisa_pe_data)) {
+    row <- data$elisa_pe_data[i, ]
+
+    dod <- if ("DOD" %in% names(row) && !is.na(row$DOD)) {
+      sprintf("%.3f", row$DOD)
+    } else {
+      "N/A"
+    }
+
+    pp_percent <- if ("PP_percent" %in% names(row) && !is.na(row$PP_percent)) {
+      row$PP_percent
+    } else {
+      NA_real_
+    }
+
+    pp_text <- if (!is.na(pp_percent)) {
+      sprintf("%.1f%%", pp_percent)
+    } else {
+      "N/A"
+    }
+
+    result <- if (!is.na(pp_percent)) {
+      if (pp_percent >= 60) "POSITIVE"
+      else if (pp_percent >= 40) "BORDERLINE"
+      else "NEGATIVE"
+    } else {
+      "UNKNOWN"
+    }
+
+    plate_date <- if ("plate_date" %in% names(row)) {
+      format(as.Date(row$plate_date), "%Y-%m-%d")
+    } else {
+      "Unknown"
+    }
+
+    elisa_pe_summary <- rbind(elisa_pe_summary, data.frame(
+      Test = i,
+      Date = plate_date,
+      DOD = dod,
+      PP_Percent = pp_text,
+      Result = result
+    ))
+  }
+
+  kable(elisa_pe_summary,
+        booktabs = TRUE,
+        col.names = c("Test #", "Date", "DOD", "PP%", "Result")) %>%
+    kable_styling(latex_options = c("striped", "hold_position"))
+} else {
+  cat("No ELISA PE tests found.\n")
+}
+```
+
+### ELISA VSG
+
+```{r elisa_vsg}
+if (nrow(data$elisa_vsg_data) > 0) {
+  elisa_vsg_summary <- data.frame(
+    Test = integer(),
+    Date = character(),
+    DOD = character(),
+    PP_Percent = character(),
+    Result = character(),
+    stringsAsFactors = FALSE
+  )
+
+  for (i in 1:nrow(data$elisa_vsg_data)) {
+    row <- data$elisa_vsg_data[i, ]
+
+    dod <- if ("DOD" %in% names(row) && !is.na(row$DOD)) {
+      sprintf("%.3f", row$DOD)
+    } else {
+      "N/A"
+    }
+
+    pp_percent <- if ("PP_percent" %in% names(row) && !is.na(row$PP_percent)) {
+      row$PP_percent
+    } else {
+      NA_real_
+    }
+
+    pp_text <- if (!is.na(pp_percent)) {
+      sprintf("%.1f%%", pp_percent)
+    } else {
+      "N/A"
+    }
+
+    result <- if (!is.na(pp_percent)) {
+      if (pp_percent >= 60) "POSITIVE"
+      else if (pp_percent >= 40) "BORDERLINE"
+      else "NEGATIVE"
+    } else {
+      "UNKNOWN"
+    }
+
+    plate_date <- if ("plate_date" %in% names(row)) {
+      format(as.Date(row$plate_date), "%Y-%m-%d")
+    } else {
+      "Unknown"
+    }
+
+    elisa_vsg_summary <- rbind(elisa_vsg_summary, data.frame(
+      Test = i,
+      Date = plate_date,
+      DOD = dod,
+      PP_Percent = pp_text,
+      Result = result
+    ))
+  }
+
+  kable(elisa_vsg_summary,
+        booktabs = TRUE,
+        col.names = c("Test #", "Date", "DOD", "PP%", "Result")) %>%
+    kable_styling(latex_options = c("striped", "hold_position"))
+} else {
+  cat("No ELISA VSG tests found.\n")
+}
+```
+
+\newpage
+
+## iELISA Results
+
+```{r ielisa}
+if (nrow(data$ielisa_data) > 0) {
+  for (i in 1:nrow(data$ielisa_data)) {
+    row <- data$ielisa_data[i, ]
+
+    cat(sprintf("\n### Test #%d\n\n", i))
+
+    plate_date <- if ("plate_date" %in% names(row) && !is.na(row$plate_date)) {
+      format(as.Date(row$plate_date), "%Y-%m-%d")
+    } else {
+      "Unknown"
+    }
+
+    cat(sprintf("**Date:** %s\n\n", plate_date))
+
+    # LiTat 1.3 results
+    litat13_positive <- if ("positive_L13" %in% names(row) && !is.na(row$positive_L13)) {
+      row$positive_L13
+    } else {
+      NA
+    }
+
+    litat13_inhibition <- if ("pct_inh_f2_13" %in% names(row) && !is.na(row$pct_inh_f2_13)) {
+      row$pct_inh_f2_13
+    } else {
+      NA_real_
+    }
+
+    od_l13 <- if ("OD_L13" %in% names(row) && !is.na(row$OD_L13)) {
+      sprintf("%.3f", row$OD_L13)
+    } else {
+      "N/A"
+    }
+
+    plate_valid_l13 <- if ("plate_valid_L13" %in% names(row) && !is.na(row$plate_valid_L13)) {
+      row$plate_valid_L13
+    } else {
+      NA
+    }
+
+    # LiTat 1.5 results
+    litat15_positive <- if ("positive_L15" %in% names(row) && !is.na(row$positive_L15)) {
+      row$positive_L15
+    } else {
+      NA
+    }
+
+    litat15_inhibition <- if ("pct_inh_f2_15" %in% names(row) && !is.na(row$pct_inh_f2_15)) {
+      row$pct_inh_f2_15
+    } else {
+      NA_real_
+    }
+
+    od_l15 <- if ("OD_L15" %in% names(row) && !is.na(row$OD_L15)) {
+      sprintf("%.3f", row$OD_L15)
+    } else {
+      "N/A"
+    }
+
+    plate_valid_l15 <- if ("plate_valid_L15" %in% names(row) && !is.na(row$plate_valid_L15)) {
+      row$plate_valid_L15
+    } else {
+      NA
+    }
+
+    # Create summary table
+    ielisa_results_df <- data.frame(
+      Antigen = c("LiTat 1.3", "LiTat 1.5"),
+      Result = c(
+        if (!is.na(litat13_positive)) if (litat13_positive) "POSITIVE" else "NEGATIVE" else "UNKNOWN",
+        if (!is.na(litat15_positive)) if (litat15_positive) "POSITIVE" else "NEGATIVE" else "UNKNOWN"
+      ),
+      Inhibition = c(
+        if (!is.na(litat13_inhibition)) sprintf("%.1f%%", litat13_inhibition) else "N/A",
+        if (!is.na(litat15_inhibition)) sprintf("%.1f%%", litat15_inhibition) else "N/A"
+      ),
+      OD = c(od_l13, od_l15),
+      QC = c(
+        if (!is.na(plate_valid_l13)) if (plate_valid_l13) "PASS" else "FAIL" else "N/A",
+        if (!is.na(plate_valid_l15)) if (plate_valid_l15) "PASS" else "FAIL" else "N/A"
+      )
+    )
+
+    print(kable(ielisa_results_df,
+                booktabs = TRUE,
+                col.names = c("Antigen", "Result", "Inhibition", "OD", "Plate QC")) %>%
+            kable_styling(latex_options = c("striped", "hold_position")))
+
+    if (i < nrow(data$ielisa_data)) {
+      cat("\n---\n")
+    }
+  }
+} else {
+  cat("No iELISA tests found.\n")
+}
+```
+
+\newpage
+
+## Quality Alerts
+
+```{r alerts}
+if (length(data$alerts) > 0) {
+  alerts_df <- data.frame(
+    Category = sapply(data$alerts, function(x) x$category),
+    Type = sapply(data$alerts, function(x) x$type),
+    Message = sapply(data$alerts, function(x) x$message),
+    stringsAsFactors = FALSE
+  )
+
+  kable(alerts_df,
+        booktabs = TRUE,
+        longtable = TRUE,
+        col.names = c("Category", "Type", "Message")) %>%
+    kable_styling(latex_options = c("striped", "hold_position", "repeat_header"))
+} else {
+  cat("No quality alerts.\n")
+}
+```
+
+---
+
+**End of Report**

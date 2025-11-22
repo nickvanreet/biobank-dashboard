@@ -140,11 +140,11 @@ plot_drs_gauge <- function(volume_ml) {
         thickness = 0.75,
         value = 30
       )
-    )
+    ),
+    height = 250
   ) %>%
     layout(
-      margin = list(l = 20, r = 20, t = 50, b = 20),
-      height = 250
+      margin = list(l = 20, r = 20, t = 50, b = 20)
     )
 
   return(p)

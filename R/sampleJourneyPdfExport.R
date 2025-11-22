@@ -29,11 +29,35 @@ ensure_latex_packages <- function() {
     message("TinyTeX not installed. Attempting to install...")
     tryCatch({
       tinytex::install_tinytex()
+      message("TinyTeX installed successfully. You may need to restart R for PATH changes to take effect.")
     }, error = function(e) {
       warning("Could not install TinyTeX: ", e$message)
       warning("Please install manually: tinytex::install_tinytex()")
+      warning("If TinyTeX is already installed, try restarting R or running: Sys.setenv(PATH = paste(tinytex::tinytex_root(), 'bin', Sys.info()['sysname'], sep = .Platform$file.sep, ':', Sys.getenv('PATH')))")
       return(FALSE)
     })
+  }
+
+  # Verify pdflatex is available
+  pdflatex_available <- tryCatch({
+    system2("pdflatex", "--version", stdout = FALSE, stderr = FALSE) == 0
+  }, error = function(e) {
+    FALSE
+  }, warning = function(w) {
+    FALSE
+  })
+
+  if (!pdflatex_available && tinytex::is_tinytex()) {
+    # TinyTeX is installed but pdflatex not in PATH - try to fix PATH
+    message("pdflatex not found in PATH. Attempting to add TinyTeX to PATH...")
+    tinytex_bin <- file.path(tinytex::tinytex_root(), "bin",
+                             ifelse(.Platform$OS.type == "windows", "win32",
+                                   ifelse(Sys.info()["sysname"] == "Darwin", "x86_64-darwin", "x86_64-linux")))
+    if (dir.exists(tinytex_bin)) {
+      current_path <- Sys.getenv("PATH")
+      Sys.setenv(PATH = paste(tinytex_bin, current_path, sep = .Platform$path.sep))
+      message("Added TinyTeX to PATH. Please verify pdflatex is now available.")
+    }
   }
 
   # Install required LaTeX packages for kableExtra and the template
@@ -77,6 +101,28 @@ ensure_latex_packages <- function() {
 generate_sample_journey_pdf <- function(sample_id, journey_data) {
   # Ensure LaTeX packages are installed
   ensure_latex_packages()
+
+  # Verify pdflatex is available before attempting to render
+  pdflatex_check <- tryCatch({
+    system2("pdflatex", "--version", stdout = FALSE, stderr = FALSE) == 0
+  }, error = function(e) FALSE, warning = function(w) FALSE)
+
+  if (!pdflatex_check) {
+    stop(paste0(
+      "pdflatex not found in system PATH.\n\n",
+      "This is required for PDF generation. Please:\n",
+      "1. Install TinyTeX if not already installed:\n",
+      "   tinytex::install_tinytex()\n\n",
+      "2. Restart your R session to update the PATH\n\n",
+      "3. If the issue persists, manually add TinyTeX to PATH:\n",
+      "   Sys.setenv(PATH = paste(tinytex::tinytex_root(), 'bin',\n",
+      "     ifelse(.Platform$OS.type == 'windows', 'win32',\n",
+      "       ifelse(Sys.info()['sysname'] == 'Darwin', 'x86_64-darwin', 'x86_64-linux')),\n",
+      "     sep = .Platform$file.sep, ':', Sys.getenv('PATH')))\n\n",
+      "Alternatively, try the simplified PDF export:\n",
+      "   generate_sample_journey_pdf_simple(sample_id, journey_data)"
+    ))
+  }
 
   # Create temporary directory for plots
   temp_dir <- tempdir()
@@ -182,6 +228,26 @@ generate_sample_journey_pdf <- function(sample_id, journey_data) {
 generate_sample_journey_pdf_simple <- function(sample_id, journey_data) {
   # Ensure LaTeX packages are installed
   ensure_latex_packages()
+
+  # Verify pdflatex is available before attempting to render
+  pdflatex_check <- tryCatch({
+    system2("pdflatex", "--version", stdout = FALSE, stderr = FALSE) == 0
+  }, error = function(e) FALSE, warning = function(w) FALSE)
+
+  if (!pdflatex_check) {
+    stop(paste0(
+      "pdflatex not found in system PATH.\n\n",
+      "This is required for PDF generation. Please:\n",
+      "1. Install TinyTeX if not already installed:\n",
+      "   tinytex::install_tinytex()\n\n",
+      "2. Restart your R session to update the PATH\n\n",
+      "3. If the issue persists, manually add TinyTeX to PATH:\n",
+      "   Sys.setenv(PATH = paste(tinytex::tinytex_root(), 'bin',\n",
+      "     ifelse(.Platform$OS.type == 'windows', 'win32',\n",
+      "       ifelse(Sys.info()['sysname'] == 'Darwin', 'x86_64-darwin', 'x86_64-linux')),\n",
+      "     sep = .Platform$file.sep, ':', Sys.getenv('PATH')))"
+    ))
+  }
 
   # Create temporary directory for plots
   temp_dir <- tempdir()

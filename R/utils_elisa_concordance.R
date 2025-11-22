@@ -408,7 +408,10 @@ format_kappa <- function(kappa) {
 match_ielisa_elisa <- function(ielisa_data, elisa_data, ielisa_antigen, elisa_type) {
 
   # Prepare iELISA data
+  # Note: iELISA data typically doesn't include controls, but filter just in case
   ielisa_samples <- ielisa_data %>%
+    filter(if ("is_control" %in% names(.)) !is_control else TRUE) %>%
+    filter(if ("sample_type" %in% names(.)) sample_type == "sample" else TRUE) %>%
     mutate(
       barcode_norm = normalize_elisa_id(coalesce(code_barres_kps, Barcode)),
       numero_norm = normalize_elisa_id(coalesce(numero_labo, LabID))
@@ -556,7 +559,7 @@ match_mic_elisa <- function(mic_data, elisa_data, elisa_type) {
 
   # Prepare MIC data
   mic_samples <- mic_data %>%
-    filter(SampleType == "sample") %>%
+    filter(if ("is_control" %in% names(.)) !is_control else TRUE) %>%
     mutate(
       barcode_norm = normalize_elisa_id(Barcode),
       numero_norm = normalize_elisa_id(TestNumber)

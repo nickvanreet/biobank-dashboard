@@ -138,10 +138,6 @@ server <- function(input, output, session) {
   mod_concordance_server(
     "concordance_analysis",
     biobank_df = data$clean_data,
-    mic_df = mic_data$qpcr_samples,
-    elisa_pe_df = elisa_pe_data$samples,
-    elisa_vsg_df = elisa_vsg_data$samples,
-    ielisa_df = ielisa_data$samples,
     filters = data$filters
   )
 

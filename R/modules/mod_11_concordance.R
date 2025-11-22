@@ -360,10 +360,18 @@ mod_concordance_ui <- function(id) {
 #'
 #' @param id Module namespace ID
 #' @param biobank_df Reactive containing biobank data
+#' @param mic_df Reactive containing MIC qPCR data
+#' @param elisa_pe_df Reactive containing ELISA-PE data
+#' @param elisa_vsg_df Reactive containing ELISA-VSG data
+#' @param ielisa_df Reactive containing iELISA data
 #' @param filters Reactive containing filter settings
 #' @export
 mod_concordance_server <- function(id,
                                    biobank_df = reactive(NULL),
+                                   mic_df = reactive(NULL),
+                                   elisa_pe_df = reactive(NULL),
+                                   elisa_vsg_df = reactive(NULL),
+                                   ielisa_df = reactive(NULL),
                                    filters = reactive(NULL)) {
 
   moduleServer(id, function(input, output, session) {

@@ -298,14 +298,48 @@ create_sample_timeline <- function(journey_data) {
   if (nrow(journey_data$ielisa_data) > 0) {
     for (i in 1:nrow(journey_data$ielisa_data)) {
       row <- journey_data$ielisa_data[i, ]
-      plate_date <- if ("plate_date" %in% names(row)) as.Date(row$plate_date) else NA
+      plate_date <- if ("plate_date" %in% names(row) && !is.na(row$plate_date)) {
+        as.Date(row$plate_date)
+      } else {
+        NA
+      }
 
       if (!is.na(plate_date)) {
+        # Extract positivity for both antigens
+        pos_l13 <- if ("positive_L13" %in% names(row) && !is.na(row$positive_L13)) {
+          row$positive_L13
+        } else {
+          NA
+        }
+
+        pos_l15 <- if ("positive_L15" %in% names(row) && !is.na(row$positive_L15)) {
+          row$positive_L15
+        } else {
+          NA
+        }
+
+        # Create details string
+        details_parts <- c()
+        if (!is.na(pos_l13)) {
+          l13_text <- if (pos_l13) "LiTat 1.3: POS" else "LiTat 1.3: NEG"
+          details_parts <- c(details_parts, l13_text)
+        }
+        if (!is.na(pos_l15)) {
+          l15_text <- if (pos_l15) "LiTat 1.5: POS" else "LiTat 1.5: NEG"
+          details_parts <- c(details_parts, l15_text)
+        }
+
+        details_text <- if (length(details_parts) > 0) {
+          paste(details_parts, collapse = ", ")
+        } else {
+          "Inhibition ELISA"
+        }
+
         events[[length(events) + 1]] <- tibble(
           event = sprintf("iELISA #%d", i),
           date = plate_date,
           category = "iELISA",
-          details = "Inhibition ELISA"
+          details = details_text
         )
       }
     }

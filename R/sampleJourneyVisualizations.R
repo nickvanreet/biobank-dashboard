@@ -569,7 +569,7 @@ plot_elisa_cards <- function(elisa_data, elisa_type = "PE") {
 
 #' Display iELISA results
 #' @param ielisa_data iELISA data for the sample
-#' @return HTML table or message
+#' @return HTML cards with clear positivity indication
 #' @export
 plot_ielisa_results <- function(ielisa_data) {
   if (is.null(ielisa_data) || nrow(ielisa_data) == 0) {
@@ -579,65 +579,155 @@ plot_ielisa_results <- function(ielisa_data) {
     ))
   }
 
-  # Create table with key results
-  table_rows <- lapply(1:nrow(ielisa_data), function(i) {
+  # Create cards for each test
+  cards <- lapply(1:nrow(ielisa_data), function(i) {
     row <- ielisa_data[i, ]
 
-    plate_date <- if ("plate_date" %in% names(row)) {
+    plate_date <- if ("plate_date" %in% names(row) && !is.na(row$plate_date)) {
       format(as.Date(row$plate_date), "%Y-%m-%d")
     } else {
       "Unknown"
     }
 
-    # Extract LiTat results
-    litat13_result <- if ("LiTat13_Result" %in% names(row)) {
-      row$LiTat13_Result
+    # Extract LiTat 1.3 results
+    litat13_positive <- if ("positive_L13" %in% names(row) && !is.na(row$positive_L13)) {
+      row$positive_L13
+    } else {
+      NA
+    }
+
+    litat13_inhibition <- if ("pct_inh_f2_13" %in% names(row) && !is.na(row$pct_inh_f2_13)) {
+      row$pct_inh_f2_13
+    } else {
+      NA_real_
+    }
+
+    # Extract LiTat 1.5 results
+    litat15_positive <- if ("positive_L15" %in% names(row) && !is.na(row$positive_L15)) {
+      row$positive_L15
+    } else {
+      NA
+    }
+
+    litat15_inhibition <- if ("pct_inh_f2_15" %in% names(row) && !is.na(row$pct_inh_f2_15)) {
+      row$pct_inh_f2_15
+    } else {
+      NA_real_
+    }
+
+    # Extract OD values
+    od_l13 <- if ("OD_L13" %in% names(row) && !is.na(row$OD_L13)) {
+      sprintf("%.3f", row$OD_L13)
     } else {
       "N/A"
     }
 
-    litat15_result <- if ("LiTat15_Result" %in% names(row)) {
-      row$LiTat15_Result
+    od_l15 <- if ("OD_L15" %in% names(row) && !is.na(row$OD_L15)) {
+      sprintf("%.3f", row$OD_L15)
     } else {
       "N/A"
     }
 
-    litat13_pp <- if ("LiTat13_PP" %in% names(row) && !is.na(row$LiTat13_PP)) {
-      sprintf("%.1f%%", row$LiTat13_PP)
+    # Plate validity
+    plate_valid_l13 <- if ("plate_valid_L13" %in% names(row) && !is.na(row$plate_valid_L13)) {
+      row$plate_valid_L13
     } else {
-      "N/A"
+      NA
     }
 
-    litat15_pp <- if ("LiTat15_PP" %in% names(row) && !is.na(row$LiTat15_PP)) {
-      sprintf("%.1f%%", row$LiTat15_PP)
+    plate_valid_l15 <- if ("plate_valid_L15" %in% names(row) && !is.na(row$plate_valid_L15)) {
+      row$plate_valid_L15
     } else {
-      "N/A"
+      NA
     }
 
-    tags$tr(
-      tags$td(sprintf("Test #%d", i)),
-      tags$td(plate_date),
-      tags$td(litat13_result),
-      tags$td(litat13_pp),
-      tags$td(litat15_result),
-      tags$td(litat15_pp)
+    # Helper function to create antigen result display
+    create_antigen_display <- function(name, positive, inhibition, od, plate_valid) {
+      # Determine result badge
+      result_badge <- if (!is.na(positive)) {
+        if (positive) {
+          list(class = "bg-danger", text = "POSITIVE", icon = "check-circle")
+        } else {
+          list(class = "bg-success", text = "NEGATIVE", icon = "times-circle")
+        }
+      } else {
+        list(class = "bg-secondary", text = "UNKNOWN", icon = "question-circle")
+      }
+
+      # Format inhibition percentage
+      inhibition_text <- if (!is.na(inhibition)) {
+        sprintf("%.1f%%", inhibition)
+      } else {
+        "N/A"
+      }
+
+      # Plate QC badge
+      plate_qc_badge <- if (!is.na(plate_valid)) {
+        if (plate_valid) {
+          tags$span(class = "badge bg-success ms-2", style = "font-size: 0.7em;", "QC: PASS")
+        } else {
+          tags$span(class = "badge bg-warning ms-2", style = "font-size: 0.7em;", "QC: FAIL")
+        }
+      } else {
+        NULL
+      }
+
+      tags$div(
+        class = "mb-3 p-3",
+        style = "border-left: 4px solid; border-color: var(--bs-gray-300); background-color: var(--bs-light);",
+        tags$div(
+          class = "d-flex justify-content-between align-items-center mb-2",
+          tags$h6(class = "mb-0", tags$strong(name)),
+          tags$div(
+            tags$span(
+              class = sprintf("badge %s", result_badge$class),
+              icon(result_badge$icon),
+              " ",
+              result_badge$text
+            ),
+            plate_qc_badge
+          )
+        ),
+        tags$div(
+          class = "row",
+          tags$div(
+            class = "col-6",
+            tags$small(
+              tags$strong("Inhibition: "),
+              tags$span(
+                class = if (!is.na(inhibition) && inhibition >= 30) "text-danger fw-bold" else "text-muted",
+                inhibition_text
+              )
+            )
+          ),
+          tags$div(
+            class = "col-6",
+            tags$small(
+              tags$strong("OD: "),
+              tags$span(class = "text-muted", od)
+            )
+          )
+        )
+      )
+    }
+
+    tags$div(
+      class = "card mb-3",
+      tags$div(
+        class = "card-header bg-light",
+        tags$div(
+          class = "d-flex justify-content-between align-items-center",
+          tags$strong(sprintf("iELISA Test #%d", i)),
+          tags$small(class = "text-muted", paste("Date:", plate_date))
+        )
+      ),
+      tags$div(
+        class = "card-body",
+        create_antigen_display("LiTat 1.3", litat13_positive, litat13_inhibition, od_l13, plate_valid_l13),
+        create_antigen_display("LiTat 1.5", litat15_positive, litat15_inhibition, od_l15, plate_valid_l15)
+      )
     )
   })
 
-  return(
-    tags$table(
-      class = "table table-striped table-hover",
-      tags$thead(
-        tags$tr(
-          tags$th("Test"),
-          tags$th("Date"),
-          tags$th("LiTat 1.3 Result"),
-          tags$th("LiTat 1.3 PP%"),
-          tags$th("LiTat 1.5 Result"),
-          tags$th("LiTat 1.5 PP%")
-        )
-      ),
-      tags$tbody(table_rows)
-    )
-  )
+  return(tagList(cards))
 }

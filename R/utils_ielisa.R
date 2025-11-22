@@ -136,7 +136,10 @@ parse_ielisa_file <- function(path,
     transmute(
       SampleIndex = row_number(),
       LabID = X2,
-      Barcode = X3
+      Barcode = X3,
+      # Add aliases for consistency with other modules
+      numero_labo = X2,
+      code_barres_kps = X3
     )
 
   nS <- nrow(samples)
@@ -244,10 +247,24 @@ parse_ielisa_file <- function(path,
     ungroup()
 
   # ---------------------------------------------------------
+  # EXTRACT PLATE DATE FROM FILENAME (YYMMDD format)
+  # ---------------------------------------------------------
+  filename <- basename(path)
+  date_str <- str_extract(filename, "^\\d{6}")
+  plate_date <- if (!is.na(date_str)) {
+    as.Date(date_str, format = "%y%m%d")
+  } else {
+    as.Date(NA)
+  }
+
+  # ---------------------------------------------------------
   # BUILD OUTPUT
   # ---------------------------------------------------------
   bind_cols(
-    tibble(file = basename(path)),
+    tibble(
+      file = filename,
+      plate_date = plate_date
+    ),
     ctrl,
     plate_qc,
     samples

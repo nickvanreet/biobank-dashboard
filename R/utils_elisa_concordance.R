@@ -398,3 +398,139 @@ format_kappa <- function(kappa) {
 
   sprintf("%.3f (%s)", kappa, interpretation)
 }
+
+#' Match iELISA samples with ELISA samples
+#' @param ielisa_data Data frame with iELISA results
+#' @param elisa_data Data frame with ELISA results (PE or VSG)
+#' @param ielisa_antigen Antigen type ("L13" or "L15")
+#' @param elisa_type ELISA type ("PE" or "VSG")
+#' @return Data frame with matched samples in concordance format
+match_ielisa_elisa <- function(ielisa_data, elisa_data, ielisa_antigen, elisa_type) {
+
+  # Prepare iELISA data
+  ielisa_samples <- ielisa_data %>%
+    mutate(
+      barcode_norm = normalize_elisa_id(coalesce(code_barres_kps, Barcode)),
+      numero_norm = normalize_elisa_id(coalesce(numero_labo, LabID))
+    ) %>%
+    select(
+      # Identifiers
+      ielisa_labid = if ("LabID" %in% names(.)) LabID else numero_labo,
+      ielisa_barcode = if ("Barcode" %in% names(.)) Barcode else code_barres_kps,
+      barcode_norm,
+      numero_norm,
+      # iELISA Results
+      ielisa_plate_date = plate_date,
+      ielisa_file = file,
+      ielisa_pct_inh_13 = pct_inh_f2_13,
+      ielisa_pct_inh_15 = pct_inh_f2_15,
+      ielisa_positive_13 = positive_L13,
+      ielisa_positive_15 = positive_L15,
+      ielisa_plate_valid_13 = plate_valid_L13,
+      ielisa_plate_valid_15 = plate_valid_L15
+    )
+
+  # Prepare ELISA data
+  elisa_samples <- elisa_data %>%
+    filter(sample_type == "sample") %>%
+    mutate(
+      barcode_norm = normalize_elisa_id(code_barres_kps),
+      numero_norm = normalize_elisa_id(coalesce(numero_labo, sample_code))
+    ) %>%
+    select(
+      # Identifiers
+      elisa_sample = sample,
+      elisa_barcode = code_barres_kps,
+      elisa_numero = numero_labo,
+      barcode_norm,
+      numero_norm,
+      # ELISA Results
+      elisa_plate_id = plate_id,
+      elisa_plate_date = plate_date,
+      elisa_DOD = DOD,
+      elisa_PP_percent = PP_percent,
+      elisa_qc_overall = qc_overall,
+      elisa_plate_valid = plate_valid,
+      # Biobank data (if available)
+      Province,
+      HealthZone,
+      Structure,
+      Sex,
+      Age
+    )
+
+  # Match by barcode
+  matched_by_barcode <- ielisa_samples %>%
+    filter(!is.na(barcode_norm)) %>%
+    inner_join(
+      elisa_samples %>% filter(!is.na(barcode_norm)),
+      by = "barcode_norm",
+      suffix = c("_ielisa", "_elisa"),
+      relationship = "many-to-many"
+    ) %>%
+    mutate(match_method = "barcode")
+
+  # Match remaining by numero
+  unmatched_ielisa <- ielisa_samples %>%
+    filter(!barcode_norm %in% matched_by_barcode$barcode_norm | is.na(barcode_norm)) %>%
+    filter(!is.na(numero_norm))
+
+  unmatched_elisa <- elisa_samples %>%
+    filter(!barcode_norm %in% matched_by_barcode$barcode_norm | is.na(barcode_norm)) %>%
+    filter(!is.na(numero_norm))
+
+  matched_by_numero <- unmatched_ielisa %>%
+    inner_join(
+      unmatched_elisa,
+      by = "numero_norm",
+      suffix = c("_ielisa", "_elisa"),
+      relationship = "many-to-many"
+    ) %>%
+    mutate(match_method = "numero_labo")
+
+  # Combine matches
+  all_matches <- bind_rows(
+    matched_by_barcode,
+    matched_by_numero
+  )
+
+  # Create concordance data format based on antigen type
+  if (ielisa_antigen == "L13") {
+    result <- all_matches %>%
+      mutate(
+        test1_value = ielisa_pct_inh_13,
+        test1_binary = ielisa_positive_13,
+        test1_name = "iELISA-L13"
+      )
+  } else {  # L15
+    result <- all_matches %>%
+      mutate(
+        test1_value = ielisa_pct_inh_15,
+        test1_binary = ielisa_positive_15,
+        test1_name = "iELISA-L15"
+      )
+  }
+
+  # Add ELISA results
+  result <- result %>%
+    mutate(
+      test2_value = elisa_PP_percent,
+      test2_binary = (elisa_PP_percent >= 20) | (elisa_DOD >= 0.3),
+      test2_name = paste0("ELISA-", elisa_type),
+      health_zone = HealthZone,
+      province = Province,
+      date = coalesce(ielisa_plate_date, elisa_plate_date)
+    ) %>%
+    select(
+      test1_value, test2_value,
+      test1_binary, test2_binary,
+      test1_name, test2_name,
+      health_zone, province, date,
+      match_method,
+      ielisa_labid, ielisa_barcode,
+      elisa_sample, elisa_barcode, elisa_numero,
+      Sex, Age, Structure
+    )
+
+  return(result)
+}

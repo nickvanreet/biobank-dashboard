@@ -45,6 +45,11 @@ mod_concordance_ui <- function(id) {
                 "MIC vs ELISA-PE" = "mic_pe",
                 "MIC vs ELISA-VSG" = "mic_vsg",
                 "ELISA-PE vs ELISA-VSG" = "pe_vsg",
+                "iELISA-L13 vs ELISA-PE" = "ielisa_l13_pe",
+                "iELISA-L13 vs ELISA-VSG" = "ielisa_l13_vsg",
+                "iELISA-L15 vs ELISA-PE" = "ielisa_l15_pe",
+                "iELISA-L15 vs ELISA-VSG" = "ielisa_l15_vsg",
+                "iELISA-L13 vs iELISA-L15" = "ielisa_l13_l15",
                 "Multi-way (All Tests)" = "multiway"
               ),
               selected = "pe_vsg"
@@ -409,6 +414,90 @@ mod_concordance_server <- function(id,
               health_zone = HealthZone,
               province = Province,
               date = coalesce(pe_plate_date, vsg_plate_date)
+            )
+
+        } else if (comparison == "ielisa_l13_pe") {
+          # iELISA L13 vs ELISA-PE
+          ielisa_data <- load_ielisa_data()
+          pe_data <- load_elisa_data(biobank_df = biobank_df()) %>%
+            dplyr::filter(elisa_type == "ELISA_pe", sample_type == "sample")
+
+          # Apply QC filters
+          if (input$exclude_qc_fail) {
+            ielisa_data <- ielisa_data %>% dplyr::filter(plate_valid_L13 == TRUE)
+            pe_data <- pe_data %>% dplyr::filter(qc_overall == TRUE)
+          }
+
+          # Match and create concordance data
+          match_ielisa_elisa(ielisa_data, pe_data, "L13", "PE")
+
+        } else if (comparison == "ielisa_l13_vsg") {
+          # iELISA L13 vs ELISA-VSG
+          ielisa_data <- load_ielisa_data()
+          vsg_data <- load_elisa_data(biobank_df = biobank_df()) %>%
+            dplyr::filter(elisa_type == "ELISA_vsg", sample_type == "sample")
+
+          # Apply QC filters
+          if (input$exclude_qc_fail) {
+            ielisa_data <- ielisa_data %>% dplyr::filter(plate_valid_L13 == TRUE)
+            vsg_data <- vsg_data %>% dplyr::filter(qc_overall == TRUE)
+          }
+
+          # Match and create concordance data
+          match_ielisa_elisa(ielisa_data, vsg_data, "L13", "VSG")
+
+        } else if (comparison == "ielisa_l15_pe") {
+          # iELISA L15 vs ELISA-PE
+          ielisa_data <- load_ielisa_data()
+          pe_data <- load_elisa_data(biobank_df = biobank_df()) %>%
+            dplyr::filter(elisa_type == "ELISA_pe", sample_type == "sample")
+
+          # Apply QC filters
+          if (input$exclude_qc_fail) {
+            ielisa_data <- ielisa_data %>% dplyr::filter(plate_valid_L15 == TRUE)
+            pe_data <- pe_data %>% dplyr::filter(qc_overall == TRUE)
+          }
+
+          # Match and create concordance data
+          match_ielisa_elisa(ielisa_data, pe_data, "L15", "PE")
+
+        } else if (comparison == "ielisa_l15_vsg") {
+          # iELISA L15 vs ELISA-VSG
+          ielisa_data <- load_ielisa_data()
+          vsg_data <- load_elisa_data(biobank_df = biobank_df()) %>%
+            dplyr::filter(elisa_type == "ELISA_vsg", sample_type == "sample")
+
+          # Apply QC filters
+          if (input$exclude_qc_fail) {
+            ielisa_data <- ielisa_data %>% dplyr::filter(plate_valid_L15 == TRUE)
+            vsg_data <- vsg_data %>% dplyr::filter(qc_overall == TRUE)
+          }
+
+          # Match and create concordance data
+          match_ielisa_elisa(ielisa_data, vsg_data, "L15", "VSG")
+
+        } else if (comparison == "ielisa_l13_l15") {
+          # iELISA L13 vs L15 (same samples, different antigens)
+          ielisa_data <- load_ielisa_data()
+
+          # Apply QC filters
+          if (input$exclude_qc_fail) {
+            ielisa_data <- ielisa_data %>%
+              dplyr::filter(plate_valid_L13 == TRUE, plate_valid_L15 == TRUE)
+          }
+
+          # Create concordance data (both antigens are in same dataset)
+          ielisa_data %>%
+            dplyr::mutate(
+              test1_value = pct_inh_f2_13,
+              test2_value = pct_inh_f2_15,
+              test1_binary = positive_L13,
+              test2_binary = positive_L15,
+              test1_name = "iELISA-L13",
+              test2_name = "iELISA-L15",
+              health_zone = as.character(NA),
+              province = as.character(NA),
+              date = plate_date
             )
 
         } else if (comparison == "mic_pe") {

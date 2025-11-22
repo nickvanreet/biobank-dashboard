@@ -462,6 +462,14 @@ match_ielisa_elisa <- function(ielisa_data, elisa_data, ielisa_antigen, elisa_ty
       Age
     )
 
+  # Debug: Log sample preparation
+  message(sprintf("iELISA samples prepared: %s rows", nrow(ielisa_samples)))
+  message(sprintf("ELISA samples prepared: %s rows", nrow(elisa_samples)))
+  message(sprintf("iELISA with valid barcode: %s", sum(!is.na(ielisa_samples$barcode_norm))))
+  message(sprintf("ELISA with valid barcode: %s", sum(!is.na(elisa_samples$barcode_norm))))
+  message(sprintf("iELISA with valid numero: %s", sum(!is.na(ielisa_samples$numero_norm))))
+  message(sprintf("ELISA with valid numero: %s", sum(!is.na(elisa_samples$numero_norm))))
+
   # Match by barcode
   matched_by_barcode <- ielisa_samples %>%
     filter(!is.na(barcode_norm)) %>%
@@ -472,6 +480,8 @@ match_ielisa_elisa <- function(ielisa_data, elisa_data, ielisa_antigen, elisa_ty
       relationship = "many-to-many"
     ) %>%
     mutate(match_method = "barcode")
+
+  message(sprintf("Matches by barcode: %s", nrow(matched_by_barcode)))
 
   # Match remaining by numero
   unmatched_ielisa <- ielisa_samples %>%
@@ -491,11 +501,15 @@ match_ielisa_elisa <- function(ielisa_data, elisa_data, ielisa_antigen, elisa_ty
     ) %>%
     mutate(match_method = "numero_labo")
 
+  message(sprintf("Matches by numero: %s", nrow(matched_by_numero)))
+
   # Combine matches
   all_matches <- bind_rows(
     matched_by_barcode,
     matched_by_numero
   )
+
+  message(sprintf("Total matches before filtering: %s", nrow(all_matches)))
 
   # Create concordance data format based on antigen type
   if (ielisa_antigen == "L13") {
@@ -613,6 +627,14 @@ match_mic_elisa <- function(mic_data, elisa_data, elisa_type) {
       elisa_Age = Age
     )
 
+  # Debug: Log sample preparation
+  message(sprintf("MIC samples prepared: %s rows", nrow(mic_samples)))
+  message(sprintf("ELISA samples prepared: %s rows", nrow(elisa_samples)))
+  message(sprintf("MIC with valid barcode: %s", sum(!is.na(mic_samples$barcode_norm))))
+  message(sprintf("ELISA with valid barcode: %s", sum(!is.na(elisa_samples$barcode_norm))))
+  message(sprintf("MIC with valid numero: %s", sum(!is.na(mic_samples$numero_norm))))
+  message(sprintf("ELISA with valid numero: %s", sum(!is.na(elisa_samples$numero_norm))))
+
   # Match by barcode
   matched_by_barcode <- mic_samples %>%
     filter(!is.na(barcode_norm)) %>%
@@ -623,6 +645,8 @@ match_mic_elisa <- function(mic_data, elisa_data, elisa_type) {
       relationship = "many-to-many"
     ) %>%
     mutate(match_method = "barcode")
+
+  message(sprintf("Matches by barcode: %s", nrow(matched_by_barcode)))
 
   # Match remaining by numero
   unmatched_mic <- mic_samples %>%
@@ -642,11 +666,15 @@ match_mic_elisa <- function(mic_data, elisa_data, elisa_type) {
     ) %>%
     mutate(match_method = "numero_labo")
 
+  message(sprintf("Matches by numero: %s", nrow(matched_by_numero)))
+
   # Combine matches
   all_matches <- bind_rows(
     matched_by_barcode,
     matched_by_numero
   )
+
+  message(sprintf("Total matches before filtering: %s", nrow(all_matches)))
 
   if (nrow(all_matches) == 0) {
     return(tibble::tibble(

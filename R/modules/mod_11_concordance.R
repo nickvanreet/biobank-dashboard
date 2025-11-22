@@ -432,20 +432,32 @@ mod_concordance_server <- function(id,
           ielisa_data_raw <- ielisa_df()
           pe_data <- elisa_pe_df()
 
+          # Debug: Log data availability
+          message("=== iELISA-L13 vs ELISA-PE Concordance Debug ===")
+          message(sprintf("iELISA data: %s rows", if (is.null(ielisa_data_raw)) "NULL" else nrow(ielisa_data_raw)))
+          message(sprintf("PE data: %s rows", if (is.null(pe_data)) "NULL" else nrow(pe_data)))
+
           # Check if data is available
           if (is.null(ielisa_data_raw) || is.null(pe_data) ||
               nrow(ielisa_data_raw) == 0 || nrow(pe_data) == 0) {
+            message("Returning empty tibble - no data available")
             return(tibble::tibble())
           }
 
           # Apply QC filters
           if (input$exclude_qc_fail) {
+            ielisa_before <- nrow(ielisa_data_raw)
             ielisa_data_raw <- ielisa_data_raw %>% dplyr::filter(plate_valid_L13 == TRUE)
+            pe_before <- nrow(pe_data)
             pe_data <- pe_data %>% dplyr::filter(qc_overall == TRUE)
+            message(sprintf("iELISA after QC: %s rows (removed %s)", nrow(ielisa_data_raw), ielisa_before - nrow(ielisa_data_raw)))
+            message(sprintf("PE after QC: %s rows (removed %s)", nrow(pe_data), pe_before - nrow(pe_data)))
           }
 
           # Match and create concordance data
-          match_ielisa_elisa(ielisa_data_raw, pe_data, "L13", "PE")
+          matched <- match_ielisa_elisa(ielisa_data_raw, pe_data, "L13", "PE")
+          message(sprintf("Matched samples: %s rows", nrow(matched)))
+          matched
 
         } else if (comparison == "ielisa_l13_vsg") {
           # iELISA L13 vs ELISA-VSG
@@ -541,19 +553,29 @@ mod_concordance_server <- function(id,
           mic_data_raw <- mic_df()
           pe_data <- elisa_pe_df()
 
+          # Debug: Log data availability
+          message("=== MIC vs ELISA-PE Concordance Debug ===")
+          message(sprintf("MIC data: %s rows", if (is.null(mic_data_raw)) "NULL" else nrow(mic_data_raw)))
+          message(sprintf("PE data: %s rows", if (is.null(pe_data)) "NULL" else nrow(pe_data)))
+
           # Check if data is available
           if (is.null(mic_data_raw) || is.null(pe_data) ||
               nrow(mic_data_raw) == 0 || nrow(pe_data) == 0) {
+            message("Returning empty tibble - no data available")
             return(tibble::tibble())
           }
 
           # Apply QC filters
           if (input$exclude_qc_fail) {
+            pe_before <- nrow(pe_data)
             pe_data <- pe_data %>% dplyr::filter(qc_overall == TRUE)
+            message(sprintf("PE data after QC filter: %s rows (removed %s)", nrow(pe_data), pe_before - nrow(pe_data)))
           }
 
           # Match and create concordance data
-          match_mic_elisa(mic_data_raw, pe_data, "PE")
+          matched <- match_mic_elisa(mic_data_raw, pe_data, "PE")
+          message(sprintf("Matched samples: %s rows", nrow(matched)))
+          matched
 
         } else if (comparison == "mic_vsg") {
           # MIC vs ELISA-VSG

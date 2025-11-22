@@ -60,7 +60,7 @@ config <- list(
     extractions_dir = "data/extractions",
     pcr_dir = "data/PCR",
     mic_dir = "data/MIC",
-    ielisa_dir = "data/ielisa"
+    ielisa_dir = "data/lsd/ielisa"
   ),
   ui = config_yml$ui %||% list(
     theme_primary = "#3498DB",

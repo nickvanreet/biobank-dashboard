@@ -228,40 +228,6 @@ app_theme <- bslib::bs_add_rules(
     overflow: visible !important;
   }
 
-  /* Compact navbar styling */
-  .navbar {
-    padding-top: 0.25rem !important;
-    padding-bottom: 0.25rem !important;
-    min-height: 42px !important;
-  }
-
-  /* Make navbar links visible with dark text */
-  .navbar .nav-link {
-    color: #1f2937 !important;
-    font-weight: 500;
-    font-size: 0.875rem;
-    padding: 0.35rem 0.75rem !important;
-  }
-
-  .navbar .nav-link:hover {
-    color: #4F46E5 !important;
-    background-color: #f3f4f6;
-    border-radius: 4px;
-  }
-
-  .navbar .nav-link.active {
-    color: #4F46E5 !important;
-    background-color: #eef2ff;
-    border-radius: 4px;
-  }
-
-  /* Compact navbar brand */
-  .navbar-brand {
-    padding-top: 0.25rem !important;
-    padding-bottom: 0.25rem !important;
-    font-size: 0.9rem !important;
-  }
-
   /* Let the navbar fill the viewport but keep each nav panel independently scrollable */
   .navs-page-container {
     min-height: 100vh;
@@ -272,7 +238,7 @@ app_theme <- bslib::bs_add_rules(
   .navs-page-container > .bslib-nav-content {
     flex: 1 1 auto;
     min-height: 0;
-    height: calc(100vh - 42px);
+    height: calc(100vh - 64px);
     overflow-y: auto;
     padding-bottom: 1rem;
   }
@@ -284,7 +250,7 @@ app_theme <- bslib::bs_add_rules(
   }
 
   .mic-overview-panel {
-    max-height: calc(100vh - 100px);
+    max-height: calc(100vh - 160px);
     overflow-y: auto;
     padding-right: 0.5rem;
     padding-bottom: 1rem;
@@ -312,7 +278,7 @@ app_theme <- bslib::bs_add_rules(
 
   /* ELISA Module Styling - Enhanced figure visibility with scrolling */
   .elisa-panel {
-    max-height: calc(100vh - 100px);
+    max-height: calc(100vh - 160px);
     overflow-y: auto;
     padding-right: 0.5rem;
     padding-bottom: 1rem;
@@ -349,7 +315,7 @@ app_theme <- bslib::bs_add_rules(
 
   /* iELISA Module Styling - Enhanced figure visibility with scrolling */
   .ielisa-panel {
-    max-height: calc(100vh - 100px);
+    max-height: calc(100vh - 160px);
     overflow-y: auto;
     padding-right: 0.5rem;
     padding-bottom: 1rem;

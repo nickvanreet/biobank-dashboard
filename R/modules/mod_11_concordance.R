@@ -11,7 +11,7 @@ mod_concordance_ui <- function(id) {
 
   nav_panel(
     title = "Concordance Analysis",
-    icon = icon("diagram-3"),
+    icon = icon("project-diagram"),
 
     page_fluid(
       # Header card

@@ -124,14 +124,14 @@ parse_ielisa_file <- function(path,
                                ctrl_cv_max = 20){
 
   # --- Load sheets ----------------------------------------------------------------
-  od <- read_excel(path, sheet="450-600 nm", col_names=FALSE)
-  ech <- read_excel(path, sheet="ECHANTILLONS", col_names=FALSE)
+  od <- read_excel(path, sheet="450-600 nm", col_names=FALSE, .name_repair="minimal")
+  ech <- read_excel(path, sheet="ECHANTILLONS", col_names=FALSE, .name_repair="minimal")
 
   names(ech) <- paste0("X", seq_len(ncol(ech)))
 
   # --- Read flexible sample list ---------------------------------------------------
   samples <- ech %>%
-    slice(15:n()) %>%            # skip headers
+    slice(-(1:14)) %>%            # skip first 14 rows (headers)
     filter(!is.na(X2)) %>%       # LabID present
     transmute(
       SampleIndex = row_number(),

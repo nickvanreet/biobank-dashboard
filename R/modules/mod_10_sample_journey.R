@@ -268,8 +268,7 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
             card(
               card_header("MIC qPCR"),
               card_body(
-                uiOutput(ns("mic_summary")),
-                plotlyOutput(ns("mic_heatmap"), height = "250px")
+                uiOutput(ns("mic_results"))
               ),
               height = "400px",
               style = "overflow-y: auto;"
@@ -328,12 +327,23 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
         "Unknown"
       }
 
+      date_sent_inrb <- if ("date_sent_inrb" %in% names(info)) {
+        format(as.Date(info$date_sent_inrb), "%Y-%m-%d")
+      } else if ("date_envoi_inrb" %in% names(info)) {
+        format(as.Date(info$date_envoi_inrb), "%Y-%m-%d")
+      } else if ("date_inrb" %in% names(info)) {
+        format(as.Date(info$date_inrb), "%Y-%m-%d")
+      } else {
+        "Not recorded"
+      }
+
       tagList(
         tags$h6("Biobank Information", class = "fw-bold"),
         tags$p(tags$strong("Province: "), province),
         tags$p(tags$strong("Health Zone: "), health_zone),
         tags$p(tags$strong("Structure: "), structure),
-        tags$p(tags$strong("Collection Date: "), date_sample)
+        tags$p(tags$strong("Collection Date: "), date_sample),
+        tags$p(tags$strong("Date sent to INRB: "), date_sent_inrb)
       )
     })
 
@@ -387,8 +397,8 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
       plot_drs_gauge(drs_volume)
     })
 
-    # MIC summary
-    output$mic_summary <- renderUI({
+    # MIC detailed results
+    output$mic_results <- renderUI({
       data <- journey_data()
       req(data)
 
@@ -396,34 +406,7 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
         return(tags$p(class = "text-muted", "No MIC tests"))
       }
 
-      n_tests <- nrow(data$mic_data)
-      final_calls <- data$mic_data %>%
-        filter(!is.na(FinalCall)) %>%
-        pull(FinalCall)
-
-      if (length(final_calls) > 0) {
-        result_summary <- table(final_calls) %>%
-          as.data.frame() %>%
-          setNames(c("Result", "Count")) %>%
-          mutate(text = paste0(Result, " (", Count, ")")) %>%
-          pull(text) %>%
-          paste(collapse = ", ")
-      } else {
-        result_summary <- "No results available"
-      }
-
-      tagList(
-        tags$p(tags$strong("Tests: "), n_tests),
-        tags$p(tags$strong("Results: "), result_summary)
-      )
-    })
-
-    # MIC heatmap
-    output$mic_heatmap <- renderPlotly({
-      data <- journey_data()
-      req(data, nrow(data$mic_data) > 0)
-
-      plot_mic_heatmap(data$mic_data)
+      plot_mic_detailed(data$mic_data)
     })
 
     # ELISA cards

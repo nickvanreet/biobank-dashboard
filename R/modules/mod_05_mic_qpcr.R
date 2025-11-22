@@ -1229,6 +1229,18 @@ parse_mic_directory <- function(path, settings, cache_state) {
   samples_df <- if (length(all_samples)) bind_rows(all_samples) else tibble()
   replicates_df <- if (length(all_replicates)) bind_rows(all_replicates) else tibble()
 
+  # Add RunDateTime and RunDate to samples from runs table for sample journey
+  if (nrow(samples_df) > 0 && nrow(runs_df) > 0) {
+    samples_df <- samples_df %>%
+      left_join(
+        runs_df %>% select(RunID, RunDateTime),
+        by = "RunID"
+      ) %>%
+      mutate(
+        RunDate = as.Date(RunDateTime)
+      )
+  }
+
   list(
     runs = runs_df,
     replicates = replicates_df,

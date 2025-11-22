@@ -194,7 +194,8 @@ create_sample_timeline <- function(journey_data) {
 
       if (!is.na(ext_date)) {
         volume_info <- if ("drs_volume_ml" %in% names(row) && !is.na(row$drs_volume_ml)) {
-          sprintf("Volume: %.1f µL", row$drs_volume_ml)
+          # Convert ml to µL for display
+          sprintf("Volume: %.1f µL", row$drs_volume_ml * 1000)
         } else {
           ""
         }
@@ -327,11 +328,13 @@ generate_sample_alerts <- function(journey_data) {
     for (i in 1:nrow(journey_data$extraction_data)) {
       row <- journey_data$extraction_data[i, ]
       if ("drs_volume_ml" %in% names(row) && !is.na(row$drs_volume_ml)) {
-        if (row$drs_volume_ml < 30) {
+        # Convert ml to µL for comparison and display
+        volume_ul <- row$drs_volume_ml * 1000
+        if (volume_ul < 30) {
           alerts[[length(alerts) + 1]] <- list(
             type = "warning",
             category = "Extraction QC",
-            message = sprintf("Low DRS volume: %.1f µL (expected ≥30µL)", row$drs_volume_ml),
+            message = sprintf("Low DRS volume: %.1f µL (expected ≥30µL)", volume_ul),
             test_number = i
           )
         }

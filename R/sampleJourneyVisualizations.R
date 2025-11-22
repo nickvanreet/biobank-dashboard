@@ -101,12 +101,15 @@ plot_sample_timeline <- function(timeline_data) {
 }
 
 #' Plot DRS volume as radial gauge
-#' @param volume_ul DRS volume in microliters
+#' @param volume_ml DRS volume in milliliters (will be converted to microliters for display)
 #' @return Plotly gauge chart
 #' @export
-plot_drs_gauge <- function(volume_ul) {
-  if (is.null(volume_ul) || is.na(volume_ul)) {
-    volume_ul <- 0
+plot_drs_gauge <- function(volume_ml) {
+  # Convert ml to µL for display
+  volume_ul <- if (!is.null(volume_ml) && !is.na(volume_ml)) {
+    volume_ml * 1000
+  } else {
+    0
   }
 
   # Determine color based on thresholds

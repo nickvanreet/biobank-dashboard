@@ -228,6 +228,24 @@ app_theme <- bslib::bs_add_rules(
     overflow: visible !important;
   }
 
+  /* Fix navbar link visibility - make text always visible */
+  .navbar .nav-link {
+    color: #1f2937 !important;
+    font-weight: 500;
+  }
+
+  .navbar .nav-link:hover {
+    color: #4F46E5 !important;
+    background-color: rgba(79, 70, 229, 0.1);
+    border-radius: 4px;
+  }
+
+  .navbar .nav-link.active {
+    color: #4F46E5 !important;
+    background-color: rgba(79, 70, 229, 0.15);
+    border-radius: 4px;
+  }
+
   /* Let the navbar fill the viewport but keep each nav panel independently scrollable */
   .navs-page-container {
     min-height: 100vh;

@@ -44,13 +44,25 @@ for (pkg in required_packages) {
 }
 
 # Install TinyTeX if needed
-if (!tinytex::is_tinytex()) {
-  cat("\n=== Installing TinyTeX (LaTeX distribution) ===\n")
-  cat("This may take a few minutes...\n")
-  tinytex::install_tinytex()
-  cat("✓ TinyTeX installed\n\n")
+cat("\n=== Checking TinyTeX (LaTeX distribution) ===\n")
+if (requireNamespace("tinytex", quietly = TRUE)) {
+  if (!tinytex::is_tinytex()) {
+    cat("TinyTeX not found. Installing...\n")
+    cat("This may take a few minutes...\n")
+    tryCatch({
+      tinytex::install_tinytex()
+      cat("✓ TinyTeX installed successfully\n\n")
+    }, error = function(e) {
+      cat("⚠ Warning: Could not install TinyTeX automatically\n")
+      cat("Please install manually:\n")
+      cat("  tinytex::install_tinytex()\n\n")
+    })
+  } else {
+    cat("✓ TinyTeX already installed\n\n")
+  }
 } else {
-  cat("✓ TinyTeX already installed\n\n")
+  cat("⚠ Warning: tinytex package not found\n")
+  cat("Please install: install.packages('tinytex')\n\n")
 }
 
 # Install optional packages

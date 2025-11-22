@@ -56,8 +56,19 @@ gather_sample_journey <- function(sample_id, biobank_df = NULL, extraction_df = 
   if (!is.null(biobank_df) && nrow(biobank_df) > 0) {
     biobank_match <- biobank_df %>%
       mutate(
-        barcode_norm = normalize_barcode(coalesce(code_barres_kps, barcode)),
-        numero_norm = normalize_barcode(as.character(coalesce(numero_labo, numero, lab_id)))
+        barcode_norm = normalize_barcode(
+          dplyr::coalesce(
+            if ("code_barres_kps" %in% names(.)) .data$code_barres_kps else NA_character_,
+            if ("barcode" %in% names(.)) .data$barcode else NA_character_
+          )
+        ),
+        numero_norm = normalize_barcode(
+          as.character(dplyr::coalesce(
+            if ("numero_labo" %in% names(.)) .data$numero_labo else NA_character_,
+            if ("numero" %in% names(.)) as.character(.data$numero) else NA_character_,
+            if ("lab_id" %in% names(.)) .data$lab_id else NA_character_
+          ))
+        )
       ) %>%
       filter(barcode_norm == search_id | numero_norm == search_id) %>%
       slice(1)
@@ -90,8 +101,12 @@ gather_sample_journey <- function(sample_id, biobank_df = NULL, extraction_df = 
   if (!is.null(elisa_pe_df) && nrow(elisa_pe_df) > 0) {
     results$elisa_pe_data <- elisa_pe_df %>%
       mutate(
-        barcode_norm = normalize_barcode(as.character(code_barres_kps)),
-        numero_norm = normalize_barcode(as.character(numero_labo))
+        barcode_norm = normalize_barcode(
+          if ("code_barres_kps" %in% names(.)) as.character(.data$code_barres_kps) else NA_character_
+        ),
+        numero_norm = normalize_barcode(
+          if ("numero_labo" %in% names(.)) as.character(.data$numero_labo) else NA_character_
+        )
       ) %>%
       filter(barcode_norm == search_id | numero_norm == search_id)
     if (nrow(results$elisa_pe_data) > 0) results$found <- TRUE
@@ -101,8 +116,12 @@ gather_sample_journey <- function(sample_id, biobank_df = NULL, extraction_df = 
   if (!is.null(elisa_vsg_df) && nrow(elisa_vsg_df) > 0) {
     results$elisa_vsg_data <- elisa_vsg_df %>%
       mutate(
-        barcode_norm = normalize_barcode(as.character(code_barres_kps)),
-        numero_norm = normalize_barcode(as.character(numero_labo))
+        barcode_norm = normalize_barcode(
+          if ("code_barres_kps" %in% names(.)) as.character(.data$code_barres_kps) else NA_character_
+        ),
+        numero_norm = normalize_barcode(
+          if ("numero_labo" %in% names(.)) as.character(.data$numero_labo) else NA_character_
+        )
       ) %>%
       filter(barcode_norm == search_id | numero_norm == search_id)
     if (nrow(results$elisa_vsg_data) > 0) results$found <- TRUE
@@ -112,8 +131,12 @@ gather_sample_journey <- function(sample_id, biobank_df = NULL, extraction_df = 
   if (!is.null(ielisa_df) && nrow(ielisa_df) > 0) {
     results$ielisa_data <- ielisa_df %>%
       mutate(
-        barcode_norm = normalize_barcode(as.character(code_barres_kps)),
-        numero_norm = normalize_barcode(as.character(numero_labo))
+        barcode_norm = normalize_barcode(
+          if ("code_barres_kps" %in% names(.)) as.character(.data$code_barres_kps) else NA_character_
+        ),
+        numero_norm = normalize_barcode(
+          if ("numero_labo" %in% names(.)) as.character(.data$numero_labo) else NA_character_
+        )
       ) %>%
       filter(barcode_norm == search_id | numero_norm == search_id)
     if (nrow(results$ielisa_data) > 0) results$found <- TRUE
@@ -412,11 +435,11 @@ get_sample_autocomplete <- function(biobank_df = NULL, extraction_df = NULL,
   # From biobank
   if (!is.null(biobank_df) && nrow(biobank_df) > 0) {
     biobank_ids <- c(
-      biobank_df$code_barres_kps,
-      biobank_df$barcode,
-      biobank_df$numero_labo,
-      biobank_df$numero,
-      biobank_df$lab_id
+      if ("code_barres_kps" %in% names(biobank_df)) biobank_df$code_barres_kps else NULL,
+      if ("barcode" %in% names(biobank_df)) biobank_df$barcode else NULL,
+      if ("numero_labo" %in% names(biobank_df)) biobank_df$numero_labo else NULL,
+      if ("numero" %in% names(biobank_df)) biobank_df$numero else NULL,
+      if ("lab_id" %in% names(biobank_df)) biobank_df$lab_id else NULL
     )
     all_ids <- c(all_ids, biobank_ids)
   }
@@ -424,10 +447,10 @@ get_sample_autocomplete <- function(biobank_df = NULL, extraction_df = NULL,
   # From extractions
   if (!is.null(extraction_df) && nrow(extraction_df) > 0) {
     extraction_ids <- c(
-      extraction_df$sample_id,
-      extraction_df$barcode,
-      extraction_df$numero,
-      extraction_df$record_number
+      if ("sample_id" %in% names(extraction_df)) extraction_df$sample_id else NULL,
+      if ("barcode" %in% names(extraction_df)) extraction_df$barcode else NULL,
+      if ("numero" %in% names(extraction_df)) extraction_df$numero else NULL,
+      if ("record_number" %in% names(extraction_df)) extraction_df$record_number else NULL
     )
     all_ids <- c(all_ids, extraction_ids)
   }
@@ -435,9 +458,9 @@ get_sample_autocomplete <- function(biobank_df = NULL, extraction_df = NULL,
   # From MIC
   if (!is.null(mic_df) && nrow(mic_df) > 0) {
     mic_ids <- c(
-      mic_df$SampleID,
-      mic_df$SampleName,
-      mic_df$Barcode
+      if ("SampleID" %in% names(mic_df)) mic_df$SampleID else NULL,
+      if ("SampleName" %in% names(mic_df)) mic_df$SampleName else NULL,
+      if ("Barcode" %in% names(mic_df)) mic_df$Barcode else NULL
     )
     all_ids <- c(all_ids, mic_ids)
   }
@@ -445,8 +468,8 @@ get_sample_autocomplete <- function(biobank_df = NULL, extraction_df = NULL,
   # From ELISA PE
   if (!is.null(elisa_pe_df) && nrow(elisa_pe_df) > 0) {
     elisa_pe_ids <- c(
-      elisa_pe_df$code_barres_kps,
-      elisa_pe_df$numero_labo
+      if ("code_barres_kps" %in% names(elisa_pe_df)) elisa_pe_df$code_barres_kps else NULL,
+      if ("numero_labo" %in% names(elisa_pe_df)) elisa_pe_df$numero_labo else NULL
     )
     all_ids <- c(all_ids, elisa_pe_ids)
   }
@@ -454,8 +477,8 @@ get_sample_autocomplete <- function(biobank_df = NULL, extraction_df = NULL,
   # From ELISA VSG
   if (!is.null(elisa_vsg_df) && nrow(elisa_vsg_df) > 0) {
     elisa_vsg_ids <- c(
-      elisa_vsg_df$code_barres_kps,
-      elisa_vsg_df$numero_labo
+      if ("code_barres_kps" %in% names(elisa_vsg_df)) elisa_vsg_df$code_barres_kps else NULL,
+      if ("numero_labo" %in% names(elisa_vsg_df)) elisa_vsg_df$numero_labo else NULL
     )
     all_ids <- c(all_ids, elisa_vsg_ids)
   }
@@ -463,8 +486,8 @@ get_sample_autocomplete <- function(biobank_df = NULL, extraction_df = NULL,
   # From iELISA
   if (!is.null(ielisa_df) && nrow(ielisa_df) > 0) {
     ielisa_ids <- c(
-      ielisa_df$code_barres_kps,
-      ielisa_df$numero_labo
+      if ("code_barres_kps" %in% names(ielisa_df)) ielisa_df$code_barres_kps else NULL,
+      if ("numero_labo" %in% names(ielisa_df)) ielisa_df$numero_labo else NULL
     )
     all_ids <- c(all_ids, ielisa_ids)
   }

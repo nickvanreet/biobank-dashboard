@@ -93,6 +93,7 @@ gather_sample_journey <- function(sample_id, biobank_df = NULL, extraction_df = 
       mutate(
         sample_norm = normalize_barcode(
           as.character(dplyr::coalesce(
+            if ("LinkedBarcode" %in% names(.)) .data$LinkedBarcode else NA_character_,
             if ("SampleID" %in% names(.)) .data$SampleID else NA_character_,
             if ("SampleName" %in% names(.)) .data$SampleName else NA_character_,
             if ("Barcode" %in% names(.)) .data$Barcode else NA_character_
@@ -517,6 +518,7 @@ get_sample_autocomplete <- function(biobank_df = NULL, extraction_df = NULL,
   # From MIC
   if (!is.null(mic_df) && nrow(mic_df) > 0) {
     mic_ids <- c(
+      if ("LinkedBarcode" %in% names(mic_df)) mic_df$LinkedBarcode else NULL,
       if ("SampleID" %in% names(mic_df)) mic_df$SampleID else NULL,
       if ("SampleName" %in% names(mic_df)) mic_df$SampleName else NULL,
       if ("Barcode" %in% names(mic_df)) mic_df$Barcode else NULL

@@ -394,12 +394,15 @@ mod_concordance_server <- function(id,
         comparison <- input$test_comparison
 
         if (comparison == "pe_vsg") {
-          # Load ELISA PE and VSG data
-          pe_data <- load_elisa_data(biobank_df = biobank_df()) %>%
-            dplyr::filter(elisa_type == "ELISA_pe", sample_type == "sample")
+          # Load ELISA PE and VSG data from passed parameters
+          pe_data <- elisa_pe_df()
+          vsg_data <- elisa_vsg_df()
 
-          vsg_data <- load_elisa_data(biobank_df = biobank_df()) %>%
-            dplyr::filter(elisa_type == "ELISA_vsg", sample_type == "sample")
+          # Check if data is available
+          if (is.null(pe_data) || is.null(vsg_data) ||
+              nrow(pe_data) == 0 || nrow(vsg_data) == 0) {
+            return(tibble::tibble())
+          }
 
           # Apply QC filters
           if (input$exclude_qc_fail) {
@@ -426,76 +429,101 @@ mod_concordance_server <- function(id,
 
         } else if (comparison == "ielisa_l13_pe") {
           # iELISA L13 vs ELISA-PE
-          ielisa_data <- load_ielisa_data()
-          pe_data <- load_elisa_data(biobank_df = biobank_df()) %>%
-            dplyr::filter(elisa_type == "ELISA_pe", sample_type == "sample")
+          ielisa_data_raw <- ielisa_df()
+          pe_data <- elisa_pe_df()
+
+          # Check if data is available
+          if (is.null(ielisa_data_raw) || is.null(pe_data) ||
+              nrow(ielisa_data_raw) == 0 || nrow(pe_data) == 0) {
+            return(tibble::tibble())
+          }
 
           # Apply QC filters
           if (input$exclude_qc_fail) {
-            ielisa_data <- ielisa_data %>% dplyr::filter(plate_valid_L13 == TRUE)
+            ielisa_data_raw <- ielisa_data_raw %>% dplyr::filter(plate_valid_L13 == TRUE)
             pe_data <- pe_data %>% dplyr::filter(qc_overall == TRUE)
           }
 
           # Match and create concordance data
-          match_ielisa_elisa(ielisa_data, pe_data, "L13", "PE")
+          match_ielisa_elisa(ielisa_data_raw, pe_data, "L13", "PE")
 
         } else if (comparison == "ielisa_l13_vsg") {
           # iELISA L13 vs ELISA-VSG
-          ielisa_data <- load_ielisa_data()
-          vsg_data <- load_elisa_data(biobank_df = biobank_df()) %>%
-            dplyr::filter(elisa_type == "ELISA_vsg", sample_type == "sample")
+          ielisa_data_raw <- ielisa_df()
+          vsg_data <- elisa_vsg_df()
+
+          # Check if data is available
+          if (is.null(ielisa_data_raw) || is.null(vsg_data) ||
+              nrow(ielisa_data_raw) == 0 || nrow(vsg_data) == 0) {
+            return(tibble::tibble())
+          }
 
           # Apply QC filters
           if (input$exclude_qc_fail) {
-            ielisa_data <- ielisa_data %>% dplyr::filter(plate_valid_L13 == TRUE)
+            ielisa_data_raw <- ielisa_data_raw %>% dplyr::filter(plate_valid_L13 == TRUE)
             vsg_data <- vsg_data %>% dplyr::filter(qc_overall == TRUE)
           }
 
           # Match and create concordance data
-          match_ielisa_elisa(ielisa_data, vsg_data, "L13", "VSG")
+          match_ielisa_elisa(ielisa_data_raw, vsg_data, "L13", "VSG")
 
         } else if (comparison == "ielisa_l15_pe") {
           # iELISA L15 vs ELISA-PE
-          ielisa_data <- load_ielisa_data()
-          pe_data <- load_elisa_data(biobank_df = biobank_df()) %>%
-            dplyr::filter(elisa_type == "ELISA_pe", sample_type == "sample")
+          ielisa_data_raw <- ielisa_df()
+          pe_data <- elisa_pe_df()
+
+          # Check if data is available
+          if (is.null(ielisa_data_raw) || is.null(pe_data) ||
+              nrow(ielisa_data_raw) == 0 || nrow(pe_data) == 0) {
+            return(tibble::tibble())
+          }
 
           # Apply QC filters
           if (input$exclude_qc_fail) {
-            ielisa_data <- ielisa_data %>% dplyr::filter(plate_valid_L15 == TRUE)
+            ielisa_data_raw <- ielisa_data_raw %>% dplyr::filter(plate_valid_L15 == TRUE)
             pe_data <- pe_data %>% dplyr::filter(qc_overall == TRUE)
           }
 
           # Match and create concordance data
-          match_ielisa_elisa(ielisa_data, pe_data, "L15", "PE")
+          match_ielisa_elisa(ielisa_data_raw, pe_data, "L15", "PE")
 
         } else if (comparison == "ielisa_l15_vsg") {
           # iELISA L15 vs ELISA-VSG
-          ielisa_data <- load_ielisa_data()
-          vsg_data <- load_elisa_data(biobank_df = biobank_df()) %>%
-            dplyr::filter(elisa_type == "ELISA_vsg", sample_type == "sample")
+          ielisa_data_raw <- ielisa_df()
+          vsg_data <- elisa_vsg_df()
+
+          # Check if data is available
+          if (is.null(ielisa_data_raw) || is.null(vsg_data) ||
+              nrow(ielisa_data_raw) == 0 || nrow(vsg_data) == 0) {
+            return(tibble::tibble())
+          }
 
           # Apply QC filters
           if (input$exclude_qc_fail) {
-            ielisa_data <- ielisa_data %>% dplyr::filter(plate_valid_L15 == TRUE)
+            ielisa_data_raw <- ielisa_data_raw %>% dplyr::filter(plate_valid_L15 == TRUE)
             vsg_data <- vsg_data %>% dplyr::filter(qc_overall == TRUE)
           }
 
           # Match and create concordance data
-          match_ielisa_elisa(ielisa_data, vsg_data, "L15", "VSG")
+          match_ielisa_elisa(ielisa_data_raw, vsg_data, "L15", "VSG")
 
         } else if (comparison == "ielisa_l13_l15") {
           # iELISA L13 vs L15 (same samples, different antigens)
-          ielisa_data <- load_ielisa_data()
+          ielisa_data_raw <- ielisa_df()
+
+          # Check if data is available
+          if (is.null(ielisa_data_raw) || nrow(ielisa_data_raw) == 0) {
+            return(tibble::tibble())
+          }
 
           # Apply QC filters
           if (input$exclude_qc_fail) {
-            ielisa_data <- ielisa_data %>%
+            ielisa_data_raw <- ielisa_data_raw %>%
               dplyr::filter(plate_valid_L13 == TRUE, plate_valid_L15 == TRUE)
           }
 
           # Create concordance data (both antigens are in same dataset)
-          ielisa_data %>%
+          ielisa_data_raw %>%
             dplyr::mutate(
               test1_value = pct_inh_f2_13,
               test2_value = pct_inh_f2_15,
@@ -510,9 +538,14 @@ mod_concordance_server <- function(id,
 
         } else if (comparison == "mic_pe") {
           # MIC vs ELISA-PE
-          mic_data <- mic_df()
-          pe_data <- load_elisa_data(biobank_df = biobank_df()) %>%
-            dplyr::filter(elisa_type == "ELISA_pe", sample_type == "sample")
+          mic_data_raw <- mic_df()
+          pe_data <- elisa_pe_df()
+
+          # Check if data is available
+          if (is.null(mic_data_raw) || is.null(pe_data) ||
+              nrow(mic_data_raw) == 0 || nrow(pe_data) == 0) {
+            return(tibble::tibble())
+          }
 
           # Apply QC filters
           if (input$exclude_qc_fail) {
@@ -520,13 +553,18 @@ mod_concordance_server <- function(id,
           }
 
           # Match and create concordance data
-          match_mic_elisa(mic_data, pe_data, "PE")
+          match_mic_elisa(mic_data_raw, pe_data, "PE")
 
         } else if (comparison == "mic_vsg") {
           # MIC vs ELISA-VSG
-          mic_data <- mic_df()
-          vsg_data <- load_elisa_data(biobank_df = biobank_df()) %>%
-            dplyr::filter(elisa_type == "ELISA_vsg", sample_type == "sample")
+          mic_data_raw <- mic_df()
+          vsg_data <- elisa_vsg_df()
+
+          # Check if data is available
+          if (is.null(mic_data_raw) || is.null(vsg_data) ||
+              nrow(mic_data_raw) == 0 || nrow(vsg_data) == 0) {
+            return(tibble::tibble())
+          }
 
           # Apply QC filters
           if (input$exclude_qc_fail) {
@@ -534,7 +572,7 @@ mod_concordance_server <- function(id,
           }
 
           # Match and create concordance data
-          match_mic_elisa(mic_data, vsg_data, "VSG")
+          match_mic_elisa(mic_data_raw, vsg_data, "VSG")
 
         } else {
           # Multi-way comparison

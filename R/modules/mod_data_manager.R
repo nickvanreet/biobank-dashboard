@@ -317,22 +317,78 @@ mod_data_manager_server <- function(id) {
           rv$ielisa_data <- NULL
         })
 
+        # Load ELISA PE/VSG data
+        tryCatch({
+          elisa_data <- load_elisa_data(
+            dirs = c(site_paths$elisa_pe_dir, site_paths$elisa_vsg_dir),
+            biobank_df = df_clean
+          )
+          rv$elisa_data <- elisa_data
+        }, error = function(e) {
+          message("Failed to load ELISA PE/VSG data: ", e$message)
+          rv$elisa_data <- NULL
+        })
+
+        # Load MIC qPCR data
+        tryCatch({
+          if (dir.exists(site_paths$mic_dir)) {
+            # Use default settings
+            mic_settings <- list(
+              thresholds = list(
+                `177T` = list(positive = 35, negative = 40),
+                `18S2` = list(positive = 35, negative = 40),
+                RNAseP_DNA = list(positive = 32, negative = 45),
+                RNAseP_RNA = list(positive = 30, negative = 45)
+              ),
+              late_window = c(38, 40),
+              delta_rp_limit = 8,
+              allow_review_controls = FALSE,
+              min_positive_reps = 2
+            )
+
+            # Initialize cache state if not exists
+            if (is.null(rv$mic_cache_state)) {
+              rv$mic_cache_state <- list()
+            }
+
+            mic_data <- parse_mic_directory(
+              site_paths$mic_dir,
+              mic_settings,
+              rv$mic_cache_state
+            )
+            rv$mic_data <- mic_data
+            rv$mic_cache_state <- mic_data$cache
+          } else {
+            rv$mic_data <- NULL
+          }
+        }, error = function(e) {
+          message("Failed to load MIC qPCR data: ", e$message)
+          rv$mic_data <- NULL
+        })
+
         # Success notification
         removeNotification(loading_id)
 
+        # Calculate counts for all data types
+        n_extractions <- if (!is.null(rv$extraction_data)) nrow(rv$extraction_data) else 0
         n_ielisa <- if (!is.null(rv$ielisa_data)) nrow(rv$ielisa_data) else 0
+        n_elisa <- if (!is.null(rv$elisa_data)) nrow(rv$elisa_data) else 0
+        n_mic <- if (!is.null(rv$mic_data) && !is.null(rv$mic_data$samples)) nrow(rv$mic_data$samples) else 0
 
         showNotification(
           HTML(sprintf(
             "<strong>Loaded %s data:</strong><br/>
             • Biobank: %d rows (cleaned to %d)<br/>
-            • iELISA: %d samples",
+            • Extractions: %d samples<br/>
+            • iELISA: %d samples<br/>
+            • ELISA PE/VSG: %d samples<br/>
+            • MIC qPCR: %d samples",
             config$sites[[site_id]]$short_name,
             nrow(df_raw), nrow(df_clean),
-            n_ielisa
+            n_extractions, n_ielisa, n_elisa, n_mic
           )),
           type = "message",
-          duration = 5
+          duration = 7
         )
 
       }, error = function(e) {

@@ -152,6 +152,8 @@ analyze_data_quality <- function(df_raw) {
   # ghost rows = no identifier info at all
   keep <- !(is.na(df$.__barcode_norm) & is.na(df$.__labid_norm))
   df_kept <- df[keep, , drop = FALSE]
+  # Track original row indices for filtering later
+  df_kept$.__original_row_idx <- which(keep)
   
   # Parse sampling date
   if (!is.null(date_col) && date_col %in% names(df_kept)) {
@@ -184,11 +186,25 @@ analyze_data_quality <- function(df_raw) {
     if (!nrow(tmp)) {
       tmp[0, , drop = FALSE]
     } else {
+      # Get original column names
+      labid_orig_col <- if (!is.null(labid_col) && labid_col %in% names(tmp)) labid_col else NULL
+      barcode_orig_col <- if (!is.null(barcode_col) && barcode_col %in% names(tmp)) barcode_col else NULL
+
       agg <- tmp |>
         dplyr::group_by(.__barcode_norm) |>
         dplyr::summarise(
           n_lab_ids = dplyr::n_distinct(.__labid_norm),
-          lab_ids   = paste(sort(unique(.__labid_norm)), collapse = ", "),
+          labids_norm = paste(sort(unique(.__labid_norm)), collapse = ", "),
+          labids_original = if (!is.null(labid_orig_col)) {
+            paste(sort(unique(as.character(.data[[labid_orig_col]]))), collapse = ", ")
+          } else {
+            paste(sort(unique(.__labid_norm)), collapse = ", ")
+          },
+          barcode_original = if (!is.null(barcode_orig_col)) {
+            paste(sort(unique(as.character(.data[[barcode_orig_col]]))), collapse = ", ")
+          } else {
+            NA_character_
+          },
           .groups   = "drop"
         ) |>
         dplyr::filter(n_lab_ids > 1) |>
@@ -203,11 +219,25 @@ analyze_data_quality <- function(df_raw) {
     if (!nrow(tmp)) {
       tmp[0, , drop = FALSE]
     } else {
+      # Get original column names
+      labid_orig_col <- if (!is.null(labid_col) && labid_col %in% names(tmp)) labid_col else NULL
+      barcode_orig_col <- if (!is.null(barcode_col) && barcode_col %in% names(tmp)) barcode_col else NULL
+
       agg <- tmp |>
         dplyr::group_by(.__labid_norm) |>
         dplyr::summarise(
           n_barcodes = dplyr::n_distinct(.__barcode_norm),
-          barcodes   = paste(sort(unique(.__barcode_norm)), collapse = ", "),
+          barcodes_norm = paste(sort(unique(.__barcode_norm)), collapse = ", "),
+          barcodes_original = if (!is.null(barcode_orig_col)) {
+            paste(sort(unique(as.character(.data[[barcode_orig_col]]))), collapse = ", ")
+          } else {
+            paste(sort(unique(.__barcode_norm)), collapse = ", ")
+          },
+          labid_original = if (!is.null(labid_orig_col)) {
+            paste(sort(unique(as.character(.data[[labid_orig_col]]))), collapse = ", ")
+          } else {
+            NA_character_
+          },
           .groups    = "drop"
         ) |>
         dplyr::filter(n_barcodes > 1) |>
@@ -270,6 +300,15 @@ analyze_data_quality <- function(df_raw) {
   
   # --- Clean data (rows that passed validation) -------------------------------
   clean_idx <- which(quality_flag_simple == "OK")
+  invalid_idx <- which(quality_flag_simple == "Invalid")
+
+  # Get original row indices for invalid rows (in df_raw)
+  invalid_original_idx <- if (length(invalid_idx)) {
+    df_kept$.__original_row_idx[invalid_idx]
+  } else {
+    integer(0)
+  }
+
   clean_data <- if (length(clean_idx)) df_kept[clean_idx, , drop = FALSE] else df_kept[0, , drop = FALSE]
   # expose parsed date as "date_sample" for downstream code
   clean_data$date_sample <- df_kept$.__date_sample[clean_idx]
@@ -302,6 +341,7 @@ analyze_data_quality <- function(df_raw) {
     row_flags         = row_flags,          # for timeline (OK vs Invalid per date)
     row_flags_detailed= row_flags_detailed, # for future detailed charts
     invalid_reasons   = invalid_reasons,
+    invalid_row_indices = invalid_original_idx,  # original row indices in df_raw for filtering
     clean_data        = clean_data          # optional convenience for the app
   )
 }

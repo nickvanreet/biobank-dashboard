@@ -57,6 +57,22 @@ mod_data_manager_ui <- function(id) {
                 choices = c("All" = "all")),
     selectInput(ns("filter_structure"), "Structure Sanitaire",
                 choices = c("All" = "all")),
+
+    # Data Quality Filter
+    div(class = "mt-3",
+        checkboxInput(
+          ns("exclude_quality_issues"),
+          label = tags$span(
+            icon("shield-alt"),
+            " Exclude Quality Issues"
+          ),
+          value = FALSE
+        ),
+        tags$small(
+          class = "text-muted",
+          "Filter out rows with conflicts or missing data"
+        )
+    ),
     
     hr(),
     
@@ -144,6 +160,47 @@ mod_data_manager_server <- function(id) {
         
         # Step 3: Clean data using the improved cleaner
         df_clean <- clean_biobank_data_improved(df_raw)
+
+        # Step 3a: Add quality tracking to clean data
+        # Map quality flags from raw data to clean data using row numbers
+        if (!is.null(quality$invalid_row_indices) && length(quality$invalid_row_indices) > 0) {
+          # Add a column to track if row had quality issues in raw data
+          df_clean$.__has_quality_issues <- FALSE
+
+          # Find which rows in clean data correspond to invalid rows in raw data
+          # This requires matching on identifiers since row numbers may have shifted
+          nms_raw <- names(df_raw)
+          nms_clean <- names(df_clean)
+
+          barcode_col_raw <- if ("barcode" %in% nms_clean) "barcode" else NULL
+          labid_col_raw <- if ("lab_id" %in% nms_clean) "lab_id" else NULL
+
+          if (!is.null(barcode_col_raw) && !is.null(labid_col_raw)) {
+            # Get invalid rows from raw data
+            invalid_rows <- df_raw[quality$invalid_row_indices, , drop = FALSE]
+
+            # Find matching rows in clean data by barcode and lab_id
+            for (i in seq_len(nrow(invalid_rows))) {
+              bc <- invalid_rows[[barcode_col_raw]][i]
+              lid <- invalid_rows[[labid_col_raw]][i]
+
+              if (!is.na(bc) && !is.na(lid)) {
+                matches <- which(
+                  !is.na(df_clean[[barcode_col_raw]]) &
+                  !is.na(df_clean[[labid_col_raw]]) &
+                  df_clean[[barcode_col_raw]] == bc &
+                  df_clean[[labid_col_raw]] == lid
+                )
+                if (length(matches) > 0) {
+                  df_clean$.__has_quality_issues[matches] <- TRUE
+                }
+              }
+            }
+          }
+        } else {
+          df_clean$.__has_quality_issues <- FALSE
+        }
+
         rv$clean_data <- df_clean
 
         # Step 3b: Load extraction quality data and link to biobank
@@ -197,6 +254,7 @@ mod_data_manager_server <- function(id) {
           missing_labid = quality$missing_labid,
           duplicates = quality$duplicates,
           barcode_conflicts = quality$barcode_conflicts,
+          labid_conflicts = quality$labid_conflicts,
           completeness = quality_clean$completeness,
           quality_flags = if (is.data.frame(quality$row_flags_detailed)) {
             quality$row_flags_detailed %>%
@@ -216,7 +274,9 @@ mod_data_manager_server <- function(id) {
           },
           quality_flags_by_week = flags_weekly,
           row_flags = quality$row_flags,
-          row_flags_detailed = quality$row_flags_detailed
+          row_flags_detailed = quality$row_flags_detailed,
+          invalid_reasons = quality$invalid_reasons,
+          invalid_row_indices = quality$invalid_row_indices
         )
         
         # Step 5: Update filter choices
@@ -273,8 +333,17 @@ mod_data_manager_server <- function(id) {
     filtered_data <- reactive({
       req(rv$clean_data)
 
+      df <- rv$clean_data
+
+      # Apply quality filter if enabled
+      if (isTRUE(input$exclude_quality_issues) && ".__has_quality_issues" %in% names(df)) {
+        df <- df %>%
+          dplyr::filter(!.__has_quality_issues)
+      }
+
+      # Apply other filters
       apply_filters(
-        rv$clean_data,
+        df,
         date_range = input$date_range,
         study = input$filter_study,
         province = input$filter_province,

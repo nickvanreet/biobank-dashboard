@@ -9,12 +9,75 @@ suppressPackageStartupMessages({
   # webshot2 is optional - only loaded if available
 })
 
+#' Ensure required LaTeX packages are installed for PDF generation
+#' @return TRUE if successful, FALSE otherwise
+ensure_latex_packages <- function() {
+  # Check if tinytex is available
+  if (!requireNamespace("tinytex", quietly = TRUE)) {
+    message("tinytex package not found. Installing...")
+    tryCatch({
+      install.packages("tinytex")
+      library(tinytex)
+    }, error = function(e) {
+      warning("Could not install tinytex package: ", e$message)
+      return(FALSE)
+    })
+  }
+
+  # Check if TinyTeX is installed
+  if (!tinytex::is_tinytex()) {
+    message("TinyTeX not installed. Attempting to install...")
+    tryCatch({
+      tinytex::install_tinytex()
+    }, error = function(e) {
+      warning("Could not install TinyTeX: ", e$message)
+      warning("Please install manually: tinytex::install_tinytex()")
+      return(FALSE)
+    })
+  }
+
+  # Install required LaTeX packages for kableExtra and the template
+  required_latex_packages <- c(
+    "booktabs",
+    "longtable",
+    "array",
+    "multirow",
+    "wrapfig",
+    "float",
+    "colortbl",
+    "pdflscape",
+    "tabu",
+    "threeparttable",
+    "threeparttablex",
+    "ulem",
+    "makecell",
+    "xcolor",
+    "fancyhdr"
+  )
+
+  message("Checking LaTeX packages...")
+  for (pkg in required_latex_packages) {
+    if (!tinytex::tinytex_root() == "") {
+      tryCatch({
+        tinytex::tlmgr_install(pkg)
+      }, error = function(e) {
+        # Ignore errors - package might already be installed
+      })
+    }
+  }
+
+  return(TRUE)
+}
+
 #' Generate PDF report for sample journey
 #' @param sample_id The sample ID being reported
 #' @param journey_data The journey data object from gather_sample_journey
 #' @return Path to the generated PDF file
 #' @export
 generate_sample_journey_pdf <- function(sample_id, journey_data) {
+  # Ensure LaTeX packages are installed
+  ensure_latex_packages()
+
   # Create temporary directory for plots
   temp_dir <- tempdir()
 
@@ -77,6 +140,10 @@ generate_sample_journey_pdf <- function(sample_id, journey_data) {
 
   # Render the R Markdown document
   tryCatch({
+    # Set options for better error reporting
+    old_opts <- options(tinytex.verbose = TRUE)
+    on.exit(options(old_opts), add = TRUE)
+
     rmarkdown::render(
       input = template_path,
       output_file = basename(output_file),
@@ -88,12 +155,21 @@ generate_sample_journey_pdf <- function(sample_id, journey_data) {
         drs_gauge_path = drs_gauge_path
       ),
       envir = new.env(),
-      quiet = TRUE
+      quiet = FALSE  # Changed to FALSE for better debugging
     )
 
     return(output_file)
   }, error = function(e) {
-    stop("Error generating PDF report: ", e$message)
+    # Provide more helpful error message
+    error_msg <- paste0(
+      "Error generating PDF report: ", e$message,
+      "\n\nTroubleshooting steps:",
+      "\n1. Ensure TinyTeX is installed: tinytex::install_tinytex()",
+      "\n2. Install required LaTeX packages: source('R/install_pdf_dependencies.R')",
+      "\n3. Check the LaTeX log file for details",
+      "\n\nFor more help, see: https://yihui.org/tinytex/r/#debugging"
+    )
+    stop(error_msg)
   })
 }
 
@@ -104,6 +180,9 @@ generate_sample_journey_pdf <- function(sample_id, journey_data) {
 #' @return Path to the generated PDF file
 #' @export
 generate_sample_journey_pdf_simple <- function(sample_id, journey_data) {
+  # Ensure LaTeX packages are installed
+  ensure_latex_packages()
+
   # Create temporary directory for plots
   temp_dir <- tempdir()
 
@@ -226,6 +305,10 @@ generate_sample_journey_pdf_simple <- function(sample_id, journey_data) {
 
   # Render the R Markdown document
   tryCatch({
+    # Set options for better error reporting
+    old_opts <- options(tinytex.verbose = TRUE)
+    on.exit(options(old_opts), add = TRUE)
+
     rmarkdown::render(
       input = template_path,
       output_file = basename(output_file),
@@ -237,11 +320,20 @@ generate_sample_journey_pdf_simple <- function(sample_id, journey_data) {
         drs_gauge_path = drs_gauge_path
       ),
       envir = new.env(),
-      quiet = TRUE
+      quiet = FALSE  # Changed to FALSE for better debugging
     )
 
     return(output_file)
   }, error = function(e) {
-    stop("Error generating PDF report: ", e$message)
+    # Provide more helpful error message
+    error_msg <- paste0(
+      "Error generating PDF report: ", e$message,
+      "\n\nTroubleshooting steps:",
+      "\n1. Ensure TinyTeX is installed: tinytex::install_tinytex()",
+      "\n2. Install required LaTeX packages: source('R/install_pdf_dependencies.R')",
+      "\n3. Check the LaTeX log file for details",
+      "\n\nFor more help, see: https://yihui.org/tinytex/r/#debugging"
+    )
+    stop(error_msg)
   })
 }

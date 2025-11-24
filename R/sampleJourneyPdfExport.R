@@ -98,8 +98,8 @@ ensure_latex_packages <- function() {
   )
 
   message("Checking LaTeX packages...")
-  for (pkg in required_latex_packages) {
-    if (!tinytex::tinytex_root() == "") {
+  if (tinytex::tinytex_root() != "") {
+    for (pkg in required_latex_packages) {
       tryCatch({
         tinytex::tlmgr_install(pkg)
       }, error = function(e) {
@@ -118,7 +118,14 @@ ensure_latex_packages <- function() {
 #' @export
 generate_sample_journey_pdf <- function(sample_id, journey_data) {
   # Ensure LaTeX packages are installed
-  ensure_latex_packages()
+  if (!ensure_latex_packages()) {
+    stop(paste(
+      "LaTeX dependencies are not available.",
+      "Try restarting R after installing TinyTeX (tinytex::install_tinytex()).",
+      "If issues persist, manually add TinyTeX to PATH or use generate_sample_journey_pdf_simple().",
+      sep = "\n"
+    ))
+  }
 
   # Verify pdflatex is available before attempting to render
   if (!pdflatex_available()) {
@@ -241,7 +248,14 @@ generate_sample_journey_pdf <- function(sample_id, journey_data) {
 #' @export
 generate_sample_journey_pdf_simple <- function(sample_id, journey_data) {
   # Ensure LaTeX packages are installed
-  ensure_latex_packages()
+  if (!ensure_latex_packages()) {
+    stop(paste(
+      "LaTeX dependencies are not available.",
+      "Try restarting R after installing TinyTeX (tinytex::install_tinytex()).",
+      "If issues persist, manually add TinyTeX to PATH before retrying.",
+      sep = "\n"
+    ))
+  }
 
   # Verify pdflatex is available before attempting to render
   if (!pdflatex_available()) {

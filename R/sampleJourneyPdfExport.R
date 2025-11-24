@@ -9,6 +9,41 @@ suppressPackageStartupMessages({
   # webshot2 is optional - only loaded if available
 })
 
+#' Check whether pdflatex is available in PATH (and try to fix it for TinyTeX)
+#' @return TRUE if pdflatex can be located, otherwise FALSE
+pdflatex_available <- function() {
+  # First try a simple PATH lookup to avoid system2 warnings when missing
+  pdflatex_path <- Sys.which("pdflatex")
+
+  if (nzchar(pdflatex_path)) {
+    return(TRUE)
+  }
+
+  # If TinyTeX is installed, try adding its bin directory to PATH
+  if (requireNamespace("tinytex", quietly = TRUE) && tinytex::is_tinytex()) {
+    tinytex_bin <- file.path(
+      tinytex::tinytex_root(),
+      "bin",
+      ifelse(
+        .Platform$OS.type == "windows", "win32",
+        ifelse(Sys.info()["sysname"] == "Darwin", "x86_64-darwin", "x86_64-linux")
+      )
+    )
+
+    if (dir.exists(tinytex_bin)) {
+      current_path <- Sys.getenv("PATH")
+
+      if (!grepl(tinytex_bin, current_path, fixed = TRUE)) {
+        Sys.setenv(PATH = paste(tinytex_bin, current_path, sep = .Platform$path.sep))
+      }
+
+      return(nzchar(Sys.which("pdflatex")))
+    }
+  }
+
+  FALSE
+}
+
 #' Ensure required LaTeX packages are installed for PDF generation
 #' @return TRUE if successful, FALSE otherwise
 ensure_latex_packages <- function() {
@@ -39,25 +74,8 @@ ensure_latex_packages <- function() {
   }
 
   # Verify pdflatex is available
-  pdflatex_available <- tryCatch({
-    system2("pdflatex", "--version", stdout = FALSE, stderr = FALSE) == 0
-  }, error = function(e) {
-    FALSE
-  }, warning = function(w) {
-    FALSE
-  })
-
-  if (!pdflatex_available && tinytex::is_tinytex()) {
-    # TinyTeX is installed but pdflatex not in PATH - try to fix PATH
-    message("pdflatex not found in PATH. Attempting to add TinyTeX to PATH...")
-    tinytex_bin <- file.path(tinytex::tinytex_root(), "bin",
-                             ifelse(.Platform$OS.type == "windows", "win32",
-                                   ifelse(Sys.info()["sysname"] == "Darwin", "x86_64-darwin", "x86_64-linux")))
-    if (dir.exists(tinytex_bin)) {
-      current_path <- Sys.getenv("PATH")
-      Sys.setenv(PATH = paste(tinytex_bin, current_path, sep = .Platform$path.sep))
-      message("Added TinyTeX to PATH. Please verify pdflatex is now available.")
-    }
+  if (!pdflatex_available()) {
+    message("pdflatex not found in PATH. If TinyTeX was just installed, try restarting R.")
   }
 
   # Install required LaTeX packages for kableExtra and the template
@@ -103,11 +121,7 @@ generate_sample_journey_pdf <- function(sample_id, journey_data) {
   ensure_latex_packages()
 
   # Verify pdflatex is available before attempting to render
-  pdflatex_check <- tryCatch({
-    system2("pdflatex", "--version", stdout = FALSE, stderr = FALSE) == 0
-  }, error = function(e) FALSE, warning = function(w) FALSE)
-
-  if (!pdflatex_check) {
+  if (!pdflatex_available()) {
     stop(paste0(
       "pdflatex not found in system PATH.\n\n",
       "This is required for PDF generation. Please:\n",
@@ -230,11 +244,7 @@ generate_sample_journey_pdf_simple <- function(sample_id, journey_data) {
   ensure_latex_packages()
 
   # Verify pdflatex is available before attempting to render
-  pdflatex_check <- tryCatch({
-    system2("pdflatex", "--version", stdout = FALSE, stderr = FALSE) == 0
-  }, error = function(e) FALSE, warning = function(w) FALSE)
-
-  if (!pdflatex_check) {
+  if (!pdflatex_available()) {
     stop(paste0(
       "pdflatex not found in system PATH.\n\n",
       "This is required for PDF generation. Please:\n",

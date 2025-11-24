@@ -73,10 +73,9 @@ ensure_latex_packages <- function() {
     })
   }
 
-  # Verify pdflatex is available before attempting package installs
+  # Verify pdflatex is available
   if (!pdflatex_available()) {
     message("pdflatex not found in PATH. If TinyTeX was just installed, try restarting R.")
-    return(FALSE)
   }
 
   # Install required LaTeX packages for kableExtra and the template

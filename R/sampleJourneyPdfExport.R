@@ -19,29 +19,25 @@ pdflatex_available <- function() {
     return(TRUE)
   }
 
-  # If TinyTeX is installed, try locating pdflatex inside its bin folder
+  # If TinyTeX is installed, try adding its bin directory to PATH
   if (requireNamespace("tinytex", quietly = TRUE) && tinytex::is_tinytex()) {
-    tinytex_root <- tinytex::tinytex_root()
-
-    if (dir.exists(file.path(tinytex_root, "bin"))) {
-      pdflatex_candidates <- list.files(
-        file.path(tinytex_root, "bin"),
-        pattern = "(^|/)pdflatex(\\.exe)?$",
-        recursive = TRUE,
-        full.names = TRUE,
-        ignore.case = TRUE
+    tinytex_bin <- file.path(
+      tinytex::tinytex_root(),
+      "bin",
+      ifelse(
+        .Platform$OS.type == "windows", "win32",
+        ifelse(Sys.info()["sysname"] == "Darwin", "x86_64-darwin", "x86_64-linux")
       )
+    )
 
-      if (length(pdflatex_candidates) > 0) {
-        tinytex_bin <- dirname(pdflatex_candidates[[1]])
-        current_path <- Sys.getenv("PATH")
+    if (dir.exists(tinytex_bin)) {
+      current_path <- Sys.getenv("PATH")
 
-        if (!grepl(tinytex_bin, current_path, fixed = TRUE)) {
-          Sys.setenv(PATH = paste(tinytex_bin, current_path, sep = .Platform$path.sep))
-        }
-
-        return(nzchar(Sys.which("pdflatex")))
+      if (!grepl(tinytex_bin, current_path, fixed = TRUE)) {
+        Sys.setenv(PATH = paste(tinytex_bin, current_path, sep = .Platform$path.sep))
       }
+
+      return(nzchar(Sys.which("pdflatex")))
     }
   }
 
@@ -77,10 +73,9 @@ ensure_latex_packages <- function() {
     })
   }
 
-  # Verify pdflatex is available before attempting package installs
+  # Verify pdflatex is available
   if (!pdflatex_available()) {
     message("pdflatex not found in PATH. If TinyTeX was just installed, try restarting R.")
-    return(FALSE)
   }
 
   # Install required LaTeX packages for kableExtra and the template

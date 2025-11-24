@@ -21,21 +21,35 @@ pdflatex_available <- function() {
 
   # If TinyTeX is installed, try adding its bin directory to PATH
   if (requireNamespace("tinytex", quietly = TRUE) && tinytex::is_tinytex()) {
-    tinytex_bin <- file.path(
-      tinytex::tinytex_root(),
-      "bin",
-      ifelse(
-        .Platform$OS.type == "windows", "win32",
-        ifelse(Sys.info()["sysname"] == "Darwin", "x86_64-darwin", "x86_64-linux")
-      )
-    )
+    tinytex_root <- tinytex::tinytex_root()
 
-    if (dir.exists(tinytex_bin)) {
+    # TinyTeX installs into different bin subdirectories depending on platform.
+    # We prioritize the expected directory, but also include all available bin
+    # directories so Windows users get win32/win64 picked up reliably.
+    platform_bin <- if (.Platform$OS.type == "windows") {
+      "win32"
+    } else if (Sys.info()["sysname"] == "Darwin") {
+      "x86_64-darwin"
+    } else {
+      "x86_64-linux"
+    }
+
+    expected_bin <- file.path(tinytex_root, "bin", platform_bin)
+    discovered_bins <- list.dirs(file.path(tinytex_root, "bin"), full.names = TRUE, recursive = FALSE)
+
+    candidate_bins <- unique(c(expected_bin, discovered_bins))
+    existing_bins <- candidate_bins[file.exists(candidate_bins)]
+
+    if (length(existing_bins) > 0) {
       current_path <- Sys.getenv("PATH")
 
-      if (!grepl(tinytex_bin, current_path, fixed = TRUE)) {
-        Sys.setenv(PATH = paste(tinytex_bin, current_path, sep = .Platform$path.sep))
+      for (tinytex_bin in existing_bins) {
+        if (!grepl(tinytex_bin, current_path, fixed = TRUE)) {
+          current_path <- paste(tinytex_bin, current_path, sep = .Platform$path.sep)
+        }
       }
+
+      Sys.setenv(PATH = current_path)
 
       return(nzchar(Sys.which("pdflatex")))
     }
@@ -75,7 +89,15 @@ ensure_latex_packages <- function() {
 
   # Verify pdflatex is available
   if (!pdflatex_available()) {
-    message("pdflatex not found in PATH. If TinyTeX was just installed, try restarting R.")
+    warning(
+      paste(
+        "pdflatex not found in PATH.",
+        "If TinyTeX was just installed, try restarting R.",
+        "If the problem persists, follow the setup steps in R/PDF_EXPORT_GUIDE.md",
+        sep = "\n"
+      )
+    )
+    return(FALSE)
   }
 
   # Install required LaTeX packages for kableExtra and the template
@@ -234,6 +256,7 @@ generate_sample_journey_pdf <- function(sample_id, journey_data) {
       "\n1. Ensure TinyTeX is installed: tinytex::install_tinytex()",
       "\n2. Install required LaTeX packages: source('R/install_pdf_dependencies.R')",
       "\n3. Check the LaTeX log file for details",
+      "\n4. Review setup instructions in R/PDF_EXPORT_GUIDE.md",
       "\n\nFor more help, see: https://yihui.org/tinytex/r/#debugging"
     )
     stop(error_msg)
@@ -356,7 +379,7 @@ generate_sample_journey_pdf_simple <- function(sample_id, journey_data) {
 
         p <- ggplot(df, aes(x = x, y = value)) +
           geom_bar(stat = "identity", fill = gauge_color, width = 0.5) +
-          geom_hline(yintercept = 30, linetype = "dashed", color = "black", size = 1) +
+          geom_hline(yintercept = 30, linetype = "dashed", color = "black", linewidth = 1) +
           geom_text(aes(label = sprintf("%.0f µL", value)), vjust = -0.5, size = 6) +
           annotate("text", x = 1, y = 30, label = "Threshold: 30 µL",
                    vjust = -0.5, hjust = 0.5, size = 4) +
@@ -422,6 +445,7 @@ generate_sample_journey_pdf_simple <- function(sample_id, journey_data) {
       "\n1. Ensure TinyTeX is installed: tinytex::install_tinytex()",
       "\n2. Install required LaTeX packages: source('R/install_pdf_dependencies.R')",
       "\n3. Check the LaTeX log file for details",
+      "\n4. Review setup instructions in R/PDF_EXPORT_GUIDE.md",
       "\n\nFor more help, see: https://yihui.org/tinytex/r/#debugging"
     )
     stop(error_msg)

@@ -189,6 +189,17 @@ mod_ielisa_runs_server <- function(id, ielisa_data) {
         0
       }
 
+      # Single-antigen positives (positive for only one antigen)
+      single_positive <- if (all(c("positive_L13", "positive_L15") %in% names(data))) {
+        sum(
+          (data$positive_L13 & !data$positive_L15) |
+            (!data$positive_L13 & data$positive_L15),
+          na.rm = TRUE
+        )
+      } else {
+        0
+      }
+
       # Calculate percentages
       pct_positive_L13 <- if (total_samples > 0) {
         (positive_L13 / total_samples) * 100
@@ -214,8 +225,14 @@ mod_ielisa_runs_server <- function(id, ielisa_data) {
         0
       }
 
+      pct_single_positive <- if (total_samples > 0) {
+        (single_positive / total_samples) * 100
+      } else {
+        0
+      }
+
       layout_column_wrap(
-        width = 1/6,
+        width = 1/7,
         heights_equal = "row",
         value_box(
           title = "Total Files",
@@ -252,6 +269,18 @@ mod_ielisa_runs_server <- function(id, ielisa_data) {
           value = paste0(comma(both_positive), " (", sprintf("%.1f%%", pct_both_positive), ")"),
           showcase = icon("viruses"),
           theme = if (pct_both_positive >= 20) "success" else "secondary"
+        ),
+        value_box(
+          title = "Positive ≥1 Antigen",
+          value = paste0(comma(either_positive), " (", sprintf("%.1f%%", pct_either_positive), ")"),
+          showcase = icon("check-double"),
+          theme = if (pct_either_positive >= 30) "success" else "secondary"
+        ),
+        value_box(
+          title = "Positive Single Antigen",
+          value = paste0(comma(single_positive), " (", sprintf("%.1f%%", pct_single_positive), ")"),
+          showcase = icon("circle-half-stroke"),
+          theme = if (pct_single_positive >= 15) "warning" else "info"
         )
       )
     })

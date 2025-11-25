@@ -1,3 +1,11 @@
+install.packages("tinytex")
+tinytex::install_tinytex()
+tinytex::tinytex_root()
+tinytex:::is_tinytex()
+tinytex:::tinytex_paths()
+tinytex::tlmgr_conf()
+#tinytex::uninstall_tinytex()
+tinytex::install_tinytex()
 # ==============================================================================
 # PDF EXPORT DEPENDENCIES INSTALLER
 # ==============================================================================

@@ -74,8 +74,6 @@ if (requireNamespace("tinytex", quietly = TRUE)) {
     cat("=== Installing Required LaTeX Packages ===\n")
     latex_packages <- c(
       "booktabs",
-      "longtable",
-      "array",
       "multirow",
       "wrapfig",
       "float",
@@ -90,6 +88,11 @@ if (requireNamespace("tinytex", quietly = TRUE)) {
       "fancyhdr"
     )
 
+    # These packages ship with the base LaTeX distribution and cannot be installed
+    # individually via tlmgr. Including them in the installation list causes tlmgr
+    # to exit with an error even though the packages are already available.
+    builtin_latex_packages <- c("array", "longtable")
+
     for (pkg in latex_packages) {
       cat(sprintf("Installing LaTeX package: %s... ", pkg))
       tryCatch({
@@ -98,6 +101,12 @@ if (requireNamespace("tinytex", quietly = TRUE)) {
       }, error = function(e) {
         cat("(may already be installed)\n")
       })
+    }
+
+    # Inform the user about built-in packages we intentionally skip.
+    cat("\nSkipping built-in LaTeX packages (already included with TinyTeX):\n")
+    for (pkg in builtin_latex_packages) {
+      cat(sprintf("  %s\n", pkg))
     }
     cat("\n")
   }

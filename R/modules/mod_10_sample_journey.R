@@ -16,7 +16,7 @@ if (!exists("gather_sample_journey")) {
 if (!exists("plot_sample_timeline")) {
   source("R/sampleJourneyVisualizations.R")
 }
-if (!exists("generate_sample_journey_pdf_simple")) {
+if (!exists("render_sample_journey_report")) {
   source("R/sampleJourneyPdfExport.R")
 }
 

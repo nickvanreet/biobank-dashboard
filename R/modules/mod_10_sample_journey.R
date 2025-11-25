@@ -246,11 +246,20 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
           div(
             class = "d-flex justify-content-between align-items-center",
             tags$span("Export Report"),
-            downloadButton(
-              ns("download_pdf"),
-              "Download PDF",
-              icon = icon("file-pdf"),
-              class = "btn-primary"
+            div(
+              class = "d-flex gap-2",
+              downloadButton(
+                ns("download_csv"),
+                "Quick CSV",
+                icon = icon("file-arrow-down"),
+                class = "btn-outline-primary"
+              ),
+              downloadButton(
+                ns("download_pdf"),
+                "Download PDF",
+                icon = icon("file-pdf"),
+                class = "btn-primary"
+              )
             )
           )
         )
@@ -671,6 +680,63 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
             stop(e)
           })
         })
+      }
+    )
+
+    # Quick CSV export of timeline events
+    output$download_csv <- downloadHandler(
+      filename = function() {
+        data <- journey_data()
+        sample_id <- if (!is.null(data) && data$found) {
+          barcode_val <- trimws(input$barcode_search)
+          numero_val <- trimws(input$numero_search)
+
+          if (!is.null(barcode_val) && barcode_val != "") {
+            barcode_val
+          } else if (!is.null(numero_val) && numero_val != "") {
+            numero_val
+          } else {
+            "unknown"
+          }
+        } else {
+          "unknown"
+        }
+
+        sprintf(
+          "sample_journey_%s_%s.csv",
+          gsub("[^A-Za-z0-9]", "_", sample_id),
+          format(Sys.time(), "%Y%m%d_%H%M%S")
+        )
+      },
+      content = function(file) {
+        data <- journey_data()
+        req(data, data$found)
+
+        sample_label <- if (!is.null(data$sample_id) && data$sample_id != "") {
+          data$sample_id
+        } else {
+          "unknown"
+        }
+
+        export_df <- data$timeline %>%
+          mutate(
+            sample_id = sample_label,
+            date = as.Date(date)
+          ) %>%
+          select(sample_id, category, event, date, details) %>%
+          arrange(date, category, event)
+
+        if (nrow(export_df) == 0) {
+          export_df <- tibble(
+            sample_id = sample_label,
+            category = "N/A",
+            event = "No events recorded",
+            date = NA_Date_,
+            details = ""
+          )
+        }
+
+        readr::write_csv(export_df, file)
       }
     )
   })

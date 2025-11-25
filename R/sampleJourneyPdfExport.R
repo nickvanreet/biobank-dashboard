@@ -108,7 +108,13 @@ ensure_latex_packages <- function() {
     "fancyhdr"
   )
 
+  builtin_latex_packages <- c("array", "longtable")
+
   message("Checking LaTeX packages...")
+  message(
+    "Skipping built-in LaTeX packages (already included with TinyTeX): ",
+    paste(builtin_latex_packages, collapse = ", ")
+  )
   if (tinytex::tinytex_root() != "") {
     for (pkg in required_latex_packages) {
       tryCatch({

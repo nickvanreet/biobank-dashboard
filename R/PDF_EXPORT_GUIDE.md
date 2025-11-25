@@ -95,7 +95,8 @@ This script will automatically install all required LaTeX packages.
    ```
 
 2. Install required LaTeX packages (TinyTeX already includes core packages like
-   `array` and `longtable`, so they are intentionally omitted):
+   `array` and `longtable`, so they are intentionally omitted and errors about
+   them being "not present in repository" can be safely ignored):
    ```r
    tinytex::tlmgr_install(c(
      "booktabs", "multirow", "wrapfig", "float", "colortbl",

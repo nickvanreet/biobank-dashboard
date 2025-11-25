@@ -124,321 +124,88 @@ ensure_latex_packages <- function() {
   return(TRUE)
 }
 
-#' Generate PDF report for sample journey
+#' Render the modern Sample Journey report using Quarto
 #' @param sample_id The sample ID being reported
 #' @param journey_data The journey data object from gather_sample_journey
+#' @param output_dir Optional directory to write the PDF into (defaults to a temp folder)
 #' @return Path to the generated PDF file
 #' @export
-generate_sample_journey_pdf <- function(sample_id, journey_data) {
-  # Ensure LaTeX packages are installed
+render_sample_journey_report <- function(sample_id, journey_data, output_dir = NULL) {
   if (!ensure_latex_packages()) {
     stop(paste(
       "LaTeX dependencies are not available.",
-      "Try restarting R after installing TinyTeX (tinytex::install_tinytex()).",
-      "If issues persist, manually add TinyTeX to PATH or use generate_sample_journey_pdf_simple().",
+      "Install TinyTeX (tinytex::install_tinytex()) and retry.",
       sep = "\n"
     ))
   }
 
-  # Verify pdflatex is available before attempting to render
   if (!pdflatex_available()) {
-    stop(paste0(
-      "pdflatex not found in system PATH.\n\n",
-      "This is required for PDF generation. Please:\n",
-      "1. Install TinyTeX if not already installed:\n",
-      "   tinytex::install_tinytex()\n\n",
-      "2. Restart your R session to update the PATH\n\n",
-      "3. If the issue persists, manually add TinyTeX to PATH:\n",
-      "   Sys.setenv(PATH = paste(tinytex::tinytex_root(), 'bin',\n",
-      "     ifelse(.Platform$OS.type == 'windows', 'win32',\n",
-      "       ifelse(Sys.info()['sysname'] == 'Darwin', 'x86_64-darwin', 'x86_64-linux')),\n",
-      "     sep = .Platform$file.sep, ':', Sys.getenv('PATH')))\n\n",
-      "Alternatively, try the simplified PDF export:\n",
-      "   generate_sample_journey_pdf_simple(sample_id, journey_data)"
+    stop(paste(
+      "pdflatex not found in system PATH.",
+      "Install TinyTeX and restart R to refresh PATH, then try again.",
+      sep = "\n"
     ))
   }
 
-  # Create temporary directory for plots
-  temp_dir <- tempdir()
-
-  # Generate timeline plot as static image
-  timeline_plot_path <- NULL
-  if (!is.null(journey_data$timeline) && nrow(journey_data$timeline) > 0) {
-    timeline_plot_path <- file.path(temp_dir, "timeline_plot.png")
-
-    tryCatch({
-      # Create the plotly timeline
-      p <- plot_sample_timeline(journey_data$timeline)
-
-      # Save as static image using plotly's export
-      # Note: This requires the plotly and webshot2 packages
-      # If webshot2 is not available, this will use kaleido
-      if (requireNamespace("plotly", quietly = TRUE)) {
-        plotly::save_image(p, timeline_plot_path, width = 1200, height = 600)
-      }
-    }, error = function(e) {
-      message("Warning: Could not save timeline plot: ", e$message)
-      timeline_plot_path <<- NULL
-    })
+  if (!requireNamespace("quarto", quietly = TRUE)) {
+    stop("The 'quarto' package is required to render the PDF. Install it via install.packages('quarto').")
   }
 
-  # Generate DRS gauge plot if available
-  drs_gauge_path <- NULL
-  if (nrow(journey_data$extraction_data) > 0) {
-    extraction <- journey_data$extraction_data[nrow(journey_data$extraction_data), ]
-
-    if ("drs_volume_ml" %in% names(extraction) && !is.na(extraction$drs_volume_ml)) {
-      drs_gauge_path <- file.path(temp_dir, "drs_gauge.png")
-
-      tryCatch({
-        # Create the DRS gauge plot
-        p <- plot_drs_gauge(extraction$drs_volume_ml)
-
-        # Save as static image
-        if (requireNamespace("plotly", quietly = TRUE)) {
-          plotly::save_image(p, drs_gauge_path, width = 600, height = 400)
-        }
-      }, error = function(e) {
-        message("Warning: Could not save DRS gauge plot: ", e$message)
-        drs_gauge_path <<- NULL
-      })
-    }
+  template_path <- file.path("reports", "sample_report.qmd")
+  if (!file.exists(template_path)) {
+    stop("Template file not found at: ", template_path)
   }
 
-  # Find the R Markdown template
-  template_path <- system.file("R", "sample_journey_report_template.Rmd", package = ".")
+  out_dir <- if (!is.null(output_dir)) output_dir else file.path(tempdir(), "sample_journey_report")
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-  # If not found in package, look in the R directory
-  if (!file.exists(template_path) || template_path == "") {
-    template_path <- "R/sample_journey_report_template.Rmd"
+  output_file <- file.path(
+    out_dir,
+    sprintf(
+      "sample_journey_%s_%s.pdf",
+      gsub("[^A-Za-z0-9]", "_", sample_id),
+      format(Sys.time(), "%Y%m%d_%H%M%S")
+    )
+  )
+
+  logo_dir <- file.path(getwd(), "logo")
+  if (!dir.exists(logo_dir)) {
+    logo_dir <- "logo"
   }
 
-  # Generate output file path
-  output_file <- file.path(temp_dir, sprintf("sample_journey_%s_%s.pdf",
-                                              gsub("[^A-Za-z0-9]", "_", sample_id),
-                                              format(Sys.time(), "%Y%m%d_%H%M%S")))
-
-  # Render the R Markdown document
   tryCatch({
-    # Set options for better error reporting
-    old_opts <- options(tinytex.verbose = TRUE)
-    on.exit(options(old_opts), add = TRUE)
-
-    rmarkdown::render(
+    quarto::quarto_render(
       input = template_path,
-      output_file = basename(output_file),
-      output_dir = temp_dir,
-      params = list(
+      execute_params = list(
         sample_id = sample_id,
         journey_data = journey_data,
-        timeline_plot_path = timeline_plot_path,
-        drs_gauge_path = drs_gauge_path
+        logo_dir = logo_dir
       ),
-      envir = new.env(),
-      quiet = FALSE  # Changed to FALSE for better debugging
+      output_file = basename(output_file),
+      output_dir = out_dir,
+      quiet = TRUE
     )
 
     return(output_file)
   }, error = function(e) {
-    # Provide more helpful error message
     error_msg <- paste0(
       "Error generating PDF report: ", e$message,
-      "\n\nTroubleshooting steps:",
-      "\n1. Ensure TinyTeX is installed: tinytex::install_tinytex()",
-      "\n2. Install required LaTeX packages: source('R/install_pdf_dependencies.R')",
-      "\n3. Check the LaTeX log file for details",
-      "\n4. Review setup instructions in R/PDF_EXPORT_GUIDE.md",
-      "\n\nFor more help, see: https://yihui.org/tinytex/r/#debugging"
+      "\n\nEnsure Quarto CLI is installed and available in PATH. For guidance, see R/PDF_EXPORT_GUIDE.md."
     )
     stop(error_msg)
   })
 }
 
-#' Alternative function to generate PDF without plotly static exports
-#' Uses ggplot2 instead for better compatibility
-#' @param sample_id The sample ID being reported
-#' @param journey_data The journey data object from gather_sample_journey
-#' @return Path to the generated PDF file
+#' Generate PDF report for sample journey (legacy entry point)
+#' @inheritParams render_sample_journey_report
+#' @export
+generate_sample_journey_pdf <- function(sample_id, journey_data) {
+  render_sample_journey_report(sample_id, journey_data)
+}
+
+#' Alternative function retained for backward compatibility
+#' @inheritParams render_sample_journey_report
 #' @export
 generate_sample_journey_pdf_simple <- function(sample_id, journey_data) {
-  # Ensure LaTeX packages are installed
-  if (!ensure_latex_packages()) {
-    stop(paste(
-      "LaTeX dependencies are not available.",
-      "Try restarting R after installing TinyTeX (tinytex::install_tinytex()).",
-      "If issues persist, manually add TinyTeX to PATH before retrying.",
-      sep = "\n"
-    ))
-  }
-
-  # Verify pdflatex is available before attempting to render
-  if (!pdflatex_available()) {
-    stop(paste0(
-      "pdflatex not found in system PATH.\n\n",
-      "This is required for PDF generation. Please:\n",
-      "1. Install TinyTeX if not already installed:\n",
-      "   tinytex::install_tinytex()\n\n",
-      "2. Restart your R session to update the PATH\n\n",
-      "3. If the issue persists, manually add TinyTeX to PATH:\n",
-      "   Sys.setenv(PATH = paste(tinytex::tinytex_root(), 'bin',\n",
-      "     ifelse(.Platform$OS.type == 'windows', 'win32',\n",
-      "       ifelse(Sys.info()['sysname'] == 'Darwin', 'x86_64-darwin', 'x86_64-linux')),\n",
-      "     sep = .Platform$file.sep, ':', Sys.getenv('PATH')))"
-    ))
-  }
-
-  # Create temporary directory for plots
-  temp_dir <- tempdir()
-
-  # Generate timeline plot as static image using ggplot2
-  timeline_plot_path <- NULL
-  if (!is.null(journey_data$timeline) && nrow(journey_data$timeline) > 0) {
-    timeline_plot_path <- file.path(temp_dir, "timeline_plot.png")
-
-    tryCatch({
-      # Create a ggplot2 version of the timeline
-      timeline_data <- journey_data$timeline %>%
-        mutate(
-          color = case_when(
-            category == "Biobank" ~ "#4F46E5",
-            category == "Extraction" ~ "#10B981",
-            category == "MIC" ~ "#F59E0B",
-            category == "ELISA" ~ "#06B6D4",
-            category == "iELISA" ~ "#8B5CF6",
-            TRUE ~ "#999999"
-          )
-        )
-
-      p <- ggplot(timeline_data, aes(x = date, y = event_id, color = category)) +
-        geom_point(size = 4) +
-        scale_y_reverse(breaks = timeline_data$event_id,
-                       labels = timeline_data$event) +
-        scale_color_manual(values = c(
-          "Biobank" = "#4F46E5",
-          "Extraction" = "#10B981",
-          "MIC" = "#F59E0B",
-          "ELISA" = "#06B6D4",
-          "iELISA" = "#8B5CF6"
-        )) +
-        labs(
-          title = "Sample Journey Timeline",
-          x = "Date",
-          y = "",
-          color = "Category"
-        ) +
-        theme_minimal() +
-        theme(
-          legend.position = "bottom",
-          axis.text.y = element_text(hjust = 1),
-          panel.grid.major.x = element_line(color = "gray90"),
-          panel.grid.major.y = element_line(color = "gray90")
-        )
-
-      ggsave(timeline_plot_path, plot = p, width = 10, height = 6, dpi = 150)
-    }, error = function(e) {
-      message("Warning: Could not save timeline plot: ", e$message)
-      timeline_plot_path <<- NULL
-    })
-  }
-
-  # Generate DRS gauge plot as a simple bar chart
-  drs_gauge_path <- NULL
-  if (nrow(journey_data$extraction_data) > 0) {
-    extraction <- journey_data$extraction_data[nrow(journey_data$extraction_data), ]
-
-    if ("drs_volume_ml" %in% names(extraction) && !is.na(extraction$drs_volume_ml)) {
-      drs_gauge_path <- file.path(temp_dir, "drs_gauge.png")
-
-      tryCatch({
-        volume_ul <- extraction$drs_volume_ml * 1000
-
-        # Determine color based on thresholds
-        gauge_color <- if (volume_ul >= 30) {
-          "#4daf4a"  # Green for good
-        } else if (volume_ul >= 20) {
-          "#ff7f00"  # Orange for warning
-        } else {
-          "#e41a1c"  # Red for critical
-        }
-
-        # Create a simple bar chart representation
-        df <- data.frame(
-          x = c("DRS Volume"),
-          value = volume_ul,
-          threshold = 30
-        )
-
-        p <- ggplot(df, aes(x = x, y = value)) +
-          geom_bar(stat = "identity", fill = gauge_color, width = 0.5) +
-          geom_hline(yintercept = 30, linetype = "dashed", color = "black", linewidth = 1) +
-          geom_text(aes(label = sprintf("%.0f µL", value)), vjust = -0.5, size = 6) +
-          annotate("text", x = 1, y = 30, label = "Threshold: 30 µL",
-                   vjust = -0.5, hjust = 0.5, size = 4) +
-          ylim(0, max(200, volume_ul * 1.2)) +
-          labs(
-            title = "DRS Volume",
-            x = "",
-            y = "Volume (µL)"
-          ) +
-          theme_minimal() +
-          theme(
-            axis.text.x = element_blank(),
-            axis.ticks.x = element_blank(),
-            panel.grid.major.x = element_blank()
-          )
-
-        ggsave(drs_gauge_path, plot = p, width = 6, height = 4, dpi = 150)
-      }, error = function(e) {
-        message("Warning: Could not save DRS gauge plot: ", e$message)
-        drs_gauge_path <<- NULL
-      })
-    }
-  }
-
-  # Find the R Markdown template
-  template_path <- "R/sample_journey_report_template.Rmd"
-
-  if (!file.exists(template_path)) {
-    stop("Template file not found at: ", template_path)
-  }
-
-  # Generate output file path
-  output_file <- file.path(temp_dir, sprintf("sample_journey_%s_%s.pdf",
-                                              gsub("[^A-Za-z0-9]", "_", sample_id),
-                                              format(Sys.time(), "%Y%m%d_%H%M%S")))
-
-  # Render the R Markdown document
-  tryCatch({
-    # Set options for better error reporting
-    old_opts <- options(tinytex.verbose = TRUE)
-    on.exit(options(old_opts), add = TRUE)
-
-    rmarkdown::render(
-      input = template_path,
-      output_file = basename(output_file),
-      output_dir = temp_dir,
-      params = list(
-        sample_id = sample_id,
-        journey_data = journey_data,
-        timeline_plot_path = timeline_plot_path,
-        drs_gauge_path = drs_gauge_path
-      ),
-      envir = new.env(),
-      quiet = FALSE  # Changed to FALSE for better debugging
-    )
-
-    return(output_file)
-  }, error = function(e) {
-    # Provide more helpful error message
-    error_msg <- paste0(
-      "Error generating PDF report: ", e$message,
-      "\n\nTroubleshooting steps:",
-      "\n1. Ensure TinyTeX is installed: tinytex::install_tinytex()",
-      "\n2. Install required LaTeX packages: source('R/install_pdf_dependencies.R')",
-      "\n3. Check the LaTeX log file for details",
-      "\n4. Review setup instructions in R/PDF_EXPORT_GUIDE.md",
-      "\n\nFor more help, see: https://yihui.org/tinytex/r/#debugging"
-    )
-    stop(error_msg)
-  })
+  render_sample_journey_report(sample_id, journey_data)
 }

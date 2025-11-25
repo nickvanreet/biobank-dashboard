@@ -107,7 +107,15 @@ ensure_latex_packages <- function() {
     "ulem",
     "makecell",
     "xcolor",
-    "fancyhdr"
+    "fancyhdr",
+    # Quarto sample report styling dependencies
+    "tcolorbox",
+    "paracol",
+    "tabularx",
+    "fontawesome5",
+    "titlesec",
+    "setspace",
+    "enumitem"
   )
 
   message("Checking LaTeX packages...")

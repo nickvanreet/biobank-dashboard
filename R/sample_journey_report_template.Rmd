@@ -290,7 +290,7 @@ if (nrow(data$mic_data) > 0) {
       } else {
         "Poor RNA preservation"
       }
-      cat(sprintf("- RNA Preservation: %s (ΔCq: %.1f)\n", rnasep_status, delta_rnasep))
+      cat(sprintf("- RNA Preservation: %s ($\\Delta$Cq: %.1f)\n", rnasep_status, delta_rnasep))
     }
 
     # Double detection
@@ -301,7 +301,7 @@ if (nrow(data$mic_data) > 0) {
     }
 
     if (!is.na(delta_177t_18s2) && marker_177t == "Positive" && marker_18s2 == "Positive") {
-      cat(sprintf("- Double detection confirmed (Δ: %.1f)\n", delta_177t_18s2))
+      cat(sprintf("- Double detection confirmed ($\\Delta$: %.1f)\n", delta_177t_18s2))
     }
 
     if (i < nrow(data$mic_data)) {

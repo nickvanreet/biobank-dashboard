@@ -650,11 +650,11 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
         withProgress(message = "Generating PDF report...", value = 0, {
           incProgress(0.2, detail = "Preparing data...")
 
-          # Generate the PDF using the simple method (better compatibility)
+          # Generate the PDF using the modern Quarto template
           incProgress(0.3, detail = "Rendering report...")
 
           tryCatch({
-            pdf_path <- generate_sample_journey_pdf_simple(sample_id, data)
+            pdf_path <- render_sample_journey_report(sample_id, data)
 
             incProgress(0.4, detail = "Finalizing...")
 

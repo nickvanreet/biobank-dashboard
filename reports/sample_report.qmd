@@ -1,0 +1,385 @@
+---
+title: "Sample Journey Report"
+format:
+  pdf:
+    toc: false
+    number-sections: false
+    geometry: margin=0.75in
+    include-in-header: sample_report.sty
+lang: en
+params:
+  sample_id: "Unknown"
+  journey_data: !expr list()
+  report_date: !expr format(Sys.Date(), "%d %B %Y")
+  logo_dir: "logo"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+library(tidyverse)
+library(lubridate)
+library(kableExtra)
+library(glue)
+`%||%` <- function(x, y) {
+  if (is.null(x) || length(x) == 0) return(y)
+  if (length(x) == 1 && is.na(x)) return(y)
+  x
+}
+
+journey <- params$journey_data
+sample_id <- params$sample_id
+report_date <- params$report_date
+logo_dir <- params$logo_dir
+
+format_date <- function(x, empty = "Not recorded") {
+  if (is.null(x) || all(is.na(x))) return(empty)
+  x <- suppressWarnings(as.Date(x))
+  ifelse(!is.na(x), format(x, "%d %b %Y"), empty)
+}
+
+first_non_empty <- function(df, candidates) {
+  for (col in candidates) {
+    if (col %in% names(df)) {
+      val <- df[[col]][1]
+      if (!is.na(val) && val != "") return(val)
+    }
+  }
+  NA
+}
+
+pill <- function(text, tone = "muted") {
+  sprintf("\\statuspill{%s}{%s}", tone, text)
+}
+
+final_call_badge <- function(call) {
+  if (is.na(call) || call == "") return(pill("Not available", "muted"))
+  call_upper <- toupper(call)
+  if (str_detect(call_upper, "POS")) {
+    pill(call, "success")
+  } else if (str_detect(call_upper, "NEG")) {
+    pill(call, "danger")
+  } else {
+    pill(call, "warning")
+  }
+}
+
+confidence_badge <- function(conf) {
+  if (is.na(conf) || conf == "") return(pill("Unknown", "muted"))
+  case_when(
+    conf == "High" ~ pill("High", "success"),
+    conf == "Medium" ~ pill("Medium", "warning"),
+    conf == "Low" ~ pill("Low", "danger"),
+    TRUE ~ pill(conf, "muted")
+  )
+}
+
+qc_badge <- function(flag) {
+  if (is.na(flag) || flag == "") return(pill("N/A", "muted"))
+  if (str_detect(toupper(flag), "PASS")) {
+    pill(flag, "success")
+  } else {
+    pill(flag, "danger")
+  }
+}
+
+safe_table <- function(df, ...) {
+  if (nrow(df) == 0) {
+    knitr::asis_output("\\muted{No data available}")
+  } else {
+    df %>%
+      kbl(align = strrep("l", ncol(.)), booktabs = TRUE, escape = FALSE, ...) %>%
+      kable_styling(latex_options = c("hold_position"), full_width = FALSE, position = "center")
+  }
+}
+
+timeline_palette <- c(
+  "Biobank" = "#4F46E5",
+  "Extraction" = "#10B981",
+  "MIC" = "#F59E0B",
+  "ELISA" = "#009ca6",
+  "iELISA" = "#8B5CF6"
+)
+
+timeline_plot <- NULL
+if (!is.null(journey$timeline) && nrow(journey$timeline) > 0) {
+  timeline <- journey$timeline %>%
+    mutate(
+      category = factor(category, levels = names(timeline_palette)),
+      event_id = row_number()
+    )
+  timeline_plot <- ggplot(timeline, aes(x = date, y = event_id, color = category)) +
+    geom_segment(aes(x = min(timeline$date), xend = date, yend = event_id), linewidth = 0.7) +
+    geom_point(size = 3.6) +
+    scale_y_reverse(breaks = timeline$event_id, labels = timeline$event) +
+    scale_color_manual(values = timeline_palette, na.value = "#6b7280") +
+    labs(x = NULL, y = NULL) +
+    theme_minimal(base_size = 10) +
+    theme(
+      legend.position = "bottom",
+      panel.grid.major.y = element_blank(),
+      panel.grid.major.x = element_line(color = "#e5e7eb"),
+      axis.text.y = element_text(size = 9)
+    )
+}
+
+logo_block <- function(path) {
+  if (file.exists(path)) {
+    glue("\\begin{minipage}{0.23\\linewidth}\\centering\\includegraphics[height=1.2cm]{{{path}}}\\end{minipage}")
+  } else {
+    glue("\\begin{minipage}{0.23\\linewidth}\\centering\\fbox{Logo missing}\\end{minipage}")
+  }
+}
+
+logo_row <- paste(
+  vapply(
+    file.path(logo_dir, c("itm.png", "inrb.png", "pnltha.png", "dipumba.png")),
+    logo_block,
+    character(1)
+  ),
+  collapse = "\n"
+)
+```
+
+\vspace*{-10pt}
+
+::: {.center}
+`r knitr::asis_output(logo_row)`
+:::
+
+\vspace{6pt}
+
+# Sample Journey Report
+
+\muted{Report generated on `r report_date`}
+
+\begin{tcolorbox}[colback=cardbg,colframe=cardborder,boxrule=0pt,arc=1mm, left=4mm,right=4mm,top=3mm,bottom=3mm]
+\textbf{Sample ID:} \textcolor{itmblue}{`r sample_id`}
+\end{tcolorbox}
+
+\begin{paracol}{2}
+
+##
+::: dashboardcard
+##### Identity Card
+
+```{r identity-card}
+biobank <- journey$biobank_info
+
+identity_tbl <- tibble(
+  Field = c(
+    "Province", "Health Zone", "Health Structure", "Collection Date",
+    "Date sent to INRB", "DRS volume", "Lab number", "Barcode"
+  ),
+  Value = c(
+    if (!is.null(biobank) && nrow(biobank) > 0) first_non_empty(biobank, c("province", "province_zone")) else NA,
+    if (!is.null(biobank) && nrow(biobank) > 0) first_non_empty(biobank, c("health_zone", "zone_sante")) else NA,
+    if (!is.null(biobank) && nrow(biobank) > 0) first_non_empty(biobank, c("health_structure", "structure_sanitaire")) else NA,
+    if (!is.null(biobank) && nrow(biobank) > 0) format_date(first_non_empty(biobank, c("date_sample", "date_prelevement", ".__date_sample"))) else NA,
+    if (!is.null(biobank) && nrow(biobank) > 0) format_date(first_non_empty(biobank, c("date_sent_inrb", "date_envoi_inrb", "date_inrb"))) else NA,
+    if (nrow(journey$extraction_data) > 0) {
+      vol <- journey$extraction_data$drs_volume_ml %>% na.omit() %>% tail(1)
+      if (length(vol) == 0) NA else sprintf("%.1f mL (%.0f \\textmu L)", vol, vol * 1000)
+    } else NA,
+    if (nrow(journey$extraction_data) > 0) first_non_empty(journey$extraction_data, c("numero")) else NA,
+    if (!is.null(biobank) && nrow(biobank) > 0) first_non_empty(biobank, c("code_barres_kps", "barcode")) else NA
+  )
+) %>%
+  mutate(Value = replace_na(Value, "Not recorded"))
+
+safe_table(identity_tbl, col.names = c("Field", "Value"))
+```
+
+#### Mini Timeline
+```{r mini-timeline, fig.height=2.8, fig.width=6}
+if (!is.null(timeline_plot)) timeline_plot
+```
+:::
+
+\switchcolumn
+
+##
+::: dashboardcard
+##### Biobank & Extraction Summary
+```{r extraction-summary}
+latest_extraction <- if (nrow(journey$extraction_data) > 0) {
+  journey$extraction_data %>%
+    mutate(.extract_date = coalesce(as.Date(extraction_date), as.Date(date_extraction))) %>%
+    arrange(desc(.extract_date)) %>%
+    slice(1)
+} else NULL
+
+summary_tbl <- tibble(
+  Metric = c("Extractions", "Latest extraction", "Volume", "Position"),
+  Value = c(
+    nrow(journey$extraction_data),
+    if (!is.null(latest_extraction)) format_date(latest_extraction$.extract_date) else "None",
+    if (!is.null(latest_extraction) && "drs_volume_ml" %in% names(latest_extraction) && !is.na(latest_extraction$drs_volume_ml)) {
+      sprintf("%.1f mL", latest_extraction$drs_volume_ml)
+    } else {"Not recorded"},
+    if (!is.null(latest_extraction) && "position" %in% names(latest_extraction)) {
+      ifelse(is.na(latest_extraction$position), "Not recorded", latest_extraction$position)
+    } else {"Not recorded"}
+  )
+)
+
+safe_table(summary_tbl, col.names = c("Metric", "Value"))
+```
+:::
+
+::: dashboardcard
+##### MIC qPCR Summary
+```{r mic-summary}
+mic <- if (nrow(journey$mic_data) > 0) {
+  journey$mic_data %>%
+    mutate(test_date = coalesce(as.Date(RunDate), as.Date(RunDateTime))) %>%
+    arrange(desc(test_date)) %>%
+    slice(1)
+} else NULL
+
+if (is.null(mic)) {
+  knitr::asis_output("\\muted{No MIC/qPCR results found}")
+} else {
+  final_call <- if ("FinalCall" %in% names(mic)) mic$FinalCall else NA
+  confidence <- if ("ConfidenceScore" %in% names(mic)) mic$ConfidenceScore else NA
+  quality <- if ("PipelineQualityFlag" %in% names(mic)) mic$PipelineQualityFlag else NA
+
+  cat(paste0("**Final call:** ", final_call_badge(final_call), "\\\\n\\n"))
+  cat(paste0("**Confidence:** ", confidence_badge(confidence), "\\\\n\\n"))
+  if (!is.null(mic$test_date)) {
+    cat(paste0("\\muted{Test date: ", format_date(mic$test_date), "}\\\\n\\n"))
+  }
+
+  target_cols <- names(mic)[grepl("target|ct|cq|parasite", names(mic), ignore.case = TRUE)]
+  target_cols <- setdiff(target_cols, c("test_date"))
+  if (length(target_cols) > 0) {
+    target_tbl <- mic %>%
+      select(any_of(target_cols)) %>%
+      pivot_longer(everything(), names_to = "Target", values_to = "Value") %>%
+      mutate(Target = str_replace_all(Target, "_", " "), Value = ifelse(is.na(Value), "-", as.character(Value))) %>%
+      slice_head(n = 4)
+    safe_table(target_tbl, col.names = c("Target", "Value"))
+  }
+
+  if (!is.na(quality)) {
+    cat("\\smallskip")
+    cat(paste0("Quality: ", qc_badge(quality)))
+  }
+}
+```
+:::
+
+\end{paracol}
+
+\newpage
+
+\begin{paracol}{2}
+
+##
+::: dashboardcard
+##### ELISA PE
+```{r elisa-pe}
+elisa_pe <- journey$elisa_pe_data
+if (nrow(elisa_pe) == 0) {
+  knitr::asis_output("\\muted{No ELISA PE records}")
+} else {
+  tbl <- elisa_pe %>%
+    transmute(
+      Date = format_date(coalesce(as.Date(date), as.Date(Date), as.Date(DateTest))),
+      DOD = coalesce(DOD, dod, dod_value),
+      `PP%` = coalesce(pp_percent, PP, PP_percent, pp),
+      Result = coalesce(Result, result)
+    ) %>%
+    mutate(across(c(DOD, `PP%`), ~ ifelse(is.na(.x), "-", as.character(.x))),
+           Result = ifelse(is.na(Result), "-", Result))
+  safe_table(tbl, col.names = c("Date", "DOD", "PP%", "Result"))
+}
+```
+:::
+
+::: dashboardcard
+##### ELISA VSG
+```{r elisa-vsg}
+elisa_vsg <- journey$elisa_vsg_data
+if (nrow(elisa_vsg) == 0) {
+  knitr::asis_output("\\muted{No ELISA VSG records}")
+} else {
+  tbl <- elisa_vsg %>%
+    transmute(
+      Date = format_date(coalesce(as.Date(date), as.Date(Date), as.Date(DateTest))),
+      DOD = coalesce(DOD, dod, dod_value),
+      `PP%` = coalesce(pp_percent, PP, PP_percent, pp),
+      Result = coalesce(Result, result)
+    ) %>%
+    mutate(across(c(DOD, `PP%`), ~ ifelse(is.na(.x), "-", as.character(.x))),
+           Result = ifelse(is.na(Result), "-", Result))
+  safe_table(tbl, col.names = c("Date", "DOD", "PP%", "Result"))
+}
+```
+:::
+
+\switchcolumn
+
+##
+::: dashboardcard
+##### iELISA Results
+```{r ielisa}
+ielisa <- journey$ielisa_data
+if (nrow(ielisa) == 0) {
+  knitr::asis_output("\\muted{No iELISA records}")
+} else {
+  tbl <- ielisa %>%
+    mutate(TestDate = coalesce(as.Date(date), as.Date(Date))) %>%
+    arrange(desc(TestDate)) %>%
+    transmute(
+      Date = format_date(TestDate),
+      `LiTat 1.3` = coalesce(LiTat1.3, LiTat_1.3, LiTat_13, LiTat1_3),
+      `LiTat 1.5` = coalesce(LiTat1.5, LiTat_1.5, LiTat_15, LiTat1_5),
+      Inhibition = coalesce(Inhibition, inhibition, inhibition_percent),
+      OD = coalesce(OD, od)
+    ) %>%
+    mutate(across(everything(), ~ ifelse(is.na(.x), "-", as.character(.x))))
+  safe_table(tbl, col.names = c("Date", "LiTat 1.3", "LiTat 1.5", "Inhibition %", "OD"))
+}
+```
+:::
+
+::: dashboardcard
+##### Overall Interpretation
+```{r interpretation}
+interpretation <- "Data insufficient"
+if (nrow(journey$mic_data) > 0) {
+  mic_latest <- journey$mic_data %>%
+    mutate(test_date = coalesce(as.Date(RunDate), as.Date(RunDateTime))) %>%
+    arrange(desc(test_date)) %>%
+    slice(1)
+  mic_call <- mic_latest$FinalCall %||% ""
+  if (str_detect(toupper(mic_call), "POS")) interpretation <- "Strongly Positive"
+  else if (str_detect(toupper(mic_call), "NEG")) interpretation <- "Negative"
+  else interpretation <- "Inconclusive"
+}
+
+if (interpretation == "Data insufficient" && nrow(journey$elisa_pe_data) > 0) {
+  positive_count <- sum(str_detect(toupper(journey$elisa_pe_data$Result %||% ""), "POS"), na.rm = TRUE)
+  interpretation <- if (positive_count > 0) "Positive" else "Negative"
+}
+
+cat(glue("**{interpretation}**\\n\\n"))
+cat("Summary based on the most recent MIC and serology findings.\n")
+```
+:::
+
+::: dashboardcard
+##### Quality Alerts
+```{r alerts}
+alerts <- journey$alerts
+if (length(alerts) == 0) {
+  knitr::asis_output("\\muted{No quality alerts.}")
+} else {
+  items <- map_chr(alerts, ~ paste("-", .x))
+  knitr::asis_output(paste(items, collapse = "\\n"))
+}
+```
+:::
+
+\end{paracol}

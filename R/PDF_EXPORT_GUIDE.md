@@ -131,28 +131,27 @@ If the timeline or DRS gauge plots are not appearing:
 
 1. **R/modules/mod_10_sample_journey.R** - Main module with UI and server logic
 2. **R/sampleJourneyPdfExport.R** - PDF generation functions
-3. **R/sample_journey_report_template.Rmd** - R Markdown template for the report
-4. **R/sampleJourneyVisualizations.R** - Visualization functions (plots)
+3. **reports/sample_report.qmd** - Quarto template for the modern dashboard PDF
+4. **reports/sample_report.sty** - Shared LaTeX styling for the PDF
+5. **R/sampleJourneyVisualizations.R** - Visualization functions (plots)
 
 ### PDF Generation Process
 
 1. User clicks "Download PDF" button
-2. System creates temporary directory for intermediate files
-3. Timeline plot is saved as static PNG image using ggplot2
-4. DRS gauge (if available) is saved as static PNG image
-5. R Markdown template is rendered with:
-   - Sample ID
-   - Journey data (all test results)
-   - Paths to plot images
-6. LaTeX generates final PDF from Markdown
-7. PDF is downloaded to user's browser
+2. System creates a temporary directory for intermediate files
+3. Quarto renders `reports/sample_report.qmd` with:
+   - Sample ID and journey data
+   - Inline ggplot2 timeline
+   - Logo paths from `/logo`
+4. LaTeX generates final PDF from the Quarto output
+5. PDF is downloaded to user's browser
 
 ### Customization
 
 To customize the PDF appearance, edit:
-- **Template**: `R/sample_journey_report_template.Rmd`
-- **Styling**: Modify the YAML header in the template
-- **Colors**: Adjust the plot generation code in `R/sampleJourneyPdfExport.R`
+- **Template**: `reports/sample_report.qmd`
+- **Styling**: `reports/sample_report.sty`
+- **Colors**: Theme values in the Quarto template
 
 ## Future Enhancements
 

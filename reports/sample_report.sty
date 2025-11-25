@@ -1,0 +1,72 @@
+% Custom styling for the Sample Journey Report
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+\usepackage{graphicx}
+\usepackage{paracol}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{fontawesome5}
+\usepackage{titlesec}
+\usepackage{setspace}
+\usepackage{enumitem}
+\usepackage{multirow}
+\usepackage{booktabs}
+
+% Colors
+\definecolor{itmblue}{HTML}{002d5c}
+\definecolor{accent}{HTML}{009ca6}
+\definecolor{cardbg}{HTML}{f4f5f7}
+\definecolor{cardborder}{HTML}{e0e2e7}
+\definecolor{bodytext}{HTML}{333333}
+\definecolor{success}{HTML}{0E9F6E}
+\definecolor{danger}{HTML}{d7263d}
+\definecolor{warning}{HTML}{f59e0b}
+\definecolor{muted}{HTML}{6b7280}
+
+% Section formatting
+\titleformat*{\section}{\Large\bfseries\color{itmblue}}
+\titleformat*{\subsection}{\large\bfseries\color{itmblue}}
+\setlist[itemize]{left=10pt}
+
+% Card environment
+\newtcolorbox{dashboardcard}[2][]{
+  enhanced,
+  breakable,
+  colback=cardbg,
+  colframe=cardborder,
+  boxrule=0pt,
+  arc=2mm,
+  left=4mm,
+  right=4mm,
+  top=3mm,
+  bottom=3mm,
+  title=\textbf{#2},
+  coltitle=itmblue,
+  fonttitle=\large,
+  borderline horizontal={0.6pt}{0pt}{cardborder}
+}
+
+% Badge command
+\newtcbox{\statuspill}[2][]{
+  nobeforeafter,
+  tcbox raise base,
+  enhanced,
+  frame hidden,
+  boxrule=0pt,
+  colback=#2!15,
+  coltext=#2!60!black,
+  left=4pt,
+  right=4pt,
+  top=2pt,
+  bottom=2pt,
+  arc=4pt,
+  boxsep=0pt,
+  valign=center,
+  #1
+}
+
+% Text helpers
+\newcommand{\muted}[1]{\textcolor{muted}{#1}}
+\newcommand{\smallcaps}[1]{\textsc{#1}}
+\setstretch{1.05}
+\setlength{\columnsep}{14pt}

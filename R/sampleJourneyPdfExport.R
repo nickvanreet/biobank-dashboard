@@ -94,8 +94,6 @@ ensure_latex_packages <- function() {
   # Install required LaTeX packages for kableExtra and the template
   required_latex_packages <- c(
     "booktabs",
-    "longtable",
-    "array",
     "multirow",
     "wrapfig",
     "float",
@@ -181,8 +179,7 @@ render_sample_journey_report <- function(sample_id, journey_data, output_dir = N
         journey_data = journey_data,
         logo_dir = logo_dir
       ),
-      output_file = basename(output_file),
-      output_dir = out_dir,
+      output_file = output_file,
       quiet = TRUE
     )
 

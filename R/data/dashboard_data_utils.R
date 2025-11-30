@@ -250,6 +250,8 @@ prepare_assay_dashboard_data <- function(
   sample_matrix <- tidy %>%
     select(sample_id, assay, status) %>%
     distinct() %>%
+    group_by(sample_id, assay) %>%
+    summarise(status = dplyr::first(status), .groups = "drop") %>%
     tidyr::pivot_wider(names_from = assay, values_from = status)
 
   # Pairwise agreement (% of samples with same status, ignoring Missing)
@@ -259,13 +261,19 @@ prepare_assay_dashboard_data <- function(
       rowwise() %>%
       mutate(
         agreement = {
-          if (assay1 == assay2) return(100)
-          a1 <- tidy %>% filter(assay == assay1, !is.na(status)) %>% select(sample_id, status)
-          a2 <- tidy %>% filter(assay == assay2, !is.na(status)) %>% select(sample_id, status)
-          joined <- inner_join(a1, a2, by = "sample_id", suffix = c("1", "2")) %>%
-            filter(status1 != "Missing" & status2 != "Missing")
-          if (!nrow(joined)) return(NA_real_)
-          mean(joined$status1 == joined$status2) * 100
+          if (assay1 == assay2) {
+            100
+          } else {
+            a1 <- tidy %>% filter(assay == assay1, !is.na(status)) %>% select(sample_id, status)
+            a2 <- tidy %>% filter(assay == assay2, !is.na(status)) %>% select(sample_id, status)
+            joined <- inner_join(a1, a2, by = "sample_id", suffix = c("1", "2")) %>%
+              filter(status1 != "Missing" & status2 != "Missing")
+            if (!nrow(joined)) {
+              NA_real_
+            } else {
+              mean(joined$status1 == joined$status2) * 100
+            }
+          }
         },
         n = {
           a1 <- tidy %>% filter(assay == assay1) %>% select(sample_id)

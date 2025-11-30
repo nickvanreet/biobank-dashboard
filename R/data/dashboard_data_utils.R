@@ -122,14 +122,17 @@ prepare_assay_dashboard_data <- function(
 
   tibs <- list()
 
+  id_columns <- c("code_barres_kps", "barcode", "SampleID", "sample_id", "Sample_ID")
+  lab_columns <- c("numero_labo", "numero", "lab_id", "sample_code", "SampleCode")
+
   # Biobank scaffold for dates/demographics
   biobank_base <- NULL
   if (!is.null(biobank_df) && nrow(biobank_df)) {
     biobank_base <- biobank_df %>%
       mutate(
         sample_id = normalize_sample_id(
-          barcode = coalesce_any_column(., c("code_barres_kps", "barcode")),
-          lab_id = coalesce_any_column(., c("numero_labo", "numero", "lab_id"))
+          barcode = coalesce_any_column(., id_columns),
+          lab_id = coalesce_any_column(., lab_columns)
         ),
         sample_date = suppressWarnings(lubridate::as_date(
           coalesce_any_column(., c("date_sample", "date_prelevement", "SampleDate"))
@@ -145,8 +148,8 @@ prepare_assay_dashboard_data <- function(
     tibs$elisa <- elisa_df %>%
       mutate(
         sample_id = normalize_sample_id(
-          coalesce_any_column(., c("code_barres_kps", "barcode")),
-          coalesce_any_column(., c("numero_labo", "sample_code", "lab_id"))
+          coalesce_any_column(., id_columns),
+          coalesce_any_column(., lab_columns)
         ),
         assay = dplyr::case_when(
           elisa_type %in% c("ELISA_pe", "pe", "ELISA PE") ~ "ELISA PE",
@@ -229,8 +232,8 @@ prepare_assay_dashboard_data <- function(
     tibs$mic <- mic_data$samples %>%
       mutate(
         sample_id = normalize_sample_id(
-          coalesce_any_column(., c("SampleID", "code_barres_kps", "barcode")),
-          coalesce_any_column(., c("numero_labo", "lab_id"))
+          coalesce_any_column(., id_columns),
+          coalesce_any_column(., lab_columns)
         ),
         assay = "MIC qPCR",
         status = vapply(FinalCall, classify_mic, character(1), cutoffs = cutoffs),
@@ -243,12 +246,21 @@ prepare_assay_dashboard_data <- function(
       select(sample_id, assay, status, quantitative, metric, assay_date, FinalCall, Cq_median_177T, Cq_median_18S2)
   }
 
+  status_levels <- c("Positive", "Borderline", "Negative", "Invalid", "Missing")
+
   tidy <- bind_rows(tibs) %>%
     filter(!is.na(sample_id)) %>%
     mutate(
-      status = factor(status, levels = c("Positive", "Borderline", "Negative", "Invalid", "Missing")),
-      assay = factor(assay)
-    )
+      status = factor(status, levels = status_levels),
+      status_rank = match(status, status_levels),
+      quantitative_missing = is.na(quantitative)
+    ) %>%
+    group_by(sample_id, assay) %>%
+    arrange(status_rank, quantitative_missing) %>%
+    slice_head(n = 1) %>%
+    ungroup() %>%
+    select(-status_rank, -quantitative_missing) %>%
+    mutate(assay = factor(assay))
 
   # Apply global filters if provided
   if (!is.null(filters)) {

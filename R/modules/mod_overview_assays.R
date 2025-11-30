@@ -139,7 +139,7 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
         df <- df %>% filter(status == drill_state$status)
       }
       if (!is.null(drill_state$assay)) {
-        df <- df %>% filter(as.character(assay) == drill_state$assay)
+        df <- df %>% filter(as.character(assay) %in% drill_state$assay)
       }
       df
     })
@@ -158,49 +158,69 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
         )
     })
 
-    render_kpi <- function(expr) {
-      renderUI({
-        val <- expr()
-        tagList(strong(val$label), tags$br(), tags$span(class = "fs-4", val$detail))
-      })
+    set_drill <- function(status = NULL, assay = NULL) {
+      if (identical(drill_state$status, status) && identical(drill_state$assay, assay)) {
+        drill_state$status <- NULL
+        drill_state$assay <- NULL
+      } else {
+        drill_state$status <- status
+        drill_state$assay <- assay
+      }
     }
 
-    output$kpi_mic <- render_kpi(function() {
+    render_kpi <- function(output_id, expr, drill_status = NULL, drill_assay = NULL) {
+      output[[output_id]] <- renderUI({
+        val <- expr()
+        actionLink(
+          ns(paste0(output_id, "_click")),
+          label = tagList(strong(val$label), tags$br(), tags$span(class = "fs-4", val$detail)),
+          class = "text-reset text-decoration-none w-100 d-block"
+        )
+      })
+
+      if (!is.null(drill_status) || !is.null(drill_assay)) {
+        observeEvent(input[[paste0(output_id, "_click")]], {
+          set_drill(status = drill_status, assay = drill_assay)
+        }, ignoreInit = TRUE)
+      }
+    }
+
+    render_kpi("kpi_mic", function() {
       df <- prepared()$tidy_assays %>% filter(assay == "MIC qPCR", status == "Positive")
       list(label = nrow(df), detail = sprintf("%.1f%% of MIC tests", 100 * nrow(df) / max(1, nrow(prepared()$tidy_assays %>% filter(assay == "MIC qPCR")))))
-    })
+    }, drill_status = "Positive", drill_assay = "MIC qPCR")
 
-    output$kpi_pe <- render_kpi(function() {
+    render_kpi("kpi_pe", function() {
       df <- prepared()$tidy_assays %>% filter(assay == "ELISA PE", status == "Positive")
       list(label = nrow(df), detail = sprintf("%.1f%% of PE tests", 100 * nrow(df) / max(1, nrow(prepared()$tidy_assays %>% filter(assay == "ELISA PE")))))
-    })
+    }, drill_status = "Positive", drill_assay = "ELISA PE")
 
-    output$kpi_vsg <- render_kpi(function() {
+    render_kpi("kpi_vsg", function() {
       df <- prepared()$tidy_assays %>% filter(assay == "ELISA VSG", status == "Positive")
       list(label = nrow(df), detail = sprintf("%.1f%% of VSG tests", 100 * nrow(df) / max(1, nrow(prepared()$tidy_assays %>% filter(assay == "ELISA VSG")))))
-    })
+    }, drill_status = "Positive", drill_assay = "ELISA VSG")
 
-    output$kpi_ielisa <- render_kpi(function() {
+    render_kpi("kpi_ielisa", function() {
       df <- prepared()$tidy_assays %>% filter(grepl("iELISA", assay), status == "Positive")
       list(label = nrow(df), detail = sprintf("%.1f%% of iELISA tests", 100 * nrow(df) / max(1, nrow(prepared()$tidy_assays %>% filter(grepl("iELISA", assay))))))
-    })
+    }, drill_status = "Positive", drill_assay = c("iELISA LiTat 1.3", "iELISA LiTat 1.5"))
 
-    output$kpi_unique <- render_kpi(function() {
+    render_kpi("kpi_unique", function() {
       ss <- sample_summary()
       list(label = sum(ss$unique_positive, na.rm = TRUE), detail = "Single-assay positives")
     })
 
-    output$kpi_concordant <- render_kpi(function() {
+    render_kpi("kpi_concordant", function() {
       ss <- sample_summary()
       list(label = sum(ss$concordant_positive, na.rm = TRUE), detail = "Positive across all tested")
     })
 
-    output$kpi_total <- render_kpi(function() {
+    render_kpi("kpi_total", function() {
       df <- prepared()$tidy_assays
       list(label = nrow(df), detail = "Total assay rows")
     })
 
-    output$kpi_agreement <- render_kpi(function() {
+    render_kpi("kpi_agreement", function() {
       pw <- prepared()$pairwise_agreement %>% filter(!is.na(agreement))
       list(label = sprintf("%.1f%%", mean(pw$agreement, na.rm = TRUE)), detail = "Mean pairwise agreement")
     })

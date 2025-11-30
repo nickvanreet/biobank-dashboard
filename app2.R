@@ -24,6 +24,7 @@ ui <- do.call(
     # Navigation panels
     list(
       mod_data_quality_ui("data_quality"),
+      mod_overview_assays_ui("overview_assays"),
       mod_overview_demographics_ui("overview_demographics"),
       mod_transport_ui("transport"),
       mod_extractions_ui("extractions")
@@ -61,7 +62,16 @@ server <- function(input, output, session) {
     clean_data = data$clean_data,
     quality_report = data$quality_report
   )
-  
+
+  mod_overview_assays_server(
+    "overview_assays",
+    biobank_df = data$filtered_data,
+    elisa_df = data$elisa_data,
+    ielisa_df = data$ielisa_data,
+    mic_df = data$mic_data,
+    filters = data$filters
+  )
+
   # Pass data to overview & demographics module
   mod_overview_demographics_server(
     "overview_demographics",

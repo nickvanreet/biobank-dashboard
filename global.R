@@ -123,6 +123,7 @@ source("R/core/data_loader_utils.R")       # Must source BEFORE data_linking
 source("R/core/data_linking_utils.R")      # Defines normalize_barcode()
 source("R/core/extraction_data_utils.R")   # Extraction utilities
 source("R/utils_elisa.R")                  # ELISA loader utilities
+source("R/data/dashboard_data_utils.R")    # Shared assay prep utilities
 
 # CRITICAL: Source the qPCR analysis pipeline
 # This file defines analyze_qpcr(), extract_cq_values(), and related functions
@@ -151,6 +152,7 @@ source("R/modules/mod_data_manager.R")
 source("R/modules/mod_01_data_quality.R")
 source("R/modules/mod_02_overview_demographics.R")
 source("R/modules/mod_03_transport.R")
+source("R/modules/mod_overview_assays.R")
 source("R/modules/mod_04_extractions.R")
 source("R/modules/mod_05_mic_qpcr.R")       # The rebuilt module
 source("R/modules/mod_06_drs_rnasep.R")     # DRS volume vs RNAseP analysis

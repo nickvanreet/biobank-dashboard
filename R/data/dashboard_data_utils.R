@@ -168,54 +168,24 @@ prepare_assay_dashboard_data <- function(
   if (!is.null(ielisa_df) && nrow(ielisa_df)) {
     date_candidates <- c("PlateDate", "plate_date", "run_date")
 
-    # Allow flexible column names because exports differ by site/version
-    inhibition_columns <- function(pattern) {
-      grep(pattern, names(ielisa_df), value = TRUE, ignore.case = TRUE)
-    }
-
-    positive_columns <- grep("positive|result|interpret", names(ielisa_df), value = TRUE, ignore.case = TRUE)
-
     antigen_configs <- list(
       list(
         name = "iELISA LiTat 1.3",
-        value_cols = c(
-          "pct_inh_f2_13", "pct_inh_f1_13", "Inhibition_L13", "Inhibition_percent",
-          "Inhibition", "inhibition_percent", inhibition_columns("13"), inhibition_columns("LiTat1\.3")
-        ) %>% unlist(),
-        positive_cols = c("positive_L13", "Positif_L13", positive_columns[grepl("13", positive_columns, ignore.case = TRUE)])
+        value_cols = c("pct_inh_f2_13", "pct_inh_f1_13", "Inhibition_L13", "Inhibition_percent", "Inhibition", "inhibition_percent"),
+        positive_col = "positive_L13"
       ),
       list(
         name = "iELISA LiTat 1.5",
-        value_cols = c(
-          "pct_inh_f2_15", "pct_inh_f1_15", "Inhibition_L15", "Inhibition_percent",
-          "Inhibition", "inhibition_percent", inhibition_columns("15"), inhibition_columns("LiTat1\.5")
-        ) %>% unlist(),
-        positive_cols = c("positive_L15", "Positif_L15", positive_columns[grepl("15", positive_columns, ignore.case = TRUE)])
+        value_cols = c("pct_inh_f2_15", "pct_inh_f1_15", "Inhibition_L15", "Inhibition_percent", "Inhibition", "inhibition_percent"),
+        positive_col = "positive_L15"
       )
     )
 
-    parse_boolean_flag <- function(x) {
-      x <- tolower(as.character(x))
-      case_when(
-        x %in% c("true", "1", "yes", "y", "positive", "pos", "positif", "p", "detected") ~ "Positive",
-        x %in% c("false", "0", "no", "n", "negative", "neg", "negatif", "absent") ~ "Negative",
-        stringr::str_detect(x, "\\bpos") ~ "Positive",
-        stringr::str_detect(x, "\\bneg") ~ "Negative",
-        TRUE ~ NA_character_
-      )
-    }
-
-    parse_numeric_value <- function(x) {
-      raw <- str_replace_all(as.character(x), ",", ".")
-      extracted <- str_extract(raw, "-?\\d*\\.?\\d+")
-      suppressWarnings(as.numeric(extracted))
-    }
-
     build_ielisa_tibble <- function(cfg) {
-      value_cols <- unique(cfg$value_cols[cfg$value_cols %in% names(ielisa_df)])
-      positive_cols <- unique(cfg$positive_cols[cfg$positive_cols %in% names(ielisa_df)])
+      value_col <- cfg$value_cols[cfg$value_cols %in% names(ielisa_df)][1]
+      positive_col <- cfg$positive_col
 
-      if (!length(value_cols) && !length(positive_cols)) {
+      if (is.null(value_col) && !(positive_col %in% names(ielisa_df))) {
         return(NULL)
       }
 
@@ -224,16 +194,11 @@ prepare_assay_dashboard_data <- function(
       tib <- ielisa_df %>%
         mutate(
           sample_id = normalize_sample_id(
-            coalesce_any_column(., id_columns),
-            coalesce_any_column(., lab_columns)
+            coalesce_any_column(., c("code_barres_kps", "barcode")),
+            coalesce_any_column(., c("numero_labo", "lab_id"))
           ),
           assay = cfg$name,
-          quantitative = if (length(value_cols)) {
-            vals <- coalesce_any_column(., value_cols)
-            parse_numeric_value(vals)
-          } else {
-            NA_real_
-          },
+          quantitative = if (!is.null(value_col)) suppressWarnings(as.numeric(.data[[value_col]])) else NA_real_,
           status = vapply(quantitative, classify_ielisa, character(1), cutoffs = cutoffs),
           metric = "% Inhibition",
           assay_date = suppressWarnings(lubridate::as_date(
@@ -241,30 +206,16 @@ prepare_assay_dashboard_data <- function(
           ))
         )
 
-      if (length(positive_cols)) {
+      if (!is.null(positive_col) && positive_col %in% names(ielisa_df)) {
         tib <- tib %>%
           mutate(
-            string_call = coalesce_any_column(., positive_cols),
-            call_status = parse_boolean_flag(string_call),
             status = case_when(
               !is.na(quantitative) ~ status,
-              !is.na(call_status) ~ call_status,
+              .data[[positive_col]] == TRUE ~ "Positive",
+              .data[[positive_col]] == FALSE ~ "Negative",
               TRUE ~ status
             )
-          ) %>%
-          select(-string_call, -call_status)
-      } else if (length(positive_columns)) {
-        tib <- tib %>%
-          mutate(
-            string_call = coalesce_any_column(., positive_columns),
-            call_status = parse_boolean_flag(string_call),
-            status = case_when(
-              !is.na(quantitative) ~ status,
-              !is.na(call_status) ~ call_status,
-              TRUE ~ status
-            )
-          ) %>%
-          select(-string_call, -call_status)
+          )
       }
 
       tib %>% select(sample_id, assay, status, quantitative, metric, assay_date)

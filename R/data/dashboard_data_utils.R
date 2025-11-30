@@ -47,18 +47,6 @@ normalize_sample_id <- function(barcode = NULL, lab_id = NULL) {
   ids[1]
 }
 
-#' Ensure a data frame has the expected columns
-#'
-#' Adds any missing columns with `NA` values so downstream mutate/select calls
-#' do not fail when optional fields are absent in upstream CSVs.
-ensure_columns <- function(df, cols) {
-  missing <- setdiff(cols, names(df))
-  if (length(missing)) {
-    df[missing] <- NA
-  }
-  df
-}
-
 #' Classify ELISA results into Positive/Borderline/Negative
 classify_elisa <- function(pp_percent, dod, cutoffs) {
   pp_flag <- !is.na(pp_percent)
@@ -122,11 +110,6 @@ prepare_assay_dashboard_data <- function(
   # Biobank scaffold for dates/demographics
   biobank_base <- NULL
   if (!is.null(biobank_df) && nrow(biobank_df)) {
-    biobank_df <- ensure_columns(biobank_df, c(
-      "code_barres_kps", "barcode", "numero_labo", "numero", "lab_id",
-      "date_sample", "date_prelevement", "SampleDate"
-    ))
-
     biobank_base <- biobank_df %>%
       mutate(
         sample_id = normalize_sample_id(
@@ -142,11 +125,6 @@ prepare_assay_dashboard_data <- function(
 
   # ELISA
   if (!is.null(elisa_df) && nrow(elisa_df)) {
-    elisa_df <- ensure_columns(elisa_df, c(
-      "code_barres_kps", "numero_labo", "sample_code", "elisa_type",
-      "PP_percent", "DOD", "plate_date", "SampleDate"
-    ))
-
     tibs$elisa <- elisa_df %>%
       mutate(
         sample_id = normalize_sample_id(code_barres_kps, coalesce(numero_labo, sample_code)),
@@ -165,8 +143,6 @@ prepare_assay_dashboard_data <- function(
 
   # iELISA
   if (!is.null(ielisa_df) && nrow(ielisa_df)) {
-    ielisa_df <- ensure_columns(ielisa_df, c("code_barres_kps", "numero_labo", "assay"))
-
     inh_candidates <- c("Inhibition_L13", "Inhibition_L15", "Inhibition_percent", "Inhibition", "inhibition_percent")
     date_candidates <- c("PlateDate", "plate_date", "run_date")
     tibs$ielisa <- ielisa_df %>%
@@ -202,12 +178,7 @@ prepare_assay_dashboard_data <- function(
 
   # MIC qPCR
   if (!is.null(mic_data) && !is.null(mic_data$samples) && nrow(mic_data$samples)) {
-    mic_df <- ensure_columns(mic_data$samples, c(
-      "SampleID", "numero_labo", "FinalCall", "Cq_median_177T", "Cq_median_18S2",
-      "CollectionDate", "SampleDate", "RunDate", "plate_date"
-    ))
-
-    tibs$mic <- mic_df %>%
+    tibs$mic <- mic_data$samples %>%
       mutate(
         sample_id = normalize_sample_id(SampleID, numero_labo),
         assay = "MIC qPCR",

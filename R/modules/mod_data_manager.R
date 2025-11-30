@@ -98,6 +98,8 @@ mod_data_manager_server <- function(id) {
       extraction_data = NULL,
       quality_report = NULL,
       ielisa_data = NULL,
+      elisa_data = NULL,
+      mic_data = NULL,
       current_site = config$current_site
     )
 
@@ -1032,7 +1034,9 @@ mod_data_manager_server <- function(id) {
       filtered_extractions = filtered_extractions,
       quality_report = reactive(rv$quality_report),
       filters = filters,
-      ielisa_data = reactive(rv$ielisa_data)
+      ielisa_data = reactive(rv$ielisa_data),
+      elisa_data = reactive(rv$elisa_data),
+      mic_data = reactive(rv$mic_data)
     ))
   })
 }

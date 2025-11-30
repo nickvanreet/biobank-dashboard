@@ -171,11 +171,16 @@ prepare_assay_dashboard_data <- function(
           coalesce_any_column(., c("code_barres_kps", "barcode")),
           coalesce_any_column(., c("numero_labo", "lab_id"))
         ),
-        assay = dplyr::case_when(
-          stringr::str_detect(tolower(assay), "lit13") ~ "iELISA LiTat 1.3",
-          stringr::str_detect(tolower(assay), "lit15") ~ "iELISA LiTat 1.5",
-          TRUE ~ coalesce(as.character(assay), "iELISA")
-        )
+        assay = {
+          assay_raw <- coalesce_any_column(., c("assay", "Assay", "target", "antigen"), default = "iELISA")
+          assay_lower <- tolower(assay_raw)
+
+          dplyr::case_when(
+            stringr::str_detect(assay_lower, "lit13") ~ "iELISA LiTat 1.3",
+            stringr::str_detect(assay_lower, "lit15") ~ "iELISA LiTat 1.5",
+            TRUE ~ coalesce(as.character(assay_raw), "iELISA")
+          )
+        }
       )
 
     # Split per-antigen if columns exist
@@ -214,7 +219,9 @@ prepare_assay_dashboard_data <- function(
         status = vapply(FinalCall, classify_mic, character(1), cutoffs = cutoffs),
         quantitative = coalesce(Cq_median_177T, Cq_median_18S2),
         metric = "Cq",
-        assay_date = suppressWarnings(lubridate::as_date(coalesce(CollectionDate, SampleDate, RunDate, plate_date)))
+        assay_date = suppressWarnings(lubridate::as_date(
+          coalesce_any_column(., c("CollectionDate", "SampleDate", "RunDate", "plate_date"))
+        ))
       ) %>%
       select(sample_id, assay, status, quantitative, metric, assay_date, FinalCall, Cq_median_177T, Cq_median_18S2)
   }
@@ -243,6 +250,8 @@ prepare_assay_dashboard_data <- function(
   sample_matrix <- tidy %>%
     select(sample_id, assay, status) %>%
     distinct() %>%
+    group_by(sample_id, assay) %>%
+    summarise(status = dplyr::first(status), .groups = "drop") %>%
     tidyr::pivot_wider(names_from = assay, values_from = status)
 
   # Pairwise agreement (% of samples with same status, ignoring Missing)
@@ -252,13 +261,19 @@ prepare_assay_dashboard_data <- function(
       rowwise() %>%
       mutate(
         agreement = {
-          if (assay1 == assay2) return(100)
-          a1 <- tidy %>% filter(assay == assay1, !is.na(status)) %>% select(sample_id, status)
-          a2 <- tidy %>% filter(assay == assay2, !is.na(status)) %>% select(sample_id, status)
-          joined <- inner_join(a1, a2, by = "sample_id", suffix = c("1", "2")) %>%
-            filter(status1 != "Missing" & status2 != "Missing")
-          if (!nrow(joined)) return(NA_real_)
-          mean(joined$status1 == joined$status2) * 100
+          if (assay1 == assay2) {
+            100
+          } else {
+            a1 <- tidy %>% filter(assay == assay1, !is.na(status)) %>% select(sample_id, status)
+            a2 <- tidy %>% filter(assay == assay2, !is.na(status)) %>% select(sample_id, status)
+            joined <- inner_join(a1, a2, by = "sample_id", suffix = c("1", "2")) %>%
+              filter(status1 != "Missing" & status2 != "Missing")
+            if (!nrow(joined)) {
+              NA_real_
+            } else {
+              mean(joined$status1 == joined$status2) * 100
+            }
+          }
         },
         n = {
           a1 <- tidy %>% filter(assay == assay1) %>% select(sample_id)

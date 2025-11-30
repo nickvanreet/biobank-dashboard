@@ -47,6 +47,21 @@ normalize_sample_id <- function(barcode = NULL, lab_id = NULL) {
   ids[1]
 }
 
+#' Coalesce the first present column from a set of candidates
+#'
+#' This helper safely returns `NA` when none of the columns exist, preventing
+#' hard errors when upstream datasets omit optional fields.
+coalesce_any_column <- function(df, columns, default = NA_character_) {
+  present <- columns[columns %in% names(df)]
+  if (!length(present)) {
+    return(rep(default, nrow(df)))
+  }
+
+  df %>%
+    transmute(value = coalesce(!!!rlang::syms(present))) %>%
+    pull(.data$value)
+}
+
 #' Classify ELISA results into Positive/Borderline/Negative
 classify_elisa <- function(pp_percent, dod, cutoffs) {
   pp_flag <- !is.na(pp_percent)
@@ -113,10 +128,12 @@ prepare_assay_dashboard_data <- function(
     biobank_base <- biobank_df %>%
       mutate(
         sample_id = normalize_sample_id(
-          barcode = coalesce(.data$code_barres_kps, .data$barcode),
-          lab_id = coalesce(.data$numero_labo, .data$numero, .data$lab_id)
+          barcode = coalesce_any_column(., c("code_barres_kps", "barcode")),
+          lab_id = coalesce_any_column(., c("numero_labo", "numero", "lab_id"))
         ),
-        sample_date = suppressWarnings(lubridate::as_date(coalesce(.data$date_sample, .data$date_prelevement, .data$SampleDate)))
+        sample_date = suppressWarnings(lubridate::as_date(
+          coalesce_any_column(., c("date_sample", "date_prelevement", "SampleDate"))
+        ))
       ) %>%
       select(sample_id, starts_with("province"), starts_with("Province"), starts_with("Health"), starts_with("Structure"),
              starts_with("study"), starts_with("Study"), starts_with("cohort"), sample_date) %>%
@@ -127,7 +144,10 @@ prepare_assay_dashboard_data <- function(
   if (!is.null(elisa_df) && nrow(elisa_df)) {
     tibs$elisa <- elisa_df %>%
       mutate(
-        sample_id = normalize_sample_id(code_barres_kps, coalesce(numero_labo, sample_code)),
+        sample_id = normalize_sample_id(
+          coalesce_any_column(., c("code_barres_kps", "barcode")),
+          coalesce_any_column(., c("numero_labo", "sample_code", "lab_id"))
+        ),
         assay = dplyr::case_when(
           elisa_type %in% c("ELISA_pe", "pe", "ELISA PE") ~ "ELISA PE",
           elisa_type %in% c("ELISA_vsg", "vsg", "ELISA VSG") ~ "ELISA VSG",
@@ -147,7 +167,10 @@ prepare_assay_dashboard_data <- function(
     date_candidates <- c("PlateDate", "plate_date", "run_date")
     tibs$ielisa <- ielisa_df %>%
       mutate(
-        sample_id = normalize_sample_id(code_barres_kps, numero_labo),
+        sample_id = normalize_sample_id(
+          coalesce_any_column(., c("code_barres_kps", "barcode")),
+          coalesce_any_column(., c("numero_labo", "lab_id"))
+        ),
         assay = dplyr::case_when(
           stringr::str_detect(tolower(assay), "lit13") ~ "iELISA LiTat 1.3",
           stringr::str_detect(tolower(assay), "lit15") ~ "iELISA LiTat 1.5",
@@ -162,7 +185,10 @@ prepare_assay_dashboard_data <- function(
         date_cols <- date_candidates[date_candidates %in% names(ielisa_df)]
         tibs[[paste0("ielisa_", cand)]] <- ielisa_df %>%
           mutate(
-            sample_id = normalize_sample_id(code_barres_kps, numero_labo),
+            sample_id = normalize_sample_id(
+              coalesce_any_column(., c("code_barres_kps", "barcode")),
+              coalesce_any_column(., c("numero_labo", "lab_id"))
+            ),
             assay = antigen,
             quantitative = suppressWarnings(as.numeric(.data[[cand]])),
             status = classify_ielisa(quantitative, cutoffs),
@@ -180,7 +206,10 @@ prepare_assay_dashboard_data <- function(
   if (!is.null(mic_data) && !is.null(mic_data$samples) && nrow(mic_data$samples)) {
     tibs$mic <- mic_data$samples %>%
       mutate(
-        sample_id = normalize_sample_id(SampleID, numero_labo),
+        sample_id = normalize_sample_id(
+          coalesce_any_column(., c("SampleID", "code_barres_kps", "barcode")),
+          coalesce_any_column(., c("numero_labo", "lab_id"))
+        ),
         assay = "MIC qPCR",
         status = vapply(FinalCall, classify_mic, character(1), cutoffs = cutoffs),
         quantitative = coalesce(Cq_median_177T, Cq_median_18S2),

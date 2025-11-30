@@ -194,7 +194,10 @@ match_elisa_samples <- function(pe_data, vsg_data) {
 #' @param dod_cutoff DOD cutoff (default 0.3)
 #' @return Logical vector indicating positivity
 calculate_positivity <- function(pp_percent, dod, pp_cutoff = 20, dod_cutoff = 0.3) {
-  (pp_percent >= pp_cutoff) | (dod >= dod_cutoff)
+  pp_clean <- dplyr::coalesce(pp_percent, -Inf)
+  dod_clean <- dplyr::coalesce(dod, -Inf)
+
+  (pp_clean >= pp_cutoff) | (dod_clean >= dod_cutoff)
 }
 
 #' Calculate concordance metrics
@@ -532,7 +535,7 @@ match_ielisa_elisa <- function(ielisa_data, elisa_data, ielisa_antigen, elisa_ty
   result <- result %>%
     mutate(
       test2_value = elisa_PP_percent,
-      test2_binary = (elisa_PP_percent >= 20) | (elisa_DOD >= 0.3),
+      test2_binary = calculate_positivity(elisa_PP_percent, elisa_DOD),
       test2_name = paste0("ELISA-", elisa_type),
       health_zone = HealthZone,
       province = Province,
@@ -707,7 +710,7 @@ match_mic_elisa <- function(mic_data, elisa_data, elisa_type) {
       test1_name = "MIC",
       # ELISA test2
       test2_value = elisa_PP_percent,
-      test2_binary = (elisa_PP_percent >= 20) | (elisa_DOD >= 0.3),
+      test2_binary = calculate_positivity(elisa_PP_percent, elisa_DOD),
       test2_name = paste0("ELISA-", elisa_type),
       # Geographic data (prefer ELISA biobank match, fall back to MIC)
       health_zone = coalesce(elisa_HealthZone, HealthZone),

@@ -128,9 +128,16 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       if (length(input$status_filter)) {
         df <- df %>% filter(as.character(status) %in% input$status_filter)
       }
-      if (!is.null(input$assay_date[1])) {
+      if (!is.null(input$assay_date)) {
         dr <- as.Date(input$assay_date)
-        df <- df %>% filter(is.na(assay_date) | (assay_date >= dr[1] & assay_date <= dr[2]))
+        if (any(!is.na(dr))) {
+          if (!is.na(dr[1])) {
+            df <- df %>% filter(is.na(assay_date) | assay_date >= dr[1])
+          }
+          if (!is.na(dr[2])) {
+            df <- df %>% filter(is.na(assay_date) | assay_date <= dr[2])
+          }
+        }
       }
       if (isTRUE(input$available_only)) {
         df <- df %>% filter(!is.na(status) & status != "Missing")

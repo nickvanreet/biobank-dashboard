@@ -219,22 +219,28 @@ prepare_assay_dashboard_data <- function(
   # Pairwise agreement (% of samples with same status, ignoring Missing)
   assays <- sort(unique(as.character(tidy$assay)))
   if (length(assays) >= 2) {
-    pairwise <- expand.grid(assay1 = assays, assay2 = assays, stringsAsFactors = FALSE) %>%
-      rowwise() %>%
-      mutate(
-        agreement = {
-          if (assay1 == assay2) return(100)
-          a1 <- tidy %>% filter(assay == assay1, !is.na(status)) %>% select(sample_id, status)
-          a2 <- tidy %>% filter(assay == assay2, !is.na(status)) %>% select(sample_id, status)
-          joined <- inner_join(a1, a2, by = "sample_id", suffix = c("1", "2")) %>%
-            filter(status1 != "Missing" & status2 != "Missing")
-          if (!nrow(joined)) return(NA_real_)
-          mean(joined$status1 == joined$status2) * 100
-        },
-        n = {
-          a1 <- tidy %>% filter(assay == assay1) %>% select(sample_id)
-          a2 <- tidy %>% filter(assay == assay2) %>% select(sample_id)
-          nrow(inner_join(a1, a2, by = "sample_id"))
+      pairwise <- expand.grid(assay1 = assays, assay2 = assays, stringsAsFactors = FALSE) %>%
+        rowwise() %>%
+        mutate(
+          agreement = {
+            if (assay1 == assay2) {
+              100
+            } else {
+              a1 <- tidy %>% filter(assay == assay1, !is.na(status)) %>% select(sample_id, status)
+              a2 <- tidy %>% filter(assay == assay2, !is.na(status)) %>% select(sample_id, status)
+              joined <- inner_join(a1, a2, by = "sample_id", suffix = c("1", "2")) %>%
+                filter(status1 != "Missing" & status2 != "Missing")
+              if (!nrow(joined)) {
+                NA_real_
+              } else {
+                mean(joined$status1 == joined$status2) * 100
+              }
+            }
+          },
+          n = {
+            a1 <- tidy %>% filter(assay == assay1) %>% select(sample_id)
+            a2 <- tidy %>% filter(assay == assay2) %>% select(sample_id)
+            nrow(inner_join(a1, a2, by = "sample_id"))
         }
       ) %>%
       ungroup()

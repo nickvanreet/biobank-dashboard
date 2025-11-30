@@ -179,10 +179,10 @@ prepare_assay_dashboard_data <- function(
     )
 
     build_ielisa_tibble <- function(cfg) {
-      value_cols <- cfg$value_cols[cfg$value_cols %in% names(ielisa_df)]
+      value_col <- cfg$value_cols[cfg$value_cols %in% names(ielisa_df)][1]
       positive_col <- cfg$positive_col
 
-      if (!length(value_cols) && !(positive_col %in% names(ielisa_df))) {
+      if (is.null(value_col) && !(positive_col %in% names(ielisa_df))) {
         return(NULL)
       }
 
@@ -192,15 +192,10 @@ prepare_assay_dashboard_data <- function(
         mutate(
           sample_id = normalize_sample_id(
             coalesce_any_column(., c("code_barres_kps", "barcode")),
-            coalesce_any_column(., c("numero_labo", "lab_id", "sample_code"))
+            coalesce_any_column(., c("numero_labo", "lab_id"))
           ),
           assay = cfg$name,
-          quantitative = if (length(value_cols)) {
-            vals <- coalesce_any_column(., value_cols)
-            suppressWarnings(as.numeric(stringr::str_replace(vals, ",", ".")))
-          } else {
-            NA_real_
-          },
+          quantitative = if (!is.null(value_col)) suppressWarnings(as.numeric(.data[[value_col]])) else NA_real_,
           status = vapply(quantitative, classify_ielisa, character(1), cutoffs = cutoffs),
           metric = "% Inhibition",
           assay_date = suppressWarnings(lubridate::as_date(
@@ -213,8 +208,8 @@ prepare_assay_dashboard_data <- function(
           mutate(
             status = case_when(
               !is.na(quantitative) ~ status,
-              tolower(as.character(.data[[positive_col]])) %in% c("true", "1", "yes", "y", "positive", "pos") ~ "Positive",
-              tolower(as.character(.data[[positive_col]])) %in% c("false", "0", "no", "n", "negative", "neg") ~ "Negative",
+              .data[[positive_col]] == TRUE ~ "Positive",
+              .data[[positive_col]] == FALSE ~ "Negative",
               TRUE ~ status
             )
           )

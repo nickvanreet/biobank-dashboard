@@ -219,7 +219,9 @@ prepare_assay_dashboard_data <- function(
         status = vapply(FinalCall, classify_mic, character(1), cutoffs = cutoffs),
         quantitative = coalesce(Cq_median_177T, Cq_median_18S2),
         metric = "Cq",
-        assay_date = suppressWarnings(lubridate::as_date(coalesce(CollectionDate, SampleDate, RunDate, plate_date)))
+        assay_date = suppressWarnings(lubridate::as_date(
+          coalesce_any_column(., c("CollectionDate", "SampleDate", "RunDate", "plate_date"))
+        ))
       ) %>%
       select(sample_id, assay, status, quantitative, metric, assay_date, FinalCall, Cq_median_177T, Cq_median_18S2)
   }

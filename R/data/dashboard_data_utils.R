@@ -163,48 +163,70 @@ prepare_assay_dashboard_data <- function(
 
   # iELISA
   if (!is.null(ielisa_df) && nrow(ielisa_df)) {
-    inh_candidates <- c("Inhibition_L13", "Inhibition_L15", "Inhibition_percent", "Inhibition", "inhibition_percent")
     date_candidates <- c("PlateDate", "plate_date", "run_date")
-    tibs$ielisa <- ielisa_df %>%
-      mutate(
-        sample_id = normalize_sample_id(
-          coalesce_any_column(., c("code_barres_kps", "barcode")),
-          coalesce_any_column(., c("numero_labo", "lab_id"))
-        ),
-        assay = {
-          assay_raw <- coalesce_any_column(., c("assay", "Assay", "target", "antigen"), default = "iELISA")
-          assay_lower <- tolower(assay_raw)
 
-          dplyr::case_when(
-            stringr::str_detect(assay_lower, "lit13") ~ "iELISA LiTat 1.3",
-            stringr::str_detect(assay_lower, "lit15") ~ "iELISA LiTat 1.5",
-            TRUE ~ coalesce(as.character(assay_raw), "iELISA")
-          )
-        }
+    antigen_configs <- list(
+      list(
+        name = "iELISA LiTat 1.3",
+        value_cols = c("pct_inh_f2_13", "pct_inh_f1_13", "Inhibition_L13", "Inhibition_percent", "Inhibition", "inhibition_percent"),
+        positive_col = "positive_L13"
+      ),
+      list(
+        name = "iELISA LiTat 1.5",
+        value_cols = c("pct_inh_f2_15", "pct_inh_f1_15", "Inhibition_L15", "Inhibition_percent", "Inhibition", "inhibition_percent"),
+        positive_col = "positive_L15"
       )
+    )
 
-    # Split per-antigen if columns exist
-    for (cand in inh_candidates) {
-      if (cand %in% names(ielisa_df)) {
-        antigen <- ifelse(grepl("15", cand), "iELISA LiTat 1.5", "iELISA LiTat 1.3")
-        date_cols <- date_candidates[date_candidates %in% names(ielisa_df)]
-        tibs[[paste0("ielisa_", cand)]] <- ielisa_df %>%
-          mutate(
-            sample_id = normalize_sample_id(
-              coalesce_any_column(., c("code_barres_kps", "barcode")),
-              coalesce_any_column(., c("numero_labo", "lab_id"))
-            ),
-            assay = antigen,
-            quantitative = suppressWarnings(as.numeric(.data[[cand]])),
-            status = classify_ielisa(quantitative, cutoffs),
-            metric = "% Inhibition",
-            assay_date = suppressWarnings(lubridate::as_date(
-              if (length(date_cols)) coalesce(!!!syms(date_cols)) else NA
-            ))
-          ) %>%
-          select(sample_id, assay, status, quantitative, metric, assay_date)
+    build_ielisa_tibble <- function(cfg) {
+      value_cols <- cfg$value_cols[cfg$value_cols %in% names(ielisa_df)]
+      positive_col <- cfg$positive_col
+
+      if (!length(value_cols) && !(positive_col %in% names(ielisa_df))) {
+        return(NULL)
       }
+
+      date_cols <- date_candidates[date_candidates %in% names(ielisa_df)]
+
+      tib <- ielisa_df %>%
+        mutate(
+          sample_id = normalize_sample_id(
+            coalesce_any_column(., c("code_barres_kps", "barcode")),
+            coalesce_any_column(., c("numero_labo", "lab_id", "sample_code"))
+          ),
+          assay = cfg$name,
+          quantitative = if (length(value_cols)) {
+            vals <- coalesce_any_column(., value_cols)
+            suppressWarnings(as.numeric(stringr::str_replace(vals, ",", ".")))
+          } else {
+            NA_real_
+          },
+          status = vapply(quantitative, classify_ielisa, character(1), cutoffs = cutoffs),
+          metric = "% Inhibition",
+          assay_date = suppressWarnings(lubridate::as_date(
+            if (length(date_cols)) coalesce(!!!syms(date_cols)) else NA
+          ))
+        )
+
+      if (!is.null(positive_col) && positive_col %in% names(ielisa_df)) {
+        tib <- tib %>%
+          mutate(
+            status = case_when(
+              !is.na(quantitative) ~ status,
+              tolower(as.character(.data[[positive_col]])) %in% c("true", "1", "yes", "y", "positive", "pos") ~ "Positive",
+              tolower(as.character(.data[[positive_col]])) %in% c("false", "0", "no", "n", "negative", "neg") ~ "Negative",
+              TRUE ~ status
+            )
+          )
+      }
+
+      tib %>% select(sample_id, assay, status, quantitative, metric, assay_date)
     }
+
+    tibs$ielisa <- antigen_configs %>%
+      map(build_ielisa_tibble) %>%
+      compact() %>%
+      bind_rows()
   }
 
   # MIC qPCR

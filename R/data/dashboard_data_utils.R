@@ -171,11 +171,16 @@ prepare_assay_dashboard_data <- function(
           coalesce_any_column(., c("code_barres_kps", "barcode")),
           coalesce_any_column(., c("numero_labo", "lab_id"))
         ),
-        assay = dplyr::case_when(
-          stringr::str_detect(tolower(assay), "lit13") ~ "iELISA LiTat 1.3",
-          stringr::str_detect(tolower(assay), "lit15") ~ "iELISA LiTat 1.5",
-          TRUE ~ coalesce(as.character(assay), "iELISA")
-        )
+        assay = {
+          assay_raw <- coalesce_any_column(., c("assay", "Assay", "target", "antigen"), default = "iELISA")
+          assay_lower <- tolower(assay_raw)
+
+          dplyr::case_when(
+            stringr::str_detect(assay_lower, "lit13") ~ "iELISA LiTat 1.3",
+            stringr::str_detect(assay_lower, "lit15") ~ "iELISA LiTat 1.5",
+            TRUE ~ coalesce(as.character(assay_raw), "iELISA")
+          )
+        }
       )
 
     # Split per-antigen if columns exist

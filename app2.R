@@ -42,6 +42,7 @@ ui <- do.call(
       mod_drs_rnasep_ui("drs_rnasep"),
       # New comprehensive analysis modules
       mod_sample_journey_ui("sample_journey"),
+      mod_sample_processing_ui("sample_processing"),
       mod_concordance_ui("concordance_analysis")
     )
   )
@@ -144,6 +145,18 @@ server <- function(input, output, session) {
     ielisa_data = ielisa_data$samples
   )
 
+  # Sample Processing module (comprehensive sample processing overview)
+  mod_sample_processing_server(
+    "sample_processing",
+    biobank_df = data$clean_data,
+    extraction_df = data$filtered_extractions,
+    mic_df = mic_data$qpcr_samples,
+    elisa_pe_df = elisa_pe_data$samples,
+    elisa_vsg_df = elisa_vsg_data$samples,
+    ielisa_df = ielisa_data$samples,
+    filters = data$filters
+  )
+  
   # Concordance Analysis module (comprehensive statistical analysis)
   mod_concordance_server(
     "concordance_analysis",

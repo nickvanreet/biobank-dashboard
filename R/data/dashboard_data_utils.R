@@ -142,30 +142,73 @@ prepare_assay_dashboard_data <- function(
   id_columns <- c("code_barres_kps", "barcode", "SampleID", "sample_id", "Sample_ID", "Name")
   lab_columns <- c("numero_labo", "numero", "lab_id", "sample_code", "SampleCode")
 
-  # Biobank scaffold for dates/demographics
+  # ============================================================================
+  # BIOBANK LOOKUP: Bridge between lab numbers and barcodes
+  # ============================================================================
+  # MIC uses lab numbers (1, 2, 3), ELISA uses barcodes (KPS-001, KPS-002)
+  # Biobank has BOTH, so we use it as the lookup bridge
+
+  biobank_lookup <- NULL
   biobank_base <- NULL
+
   if (!is.null(biobank_df) && nrow(biobank_df)) {
+    # Extract both barcode and lab number from biobank
+    biobank_barcodes_raw <- coalesce_any_column(biobank_df, id_columns)
+    biobank_lab_numbers_raw <- coalesce_any_column(biobank_df, lab_columns)
+
+    # Normalize barcodes (preserve structure: KPS-001 → kps-001)
+    biobank_barcodes_norm <- sapply(biobank_barcodes_raw, function(x) {
+      if (is.na(x) || x == "") return(NA_character_)
+      normalize_sample_id(barcode = x)
+    })
+
+    # Normalize lab numbers (just trim and lowercase: "1" → "1")
+    biobank_lab_numbers_norm <- sapply(biobank_lab_numbers_raw, function(x) {
+      if (is.na(x) || x == "") return(NA_character_)
+      trimws(tolower(as.character(x)))
+    })
+
+    # Create lookup table: lab_number → barcode
+    biobank_lookup <- tibble(
+      barcode_raw = biobank_barcodes_raw,
+      lab_number_raw = biobank_lab_numbers_raw,
+      barcode_norm = biobank_barcodes_norm,
+      lab_number_norm = biobank_lab_numbers_norm,
+      sample_id = biobank_barcodes_norm  # Use barcode as universal ID
+    ) %>%
+      filter(!is.na(sample_id) & sample_id != "")
+
+    message(sprintf("Biobank lookup created: %d entries with both barcode and lab number",
+                    nrow(biobank_lookup)))
+
+    # Biobank scaffold for dates/demographics (using barcode as ID)
     biobank_base <- biobank_df %>%
       mutate(
-        sample_id = normalize_sample_id(
-          barcode = coalesce_any_column(., id_columns)
-        ),
+        sample_id = biobank_barcodes_norm,
         sample_date = suppressWarnings(lubridate::as_date(
           coalesce_any_column(., c("date_sample", "date_prelevement", "SampleDate"))
         ))
       ) %>%
+      filter(!is.na(sample_id) & sample_id != "") %>%
       select(sample_id, starts_with("province"), starts_with("Province"), starts_with("Health"), starts_with("Structure"),
              starts_with("study"), starts_with("Study"), starts_with("cohort"), sample_date) %>%
       distinct()
   }
 
-  # ELISA
+  # ELISA - Uses BARCODES (code_barres_kps)
   if (!is.null(elisa_df) && nrow(elisa_df)) {
+    message(sprintf("Processing %d ELISA tests...", nrow(elisa_df)))
+
+    # ELISA uses barcodes directly
+    elisa_barcodes_raw <- coalesce_any_column(elisa_df, id_columns)
+    elisa_barcodes_norm <- sapply(elisa_barcodes_raw, function(x) {
+      if (is.na(x) || x == "") return(NA_character_)
+      normalize_sample_id(barcode = x)
+    })
+
     tibs$elisa <- elisa_df %>%
       mutate(
-        sample_id = normalize_sample_id(
-          barcode = coalesce_any_column(., id_columns)
-        ),
+        sample_id = elisa_barcodes_norm,
         assay = dplyr::case_when(
           elisa_type %in% c("ELISA_pe", "pe", "ELISA PE") ~ "ELISA PE",
           elisa_type %in% c("ELISA_vsg", "vsg", "ELISA VSG") ~ "ELISA VSG",
@@ -177,11 +220,24 @@ prepare_assay_dashboard_data <- function(
         assay_date = suppressWarnings(lubridate::as_date(coalesce(plate_date, SampleDate)))
       ) %>%
       select(sample_id, assay, status, quantitative, metric, assay_date, DOD, PP_percent)
+
+    n_valid <- sum(!is.na(tibs$elisa$sample_id) & tibs$elisa$sample_id != "")
+    message(sprintf("  ELISA tests with valid barcodes: %d out of %d (%.1f%%)",
+                    n_valid, nrow(tibs$elisa), (n_valid/nrow(tibs$elisa))*100))
   }
 
-  # iELISA
+  # iELISA - Uses BARCODES (code_barres_kps)
   if (!is.null(ielisa_df) && nrow(ielisa_df)) {
+    message(sprintf("Processing %d iELISA tests...", nrow(ielisa_df)))
+
     date_candidates <- c("PlateDate", "plate_date", "run_date")
+
+    # iELISA uses barcodes directly
+    ielisa_barcodes_raw <- coalesce_any_column(ielisa_df, c("code_barres_kps", "barcode"))
+    ielisa_barcodes_norm <- sapply(ielisa_barcodes_raw, function(x) {
+      if (is.na(x) || x == "") return(NA_character_)
+      normalize_sample_id(barcode = x)
+    })
 
     antigen_configs <- list(
       list(
@@ -208,9 +264,7 @@ prepare_assay_dashboard_data <- function(
 
       tib <- ielisa_df %>%
         mutate(
-          sample_id = normalize_sample_id(
-            barcode = coalesce_any_column(., c("code_barres_kps", "barcode"))
-          ),
+          sample_id = ielisa_barcodes_norm,
           assay = cfg$name,
           quantitative = if (!is.null(value_col)) suppressWarnings(as.numeric(.data[[value_col]])) else NA_real_,
           status = vapply(quantitative, classify_ielisa, character(1), cutoffs = cutoffs),
@@ -239,28 +293,32 @@ prepare_assay_dashboard_data <- function(
       map(build_ielisa_tibble) %>%
       compact() %>%
       bind_rows()
+
+    if (nrow(tibs$ielisa) > 0) {
+      n_valid <- sum(!is.na(tibs$ielisa$sample_id) & tibs$ielisa$sample_id != "")
+      message(sprintf("  iELISA tests with valid barcodes: %d out of %d (%.1f%%)",
+                      n_valid, nrow(tibs$ielisa), (n_valid/nrow(tibs$ielisa))*100))
+    }
   }
 
-  # MIC qPCR
+  # MIC qPCR - Uses LAB NUMBERS, needs lookup to convert to barcodes
   if (!is.null(mic_data) && !is.null(mic_data$samples) && nrow(mic_data$samples)) {
     message(sprintf("Processing %d MIC samples...", nrow(mic_data$samples)))
 
-    # MIC-specific ID columns (prioritize MIC column names)
-    mic_id_columns <- c("SampleID", "SampleName", "Name", "sample_id", "Sample_ID",
-                        "code_barres_kps", "barcode")
+    # MIC uses lab numbers (SampleID = "1", "2", "3", etc.)
+    # Extract lab numbers from MIC data
+    mic_lab_numbers_raw <- coalesce_any_column(mic_data$samples, c("SampleID", "SampleName", "Name"))
 
-    # Extract barcode and lab_id for MIC data
-    mic_barcodes <- coalesce_any_column(mic_data$samples, c("SampleID", "sample_id", "Sample_ID"))
-    mic_lab_ids <- coalesce_any_column(mic_data$samples, c("SampleName", "Name"))
+    # Normalize lab numbers for lookup
+    mic_lab_numbers_norm <- sapply(mic_lab_numbers_raw, function(x) {
+      if (is.na(x) || x == "") return(NA_character_)
+      trimws(tolower(as.character(x)))
+    })
 
-    tibs$mic <- mic_data$samples %>%
+    # Create MIC data frame with lab numbers
+    mic_with_lab_numbers <- mic_data$samples %>%
       mutate(
-        sample_id = mapply(
-          normalize_sample_id,
-          barcode = mic_barcodes,
-          lab_id = mic_lab_ids,
-          SIMPLIFY = TRUE
-        ),
+        lab_number_norm = mic_lab_numbers_norm,
         assay = "MIC qPCR",
         status = vapply(PipelineCategory, classify_mic, character(1), cutoffs = cutoffs),
         quantitative = coalesce(Avg_177T_Positive_Cq, Avg_18S2_Positive_Cq),
@@ -270,13 +328,41 @@ prepare_assay_dashboard_data <- function(
         ))
       )
 
-    # Debug: Check how many samples have valid IDs
-    n_valid <- sum(!is.na(tibs$mic$sample_id) & tibs$mic$sample_id != "")
-    message(sprintf("  MIC samples with valid IDs: %d out of %d", n_valid, nrow(tibs$mic)))
+    # JOIN with biobank lookup to convert lab numbers → barcodes
+    if (!is.null(biobank_lookup)) {
+      tibs$mic <- mic_with_lab_numbers %>%
+        left_join(
+          biobank_lookup %>% select(lab_number_norm, sample_id),
+          by = "lab_number_norm"
+        ) %>%
+        select(sample_id, assay, status, quantitative, metric, assay_date, PipelineCategory,
+               Avg_177T_Positive_Cq, Avg_18S2_Positive_Cq, lab_number_norm)
 
-    tibs$mic <- tibs$mic %>%
-      select(sample_id, assay, status, quantitative, metric, assay_date, PipelineCategory,
-             Avg_177T_Positive_Cq, Avg_18S2_Positive_Cq)
+      # Debug: Check matching
+      n_total <- nrow(tibs$mic)
+      n_matched <- sum(!is.na(tibs$mic$sample_id) & tibs$mic$sample_id != "")
+      n_unmatched <- n_total - n_matched
+
+      message(sprintf("  MIC lab numbers → barcode matching:"))
+      message(sprintf("    Matched: %d (%.1f%%)", n_matched, (n_matched/n_total)*100))
+      message(sprintf("    Unmatched: %d (%.1f%%)", n_unmatched, (n_unmatched/n_total)*100))
+
+      if (n_unmatched > 0) {
+        unmatched_lab_nums <- tibs$mic %>%
+          filter(is.na(sample_id) | sample_id == "") %>%
+          pull(lab_number_norm) %>%
+          unique() %>%
+          head(10)
+        message(sprintf("    First 10 unmatched lab numbers: %s",
+                       paste(unmatched_lab_nums, collapse = ", ")))
+      }
+    } else {
+      message("  WARNING: No biobank lookup available - MIC samples cannot be linked!")
+      tibs$mic <- mic_with_lab_numbers %>%
+        mutate(sample_id = NA_character_) %>%
+        select(sample_id, assay, status, quantitative, metric, assay_date, PipelineCategory,
+               Avg_177T_Positive_Cq, Avg_18S2_Positive_Cq)
+    }
   }
 
   status_levels <- c("Positive", "Borderline", "Negative", "Invalid", "Missing")

@@ -10,6 +10,21 @@ suppressPackageStartupMessages({
   library(plotly)
 })
 
+#' Normalize sample ID for consistent matching across datasets
+#' @param barcode Barcode value
+#' @param lab_id Lab ID value
+#' @return Normalized ID string
+normalize_sample_id <- function(barcode = NULL, lab_id = NULL) {
+  ids <- c(barcode, lab_id)
+  ids <- ids[!is.na(ids) & ids != ""]
+  if (!length(ids)) return(NA_character_)
+  ids <- tolower(trimws(as.character(ids)))
+  ids <- gsub("^kps", "", ids)
+  ids <- gsub("^0+", "", ids)
+  ids <- gsub("[^a-z0-9]", "", ids)
+  ids[1]
+}
+
 #' Sample Processing UI
 #' @param id Module namespace ID
 #' @export
@@ -170,8 +185,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       # Start with biobank data (already cleaned with standardized column names)
       samples <- biobank %>%
         mutate(
-          sample_id = coalesce(barcode, lab_id, as.character(row_number()))
+          sample_id = normalize_sample_id(barcode, lab_id)
         ) %>%
+        filter(!is.na(sample_id)) %>%
         select(
           sample_id, barcode, lab_id,
           province, health_zone,
@@ -183,8 +199,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       if (nrow(extractions) > 0) {
         extraction_summary <- extractions %>%
           mutate(
-            sample_id = coalesce(barcode, numero, sample_id, as.character(row_number()))
+            sample_id = normalize_sample_id(barcode, numero)
           ) %>%
+          filter(!is.na(sample_id)) %>%
           group_by(sample_id) %>%
           summarise(
             has_extraction = TRUE,
@@ -212,8 +229,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         mic_summary <- mic_data %>%
           mutate(
             # MIC uses SampleID and SampleName columns
-            sample_id = coalesce(SampleID, SampleName, as.character(row_number()))
+            sample_id = normalize_sample_id(SampleID, SampleName)
           ) %>%
+          filter(!is.na(sample_id)) %>%
           group_by(sample_id) %>%
           summarise(
             has_mic = TRUE,
@@ -248,8 +266,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           filter(sample_type == "sample") %>%
           mutate(
             # ELISA uses code_barres_kps and numero_labo
-            sample_id = coalesce(code_barres_kps, numero_labo, as.character(row_number()))
+            sample_id = normalize_sample_id(code_barres_kps, numero_labo)
           ) %>%
+          filter(!is.na(sample_id)) %>%
           group_by(sample_id) %>%
           summarise(
             has_elisa_pe = TRUE,
@@ -284,8 +303,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           filter(sample_type == "sample") %>%
           mutate(
             # ELISA uses code_barres_kps and numero_labo
-            sample_id = coalesce(code_barres_kps, numero_labo, as.character(row_number()))
+            sample_id = normalize_sample_id(code_barres_kps, numero_labo)
           ) %>%
+          filter(!is.na(sample_id)) %>%
           group_by(sample_id) %>%
           summarise(
             has_elisa_vsg = TRUE,
@@ -318,8 +338,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       if (nrow(ielisa_data) > 0) {
         ielisa_summary <- ielisa_data %>%
           mutate(
-            sample_id = coalesce(Barcode, LabID, as.character(row_number()))
+            sample_id = normalize_sample_id(Barcode, LabID)
           ) %>%
+          filter(!is.na(sample_id)) %>%
           group_by(sample_id) %>%
           summarise(
             has_ielisa = TRUE,
@@ -457,14 +478,19 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
     output$summary_kpis <- renderUI({
       samples <- filtered_samples()
 
+      # Safety check
+      if (is.null(samples) || nrow(samples) == 0) {
+        return(div(class = "alert alert-info", "No samples available"))
+      }
+
       n_total <- nrow(samples)
-      n_extracted <- sum(samples$has_extraction)
-      n_mic <- sum(samples$has_mic)
-      n_elisa <- sum(samples$has_elisa)
-      n_ielisa <- sum(samples$has_ielisa)
-      n_fully_tested <- sum(samples$n_test_types == 3)
-      n_positive <- sum(samples$any_positive)
-      n_qc_fail <- sum(!samples$overall_qc_pass)
+      n_extracted <- sum(samples$has_extraction, na.rm = TRUE)
+      n_mic <- sum(samples$has_mic, na.rm = TRUE)
+      n_elisa <- sum(samples$has_elisa, na.rm = TRUE)
+      n_ielisa <- sum(samples$has_ielisa, na.rm = TRUE)
+      n_fully_tested <- sum(samples$n_test_types == 3, na.rm = TRUE)
+      n_positive <- sum(samples$any_positive, na.rm = TRUE)
+      n_qc_fail <- sum(!samples$overall_qc_pass, na.rm = TRUE)
 
       layout_column_wrap(
         width = 1/4,
@@ -535,13 +561,19 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
     output$processing_flow <- renderPlotly({
       samples <- comprehensive_samples()
 
+      # Safety check
+      if (is.null(samples) || nrow(samples) == 0) {
+        return(plotly_empty() %>%
+          layout(title = list(text = "No sample data available")))
+      }
+
       # Calculate numbers for each stage
       n_biobank <- nrow(samples)
-      n_extracted <- sum(samples$has_extraction)
-      n_mic <- sum(samples$has_mic)
-      n_elisa <- sum(samples$has_elisa)
-      n_ielisa <- sum(samples$has_ielisa)
-      n_fully_tested <- sum(samples$n_test_types == 3)
+      n_extracted <- sum(samples$has_extraction, na.rm = TRUE)
+      n_mic <- sum(samples$has_mic, na.rm = TRUE)
+      n_elisa <- sum(samples$has_elisa, na.rm = TRUE)
+      n_ielisa <- sum(samples$has_ielisa, na.rm = TRUE)
+      n_fully_tested <- sum(samples$n_test_types == 3, na.rm = TRUE)
 
       # Create a Sankey-style funnel plot
       flow_data <- tibble(

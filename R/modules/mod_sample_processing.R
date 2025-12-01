@@ -211,10 +211,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       if (nrow(mic_data) > 0) {
         mic_summary <- mic_data %>%
           mutate(
-            sample_id = coalesce(
-              barcode, numero_echantillon, lab_id, sample_id,
-              as.character(row_number())
-            )
+            # MIC uses SampleID and SampleName columns
+            sample_id = coalesce(SampleID, SampleName, as.character(row_number()))
           ) %>%
           group_by(sample_id) %>%
           summarise(
@@ -249,7 +247,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         elisa_pe_summary <- elisa_pe_data %>%
           filter(sample_type == "sample") %>%
           mutate(
-            sample_id = coalesce(barcode, lab_id, as.character(row_number()))
+            # ELISA uses code_barres_kps and numero_labo
+            sample_id = coalesce(code_barres_kps, numero_labo, as.character(row_number()))
           ) %>%
           group_by(sample_id) %>%
           summarise(
@@ -284,7 +283,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         elisa_vsg_summary <- elisa_vsg_data %>%
           filter(sample_type == "sample") %>%
           mutate(
-            sample_id = coalesce(barcode, lab_id, as.character(row_number()))
+            # ELISA uses code_barres_kps and numero_labo
+            sample_id = coalesce(code_barres_kps, numero_labo, as.character(row_number()))
           ) %>%
           group_by(sample_id) %>%
           summarise(

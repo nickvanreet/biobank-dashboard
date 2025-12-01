@@ -25,7 +25,7 @@ mod_overview_assays_ui <- function(id) {
         card(
           card_header(
             class = "d-flex justify-content-between align-items-center",
-            div(icon("chart-pie"), "Key Indicators"),
+            div(icon("chart-pie"), "Test Results by Assay"),
             tags$small(class = "text-muted", "Click a KPI to drill into the table")
           ),
           card_body(
@@ -34,10 +34,26 @@ mod_overview_assays_ui <- function(id) {
               value_box(title = "MIC qPCR positives", value = uiOutput(ns("kpi_mic")), showcase = icon("dna"), theme = "primary"),
               value_box(title = "ELISA PE positives", value = uiOutput(ns("kpi_pe")), showcase = icon("vial"), theme = "info"),
               value_box(title = "ELISA VSG positives", value = uiOutput(ns("kpi_vsg")), showcase = icon("vials"), theme = "warning"),
-              value_box(title = "iELISA positives", value = uiOutput(ns("kpi_ielisa")), showcase = icon("flask"), theme = "success"),
-              value_box(title = "Pairwise agreement", value = uiOutput(ns("kpi_agreement")), showcase = icon("handshake"), theme = "secondary"),
-              value_box(title = "Unique positives", value = uiOutput(ns("kpi_unique")), showcase = icon("star"), theme = "danger"),
-              value_box(title = "Positive concordance", value = uiOutput(ns("kpi_concordant")), showcase = icon("check"), theme = "success"),
+              value_box(title = "iELISA positives", value = uiOutput(ns("kpi_ielisa")), showcase = icon("flask"), theme = "success")
+            )
+          )
+        ),
+        card(
+          card_header(
+            class = "d-flex justify-content-between align-items-center",
+            div(icon("microscope"), "Molecular vs Serology Concordance"),
+            tags$small(class = "text-muted", "Concordance between MIC qPCR and any serological test (ELISA/iELISA)")
+          ),
+          card_body(
+            layout_column_wrap(
+              width = 1/4,
+              value_box(title = "Both Positive", value = uiOutput(ns("kpi_both_positive")), showcase = icon("check-double"), theme = "success"),
+              value_box(title = "MIC+ / Serology-", value = uiOutput(ns("kpi_mic_only")), showcase = icon("dna"), theme = "primary"),
+              value_box(title = "MIC- / Serology+", value = uiOutput(ns("kpi_serology_only")), showcase = icon("vials"), theme = "warning"),
+              value_box(title = "Concordance", value = uiOutput(ns("kpi_mic_serology_concordance")), showcase = icon("handshake"), theme = "info"),
+              value_box(title = "Single-test positive", value = uiOutput(ns("kpi_single_test")), showcase = icon("star"), theme = "danger"),
+              value_box(title = "All-tests positive", value = uiOutput(ns("kpi_all_tests")), showcase = icon("check-circle"), theme = "success"),
+              value_box(title = "Samples tested", value = uiOutput(ns("kpi_samples_tested")), showcase = icon("users"), theme = "secondary"),
               value_box(title = "Tests completed", value = uiOutput(ns("kpi_total")), showcase = icon("list-check"), theme = "dark")
             )
           )
@@ -53,6 +69,20 @@ mod_overview_assays_ui <- function(id) {
         card(
           card_header(icon("th"), "Pairwise agreement"),
           card_body_fill(plotlyOutput(ns("agreement_heatmap"), height = "350px"))
+        )
+      ),
+
+      layout_columns(
+        col_widths = c(6, 6),
+        card(
+          card_header(icon("project-diagram"), "Molecular vs Serology Concordance"),
+          card_body_fill(plotlyOutput(ns("concordance_sankey"), height = "400px"),
+                         tags$small(class = "text-muted", "Flow diagram showing concordance between MIC qPCR (molecular) and any serological test (ELISA PE/VSG, iELISA)."))
+        ),
+        card(
+          card_header(icon("layer-group"), "Concordance categories"),
+          card_body_fill(plotlyOutput(ns("concordance_bars"), height = "400px"),
+                         tags$small(class = "text-muted", "Sample distribution across molecular-serology concordance categories."))
         )
       ),
 
@@ -205,24 +235,82 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       list(label = nrow(df), detail = sprintf("%.1f%% of iELISA tests", 100 * nrow(df) / max(1, nrow(prepared()$tidy_assays %>% filter(grepl("iELISA", assay))))))
     }, drill_status = "Positive", drill_assay = c("iELISA LiTat 1.3", "iELISA LiTat 1.5"))
 
-    render_kpi("kpi_unique", function() {
-      ss <- sample_summary()
-      list(label = sum(ss$unique_positive, na.rm = TRUE), detail = "Single-assay positives")
+    render_kpi("kpi_both_positive", function() {
+      summary <- prepared()$mic_serology_summary
+      if (nrow(summary) == 0 || summary$n_samples == 0) {
+        list(label = "0", detail = "0% of tested samples")
+      } else {
+        list(
+          label = summary$n_both_positive,
+          detail = sprintf("%.1f%% of tested samples", summary$pct_both_positive)
+        )
+      }
     })
 
-    render_kpi("kpi_concordant", function() {
-      ss <- sample_summary()
-      list(label = sum(ss$concordant_positive, na.rm = TRUE), detail = "Positive across all tested")
+    render_kpi("kpi_mic_only", function() {
+      summary <- prepared()$mic_serology_summary
+      if (nrow(summary) == 0 || summary$n_samples == 0) {
+        list(label = "0", detail = "0% of tested samples")
+      } else {
+        list(
+          label = summary$n_mic_only,
+          detail = sprintf("%.1f%% of tested samples", summary$pct_mic_only)
+        )
+      }
+    })
+
+    render_kpi("kpi_serology_only", function() {
+      summary <- prepared()$mic_serology_summary
+      if (nrow(summary) == 0 || summary$n_samples == 0) {
+        list(label = "0", detail = "0% of tested samples")
+      } else {
+        list(
+          label = summary$n_serology_only,
+          detail = sprintf("%.1f%% of tested samples", summary$pct_serology_only)
+        )
+      }
+    })
+
+    render_kpi("kpi_mic_serology_concordance", function() {
+      summary <- prepared()$mic_serology_summary
+      if (nrow(summary) == 0 || summary$n_samples == 0) {
+        list(label = "N/A", detail = "No samples with both tests")
+      } else {
+        list(
+          label = sprintf("%.1f%%", summary$pct_concordant),
+          detail = sprintf("%d/%d samples concordant", summary$n_concordant, summary$n_samples)
+        )
+      }
+    })
+
+    render_kpi("kpi_single_test", function() {
+      summary <- prepared()$single_test_summary
+      list(
+        label = summary$n_single_test_positive,
+        detail = "Positive on only one test"
+      )
+    })
+
+    render_kpi("kpi_all_tests", function() {
+      summary <- prepared()$single_test_summary
+      list(
+        label = summary$n_all_tests_positive,
+        detail = "Positive on all tests"
+      )
+    })
+
+    render_kpi("kpi_samples_tested", function() {
+      concordance <- prepared()$molecular_serology_concordance
+      n_samples <- length(unique(concordance$sample_id))
+      list(
+        label = n_samples,
+        detail = "Unique samples"
+      )
     })
 
     render_kpi("kpi_total", function() {
       df <- prepared()$tidy_assays
       list(label = nrow(df), detail = "Total assay rows")
-    })
-
-    render_kpi("kpi_agreement", function() {
-      pw <- prepared()$pairwise_agreement %>% filter(!is.na(agreement))
-      list(label = sprintf("%.1f%%", mean(pw$agreement, na.rm = TRUE)), detail = "Mean pairwise agreement")
     })
 
     output$assay_bars <- renderPlotly({
@@ -262,13 +350,121 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       p
     })
 
+    output$concordance_sankey <- renderPlotly({
+      concordance <- prepared()$molecular_serology_concordance %>%
+        filter(mic_tested & serology_tested)
+
+      if (nrow(concordance) == 0) return(NULL)
+
+      # Create Sankey data
+      category_counts <- concordance %>%
+        count(concordance_category)
+
+      # Define nodes: MIC Positive/Negative -> Serology Positive/Negative
+      nodes <- data.frame(
+        name = c("MIC Positive", "MIC Negative", "Serology Positive", "Serology Negative")
+      )
+
+      # Calculate links
+      mic_pos_serology_pos <- sum(concordance$mic_positive & concordance$serology_positive)
+      mic_pos_serology_neg <- sum(concordance$mic_positive & !concordance$serology_positive)
+      mic_neg_serology_pos <- sum(!concordance$mic_positive & concordance$serology_positive)
+      mic_neg_serology_neg <- sum(!concordance$mic_positive & !concordance$serology_positive)
+
+      # Create links (source and target are 0-indexed)
+      links <- data.frame(
+        source = c(0, 0, 1, 1),  # MIC Pos, MIC Pos, MIC Neg, MIC Neg
+        target = c(2, 3, 2, 3),  # Serology Pos, Serology Neg, Serology Pos, Serology Neg
+        value = c(mic_pos_serology_pos, mic_pos_serology_neg, mic_neg_serology_pos, mic_neg_serology_neg),
+        color = c("rgba(34, 139, 34, 0.4)", "rgba(255, 165, 0, 0.4)",
+                  "rgba(255, 165, 0, 0.4)", "rgba(128, 128, 128, 0.4)")
+      )
+
+      # Filter out zero values
+      links <- links %>% filter(value > 0)
+
+      plot_ly(
+        type = "sankey",
+        orientation = "h",
+        node = list(
+          label = nodes$name,
+          color = c("#2563EB", "#9CA3AF", "#10B981", "#9CA3AF"),
+          pad = 15,
+          thickness = 20
+        ),
+        link = list(
+          source = links$source,
+          target = links$target,
+          value = links$value,
+          color = links$color
+        )
+      ) %>%
+        layout(
+          title = "",
+          font = list(size = 12)
+        )
+    })
+
+    output$concordance_bars <- renderPlotly({
+      concordance <- prepared()$molecular_serology_concordance %>%
+        filter(mic_tested & serology_tested)
+
+      if (nrow(concordance) == 0) return(NULL)
+
+      category_counts <- concordance %>%
+        count(concordance_category) %>%
+        mutate(
+          concordance_category = factor(concordance_category,
+            levels = c("Both Positive", "Both Negative", "MIC+ / Serology-", "MIC- / Serology+")),
+          percentage = n / sum(n) * 100,
+          color = case_when(
+            concordance_category == "Both Positive" ~ "#10B981",
+            concordance_category == "Both Negative" ~ "#9CA3AF",
+            concordance_category == "MIC+ / Serology-" ~ "#2563EB",
+            concordance_category == "MIC- / Serology+" ~ "#F59E0B"
+          )
+        )
+
+      p <- plot_ly(
+        data = category_counts,
+        x = ~concordance_category,
+        y = ~n,
+        type = "bar",
+        marker = list(color = ~color),
+        text = ~paste0(concordance_category, "<br>n=", n, " (", sprintf("%.1f%%", percentage), ")"),
+        hoverinfo = "text"
+      ) %>%
+        layout(
+          xaxis = list(title = "Concordance Category"),
+          yaxis = list(title = "Number of Samples"),
+          showlegend = FALSE
+        )
+
+      p
+    })
+
     output$upset_plot <- renderPlotly({
       inter <- prepared()$intersections
       if (!nrow(inter)) return(NULL)
-      p <- ggplot(inter, aes(x = reorder(combo, n), y = n, text = paste(combo, "<br>n=", n))) +
-        geom_col(fill = "#2563EB") +
+
+      # Add a column to indicate if it's a single test or multiple tests
+      inter <- inter %>%
+        mutate(
+          n_assays = str_count(combo, "\\+") + 1,
+          is_single = n_assays == 1,
+          fill_color = if_else(is_single, "#EF4444", "#2563EB")  # Red for single, blue for multiple
+        )
+
+      p <- ggplot(inter, aes(x = reorder(combo, n), y = n,
+                            text = paste(combo, "<br>n=", n, "<br>",
+                                        if_else(is_single, "Single test positive", "Multiple tests positive")),
+                            fill = fill_color)) +
+        geom_col() +
+        scale_fill_identity() +
         coord_flip() +
-        theme_minimal() + labs(x = "Assay combination", y = "Positive samples")
+        theme_minimal() +
+        labs(x = "Assay combination", y = "Positive samples") +
+        theme(legend.position = "none")
       ggplotly(p, tooltip = "text")
     })
 

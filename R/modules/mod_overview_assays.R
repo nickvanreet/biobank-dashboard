@@ -11,15 +11,8 @@ mod_overview_assays_ui <- function(id) {
       layout_columns(
         col_widths = c(3, 9),
         card(
-          card_header(icon("filter"), "Drill-down Filters"),
+          card_header(icon("info-circle"), "Test Classification"),
           card_body(
-            tags$p(class = "text-muted small mb-3",
-                   "Use these filters to focus visualizations and the sample table on specific assays and statuses. KPI boxes show all available data."),
-            selectInput(ns("assay_filter"), "Filter by Assays", choices = NULL, multiple = TRUE),
-            checkboxGroupInput(ns("status_filter"), "Filter by Statuses", choices = c("Positive", "Borderline", "Negative", "Invalid"),
-                               selected = c("Positive", "Borderline", "Negative")),
-            checkboxInput(ns("available_only"), "Only samples with results", value = TRUE),
-            tags$hr(),
             tags$small(class = "text-muted",
                        "Cutoffs: ELISA PP% ≥20 or DOD ≥0.3 positive; PP% 15-20/DOD 0.2-0.3 borderline. iELISA ≥30% inhibition positive; 25-30% borderline. MIC status based on final call string.")
           )
@@ -299,23 +292,9 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       )
     })
 
-    observeEvent(prepared(), {
-      assays <- prepared()$tidy_assays %>% distinct(assay) %>% arrange(assay) %>% pull()
-      updateSelectInput(session, "assay_filter", choices = assays, selected = assays)
-    }, ignoreNULL = FALSE)
-
     filtered_tidy <- reactive({
       req(prepared())
       df <- prepared()$tidy_assays
-      if (!is.null(input$assay_filter) && length(input$assay_filter)) {
-        df <- df %>% filter(as.character(assay) %in% input$assay_filter)
-      }
-      if (length(input$status_filter)) {
-        df <- df %>% filter(as.character(status) %in% input$status_filter)
-      }
-      if (isTRUE(input$available_only)) {
-        df <- df %>% filter(!is.na(status) & status != "Missing")
-      }
       if (!is.null(drill_state$status)) {
         df <- df %>% filter(status == drill_state$status)
       }

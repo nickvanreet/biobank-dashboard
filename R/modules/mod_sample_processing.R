@@ -186,7 +186,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       # Start with biobank data (already cleaned with standardized column names)
       samples <- biobank %>%
         mutate(
-          sample_id = normalize_sample_id(barcode, lab_id)
+          sample_id = normalize_sample_id(barcode = barcode)
         ) %>%
         filter(!is.na(sample_id) & sample_id != "") %>%
         select(
@@ -200,7 +200,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       if (nrow(extractions) > 0) {
         extraction_summary <- extractions %>%
           mutate(
-            sample_id = normalize_sample_id(barcode, numero)
+            sample_id = normalize_sample_id(barcode = barcode)
           ) %>%
           filter(!is.na(sample_id) & sample_id != "") %>%
           group_by(sample_id) %>%
@@ -229,8 +229,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       if (nrow(mic_data) > 0) {
         mic_summary <- mic_data %>%
           mutate(
-            # MIC uses SampleID and SampleName columns
-            sample_id = normalize_sample_id(SampleID, SampleName)
+            # MIC uses SampleID column
+            sample_id = normalize_sample_id(barcode = SampleID)
           ) %>%
           filter(!is.na(sample_id) & sample_id != "") %>%
           group_by(sample_id) %>%
@@ -266,8 +266,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         elisa_pe_summary <- elisa_pe_data %>%
           filter(sample_type == "sample") %>%
           mutate(
-            # ELISA uses code_barres_kps and numero_labo
-            sample_id = normalize_sample_id(code_barres_kps, numero_labo)
+            # ELISA uses code_barres_kps
+            sample_id = normalize_sample_id(barcode = code_barres_kps)
           ) %>%
           filter(!is.na(sample_id) & sample_id != "") %>%
           group_by(sample_id) %>%
@@ -303,8 +303,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         elisa_vsg_summary <- elisa_vsg_data %>%
           filter(sample_type == "sample") %>%
           mutate(
-            # ELISA uses code_barres_kps and numero_labo
-            sample_id = normalize_sample_id(code_barres_kps, numero_labo)
+            # ELISA uses code_barres_kps
+            sample_id = normalize_sample_id(barcode = code_barres_kps)
           ) %>%
           filter(!is.na(sample_id) & sample_id != "") %>%
           group_by(sample_id) %>%
@@ -339,7 +339,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       if (nrow(ielisa_data) > 0) {
         ielisa_summary <- ielisa_data %>%
           mutate(
-            sample_id = normalize_sample_id(Barcode, LabID)
+            sample_id = normalize_sample_id(barcode = Barcode)
           ) %>%
           filter(!is.na(sample_id) & sample_id != "") %>%
           group_by(sample_id) %>%

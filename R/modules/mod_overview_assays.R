@@ -283,13 +283,26 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
     })
 
     prepared <- reactive({
-      prepare_assay_dashboard_data(
-        biobank_df = if (is.null(biobank_df)) NULL else biobank_df(),
-        elisa_df = if (is.null(elisa_df)) NULL else elisa_df(),
-        ielisa_df = if (is.null(ielisa_df)) NULL else ielisa_df(),
-        mic_data = if (is.null(mic_df)) NULL else mic_df(),
-        filters = if (is.null(filters)) NULL else filters()
-      )
+      tryCatch({
+        result <- prepare_assay_dashboard_data(
+          biobank_df = if (is.null(biobank_df)) NULL else biobank_df(),
+          elisa_df = if (is.null(elisa_df)) NULL else elisa_df(),
+          ielisa_df = if (is.null(ielisa_df)) NULL else ielisa_df(),
+          mic_data = if (is.null(mic_df)) NULL else mic_df(),
+          filters = if (is.null(filters)) NULL else filters()
+        )
+
+        # Validate result structure
+        if (is.null(result) || !is.list(result)) {
+          warning("prepare_assay_dashboard_data returned NULL or invalid structure")
+          return(NULL)
+        }
+
+        return(result)
+      }, error = function(e) {
+        warning(sprintf("Error in prepare_assay_dashboard_data: %s", e$message))
+        return(NULL)
+      })
     })
 
     filtered_tidy <- reactive({
@@ -306,10 +319,49 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
 
     # Helper function to get stats for a specific test
     get_test_stats <- function(test_name) {
-      prevalence <- prepared()$test_prevalence %>% filter(assay == test_name)
-      overlaps <- prepared()$test_specific_overlaps %>% filter(assay == test_name)
+      tryCatch({
+        prep_data <- prepared()
+        if (is.null(prep_data)) {
+          return(list(
+            n_positive = 0,
+            pct_positive = 0,
+            total_tests = 0,
+            n_exclusive = 0,
+            n_shared = 0,
+            n_with_serology = 0
+          ))
+        }
 
-      if (nrow(prevalence) == 0) {
+        prevalence <- prep_data$test_prevalence %>% filter(assay == test_name)
+        overlaps <- prep_data$test_specific_overlaps %>% filter(assay == test_name)
+
+        if (nrow(prevalence) == 0) {
+          return(list(
+            n_positive = 0,
+            pct_positive = 0,
+            total_tests = 0,
+            n_exclusive = 0,
+            n_shared = 0,
+            n_with_serology = 0
+          ))
+        }
+
+        n_with_serology <- if (nrow(overlaps) > 0) {
+          overlaps$n_with_any_serology
+        } else {
+          0
+        }
+
+        list(
+          n_positive = prevalence$n_positive,
+          pct_positive = prevalence$pct_positive,
+          total_tests = prevalence$total_tests,
+          n_exclusive = prevalence$n_exclusive,
+          n_shared = prevalence$n_shared,
+          n_with_serology = n_with_serology
+        )
+      }, error = function(e) {
+        warning(sprintf("Error in get_test_stats for %s: %s", test_name, e$message))
         return(list(
           n_positive = 0,
           pct_positive = 0,
@@ -318,36 +370,30 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
           n_shared = 0,
           n_with_serology = 0
         ))
-      }
-
-      n_with_serology <- if (nrow(overlaps) > 0) {
-        overlaps$n_with_any_serology
-      } else {
-        0
-      }
-
-      list(
-        n_positive = prevalence$n_positive,
-        pct_positive = prevalence$pct_positive,
-        total_tests = prevalence$total_tests,
-        n_exclusive = prevalence$n_exclusive,
-        n_shared = prevalence$n_shared,
-        n_with_serology = n_with_serology
-      )
+      })
     }
 
     # Summary KPIs
     output$kpi_total_samples <- renderUI({
+      req(prepared())
       summary <- prepared()$overlap_summary
+      if (is.null(summary)) {
+        return(tags$div(tags$strong("0"), tags$br(), tags$span(class = "text-muted", "No data")))
+      }
       tags$div(
-        tags$strong(style = "font-size: 2em;", summary$total_samples),
+        tags$strong(style = "font-size: 2em;", summary$total_samples %||% 0),
         tags$br(),
         tags$span(class = "text-muted", "Unique samples")
       )
     })
 
     output$kpi_total_tests <- renderUI({
-      n_tests <- nrow(prepared()$tidy_assays)
+      req(prepared())
+      tidy <- prepared()$tidy_assays
+      if (is.null(tidy)) {
+        return(tags$div(tags$strong("0"), tags$br(), tags$span(class = "text-muted", "No data")))
+      }
+      n_tests <- nrow(tidy)
       tags$div(
         tags$strong(style = "font-size: 2em;", n_tests),
         tags$br(),
@@ -356,14 +402,18 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
     })
 
     output$kpi_any_positive <- renderUI({
+      req(prepared())
       summary <- prepared()$overlap_summary
+      if (is.null(summary)) {
+        return(tags$div(tags$strong("0"), tags$br(), tags$span(class = "text-muted", "No data")))
+      }
       pct <- if (summary$total_samples > 0) {
         (summary$n_any_positive / summary$total_samples) * 100
       } else {
         0
       }
       tags$div(
-        tags$strong(style = "font-size: 2em;", summary$n_any_positive),
+        tags$strong(style = "font-size: 2em;", summary$n_any_positive %||% 0),
         tags$br(),
         tags$span(class = "text-muted", sprintf("%.1f%% of samples", pct))
       )

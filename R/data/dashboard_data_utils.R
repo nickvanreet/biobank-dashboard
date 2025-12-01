@@ -326,11 +326,77 @@ prepare_assay_dashboard_data <- function(
     count(combo, name = "n") %>%
     arrange(desc(n))
 
+  # Enhanced concordance: Molecular (MIC) vs Serology (ELISA + iELISA)
+  molecular_serology_concordance <- tidy %>%
+    mutate(
+      test_category = case_when(
+        assay == "MIC qPCR" ~ "Molecular",
+        grepl("ELISA", assay) ~ "Serology",
+        grepl("iELISA", assay) ~ "Serology",
+        TRUE ~ "Other"
+      ),
+      is_positive = status == "Positive"
+    ) %>%
+    group_by(sample_id) %>%
+    summarise(
+      mic_positive = any(test_category == "Molecular" & is_positive),
+      serology_positive = any(test_category == "Serology" & is_positive),
+      mic_tested = any(test_category == "Molecular"),
+      serology_tested = any(test_category == "Serology"),
+      n_tests = n(),
+      n_positive = sum(is_positive),
+      positive_assays = list(as.character(assay[is_positive])),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      concordance_category = case_when(
+        !mic_tested & !serology_tested ~ "Not Tested",
+        !mic_tested & serology_tested ~ "Serology Only",
+        mic_tested & !serology_tested ~ "Molecular Only",
+        mic_positive & serology_positive ~ "Both Positive",
+        !mic_positive & !serology_positive ~ "Both Negative",
+        mic_positive & !serology_positive ~ "MIC+ / Serology-",
+        !mic_positive & serology_positive ~ "MIC- / Serology+",
+        TRUE ~ "Unknown"
+      ),
+      single_test_positive = n_positive == 1,
+      all_tests_positive = n_positive == n_tests & n_positive > 0
+    )
+
+  # Summary statistics for molecular vs serology concordance
+  mic_serology_summary <- molecular_serology_concordance %>%
+    filter(mic_tested & serology_tested) %>%
+    summarise(
+      n_samples = n(),
+      n_both_positive = sum(concordance_category == "Both Positive"),
+      n_both_negative = sum(concordance_category == "Both Negative"),
+      n_mic_only = sum(concordance_category == "MIC+ / Serology-"),
+      n_serology_only = sum(concordance_category == "MIC- / Serology+"),
+      n_concordant = n_both_positive + n_both_negative,
+      n_discordant = n_mic_only + n_serology_only,
+      pct_concordant = if_else(n_samples > 0, (n_concordant / n_samples) * 100, NA_real_),
+      pct_discordant = if_else(n_samples > 0, (n_discordant / n_samples) * 100, NA_real_),
+      pct_both_positive = if_else(n_samples > 0, (n_both_positive / n_samples) * 100, NA_real_),
+      pct_mic_only = if_else(n_samples > 0, (n_mic_only / n_samples) * 100, NA_real_),
+      pct_serology_only = if_else(n_samples > 0, (n_serology_only / n_samples) * 100, NA_real_)
+    )
+
+  # Single test positive analysis
+  single_test_summary <- molecular_serology_concordance %>%
+    summarise(
+      n_single_test_positive = sum(single_test_positive),
+      n_multiple_test_positive = sum(n_positive > 1),
+      n_all_tests_positive = sum(all_tests_positive)
+    )
+
   list(
     tidy_assays = tidy,
     sample_matrix = sample_matrix,
     pairwise_agreement = pairwise,
     intersections = intersections,
+    molecular_serology_concordance = molecular_serology_concordance,
+    mic_serology_summary = mic_serology_summary,
+    single_test_summary = single_test_summary,
     cutoffs = cutoffs
   )
 }

@@ -36,15 +36,31 @@ assay_cutoffs <- function() {
 }
 
 #' Normalize sample identifiers across assays
+#'
+#' Less aggressive normalization to prevent sample ID collisions.
+#' Preserves dashes, underscores, and dots to maintain uniqueness.
 normalize_sample_id <- function(barcode = NULL, lab_id = NULL) {
   ids <- c(barcode, lab_id)
   ids <- ids[!is.na(ids) & ids != ""]
   if (!length(ids)) return(NA_character_)
-  ids <- tolower(trimws(ids))
-  ids <- gsub("^kps", "", ids)
-  ids <- gsub("[^a-z0-9]", "", ids)
+
+  # Convert to string and trim whitespace
+  ids <- trimws(as.character(ids))
+
+  # Remove KPS prefix (case-insensitive)
+  ids <- gsub("^[Kk][Pp][Ss][-_]?", "", ids)
+
+  # Convert to lowercase for case-insensitive matching
+  ids <- tolower(ids)
+
+  # Only remove spaces and special punctuation, but keep dashes, underscores, dots
+  # This prevents "001-A" and "001-B" from collapsing to the same ID
+  ids <- gsub("[^a-z0-9._-]", "", ids)
+
+  # Remove any resulting empty strings
   ids <- ids[ids != ""]
   if (!length(ids)) return(NA_character_)
+
   ids[1]
 }
 

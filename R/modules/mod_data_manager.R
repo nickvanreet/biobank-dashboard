@@ -1021,11 +1021,32 @@ mod_data_manager_server <- function(id) {
         )
       }
     })
-    
+
+    # ========================================================================
+    # AUTO-LOAD DEFAULT SITE ON STARTUP
+    # ========================================================================
+
+    # Automatically load the default site when the app starts
+    observe({
+      # Only run once when the session starts
+      isolate({
+        if (is.null(rv$clean_data) && !is.null(config$app$default_site)) {
+          default_site <- config$app$default_site
+          message("Auto-loading default site: ", default_site)
+
+          # Use a small delay to ensure UI is ready
+          shiny::invalidateLater(100)
+
+          # Trigger the load for the default site
+          load_site_data(default_site)
+        }
+      })
+    })
+
     # ========================================================================
     # RETURN VALUES
     # ========================================================================
-    
+
     return(list(
       raw_data = reactive(rv$raw_data),
       clean_data = reactive(rv$clean_data),

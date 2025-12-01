@@ -132,8 +132,7 @@ prepare_assay_dashboard_data <- function(
     biobank_base <- biobank_df %>%
       mutate(
         sample_id = normalize_sample_id(
-          barcode = coalesce_any_column(., id_columns),
-          lab_id = coalesce_any_column(., lab_columns)
+          barcode = coalesce_any_column(., id_columns)
         ),
         sample_date = suppressWarnings(lubridate::as_date(
           coalesce_any_column(., c("date_sample", "date_prelevement", "SampleDate"))
@@ -149,8 +148,7 @@ prepare_assay_dashboard_data <- function(
     tibs$elisa <- elisa_df %>%
       mutate(
         sample_id = normalize_sample_id(
-          coalesce_any_column(., id_columns),
-          coalesce_any_column(., lab_columns)
+          barcode = coalesce_any_column(., id_columns)
         ),
         assay = dplyr::case_when(
           elisa_type %in% c("ELISA_pe", "pe", "ELISA PE") ~ "ELISA PE",
@@ -195,8 +193,7 @@ prepare_assay_dashboard_data <- function(
       tib <- ielisa_df %>%
         mutate(
           sample_id = normalize_sample_id(
-            coalesce_any_column(., c("code_barres_kps", "barcode")),
-            coalesce_any_column(., c("numero_labo", "lab_id"))
+            barcode = coalesce_any_column(., c("code_barres_kps", "barcode"))
           ),
           assay = cfg$name,
           quantitative = if (!is.null(value_col)) suppressWarnings(as.numeric(.data[[value_col]])) else NA_real_,
@@ -233,8 +230,7 @@ prepare_assay_dashboard_data <- function(
     tibs$mic <- mic_data$samples %>%
       mutate(
         sample_id = normalize_sample_id(
-          coalesce_any_column(., id_columns),
-          coalesce_any_column(., lab_columns)
+          barcode = coalesce_any_column(., id_columns)
         ),
         assay = "MIC qPCR",
         status = vapply(FinalCall, classify_mic, character(1), cutoffs = cutoffs),

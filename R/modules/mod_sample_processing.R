@@ -20,7 +20,6 @@ normalize_sample_id <- function(barcode = NULL, lab_id = NULL) {
   if (!length(ids)) return(NA_character_)
   ids <- tolower(trimws(as.character(ids)))
   ids <- gsub("^kps", "", ids)
-  ids <- gsub("^0+", "", ids)
   ids <- gsub("[^a-z0-9]", "", ids)
   ids[1]
 }

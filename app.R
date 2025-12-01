@@ -152,13 +152,12 @@ server <- function(input, output, session) {
   # Sample Journey module (comprehensive sample tracking)
   mod_sample_journey_server(
     "sample_journey",
-    biobank_df = data$clean_data,
-    extraction_df = data$filtered_extractions,
-    mic_df = mic_data$qpcr_samples,
-    elisa_pe_df = elisa_pe_data$samples,
-    elisa_vsg_df = elisa_vsg_data$samples,
-    ielisa_df = ielisa_data$samples,
-    filters = data$filters
+    biobank_data = data$clean_data,
+    extraction_data = data$filtered_extractions,
+    mic_data = mic_data$qpcr_samples,
+    elisa_pe_data = elisa_pe_data$samples,
+    elisa_vsg_data = elisa_vsg_data$samples,
+    ielisa_data = ielisa_data$samples
   )
 
   # Sample Processing module (comprehensive sample processing overview)

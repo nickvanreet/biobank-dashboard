@@ -53,8 +53,9 @@ mod_sample_processing_ui <- function(id) {
             )
           ),
           card_body(
+            # First row - 2 main filters
             layout_column_wrap(
-              width = 1/4,
+              width = 1/2,
               selectInput(
                 ns("filter_positivity"),
                 "Positivity Status",
@@ -69,15 +70,20 @@ mod_sample_processing_ui <- function(id) {
                 selected = "all"
               ),
               selectInput(
-                ns("filter_qc"),
-                "QC Status",
+                ns("filter_completeness"),
+                "Data Completeness",
                 choices = c(
                   "All Samples" = "all",
-                  "QC Pass Only" = "qc_pass",
-                  "QC Fail Only" = "qc_fail"
+                  "Fully Tested (All 3)" = "fully_tested",
+                  "Partially Tested" = "partially_tested",
+                  "Biobank Only" = "biobank_only"
                 ),
                 selected = "all"
-              ),
+              )
+            ),
+            # Second row - 2 additional filters
+            layout_column_wrap(
+              width = 1/2,
               selectInput(
                 ns("filter_processing"),
                 "Processing Status",
@@ -93,13 +99,12 @@ mod_sample_processing_ui <- function(id) {
                 selected = "all"
               ),
               selectInput(
-                ns("filter_completeness"),
-                "Data Completeness",
+                ns("filter_qc"),
+                "QC Status",
                 choices = c(
                   "All Samples" = "all",
-                  "Fully Tested (All 3)" = "fully_tested",
-                  "Partially Tested" = "partially_tested",
-                  "Biobank Only" = "biobank_only"
+                  "QC Pass Only" = "qc_pass",
+                  "QC Fail Only" = "qc_fail"
                 ),
                 selected = "all"
               )
@@ -162,12 +167,10 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       elisa_vsg_data <- tryCatch(elisa_vsg_df(), error = function(e) tibble())
       ielisa_data <- tryCatch(ielisa_df(), error = function(e) tibble())
 
-      # Start with biobank data
+      # Start with biobank data (already cleaned with standardized column names)
       samples <- biobank %>%
         mutate(
-          sample_id = coalesce(code_barres_kps, numero_labo, as.character(row_number())),
-          barcode = code_barres_kps,
-          lab_id = numero_labo
+          sample_id = coalesce(barcode, lab_id, as.character(row_number()))
         ) %>%
         select(
           sample_id, barcode, lab_id,
@@ -246,7 +249,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         elisa_pe_summary <- elisa_pe_data %>%
           filter(sample_type == "sample") %>%
           mutate(
-            sample_id = coalesce(code_barres_kps, numero_labo, as.character(row_number()))
+            sample_id = coalesce(barcode, lab_id, as.character(row_number()))
           ) %>%
           group_by(sample_id) %>%
           summarise(
@@ -281,7 +284,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         elisa_vsg_summary <- elisa_vsg_data %>%
           filter(sample_type == "sample") %>%
           mutate(
-            sample_id = coalesce(code_barres_kps, numero_labo, as.character(row_number()))
+            sample_id = coalesce(barcode, lab_id, as.character(row_number()))
           ) %>%
           group_by(sample_id) %>%
           summarise(

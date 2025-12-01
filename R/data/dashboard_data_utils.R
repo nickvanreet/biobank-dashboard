@@ -123,7 +123,7 @@ prepare_assay_dashboard_data <- function(
 
   tibs <- list()
 
-  id_columns <- c("code_barres_kps", "barcode", "SampleID", "sample_id", "Sample_ID")
+  id_columns <- c("code_barres_kps", "barcode", "SampleID", "sample_id", "Sample_ID", "Name")
   lab_columns <- c("numero_labo", "numero", "lab_id", "sample_code", "SampleCode")
 
   # Biobank scaffold for dates/demographics
@@ -233,14 +233,14 @@ prepare_assay_dashboard_data <- function(
           barcode = coalesce_any_column(., id_columns)
         ),
         assay = "MIC qPCR",
-        status = vapply(FinalCall, classify_mic, character(1), cutoffs = cutoffs),
-        quantitative = coalesce(Cq_median_177T, Cq_median_18S2),
+        status = vapply(final_category, classify_mic, character(1), cutoffs = cutoffs),
+        quantitative = coalesce(avg_177T_Cq, avg_18S2_Cq),
         metric = "Cq",
         assay_date = suppressWarnings(lubridate::as_date(
           coalesce_any_column(., c("CollectionDate", "SampleDate", "RunDate", "plate_date"))
         ))
       ) %>%
-      select(sample_id, assay, status, quantitative, metric, assay_date, FinalCall, Cq_median_177T, Cq_median_18S2)
+      select(sample_id, assay, status, quantitative, metric, assay_date, final_category, avg_177T_Cq, avg_18S2_Cq)
   }
 
   status_levels <- c("Positive", "Borderline", "Negative", "Invalid", "Missing")

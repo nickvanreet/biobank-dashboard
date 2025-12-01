@@ -24,42 +24,44 @@ mod_overview_assays_ui <- function(id) {
                        "Cutoffs: ELISA PP% ≥20 or DOD ≥0.3 positive; PP% 15-20/DOD 0.2-0.3 borderline. iELISA ≥30% inhibition positive; 25-30% borderline. MIC status based on final call string.")
           )
         ),
-        card(
-          card_header(
-            class = "d-flex justify-content-between align-items-center",
-            div(icon("chart-pie"), "Test Results by Assay"),
-            tags$small(class = "text-muted", "Click a KPI to drill into the table")
-          ),
-          card_body(
-            layout_column_wrap(
-              width = 1/4,
-              value_box(title = "MIC qPCR positives", value = uiOutput(ns("kpi_mic")), showcase = icon("dna"), theme = "primary"),
-              value_box(title = "ELISA PE positives", value = uiOutput(ns("kpi_pe")), showcase = icon("vial"), theme = "info"),
-              value_box(title = "ELISA VSG positives", value = uiOutput(ns("kpi_vsg")), showcase = icon("vials"), theme = "warning"),
-              value_box(title = "iELISA positives", value = uiOutput(ns("kpi_ielisa")), showcase = icon("flask"), theme = "success")
-            )
-          )
-        ),
-        card(
-          full_screen = TRUE,
-          card_header(
-            class = "d-flex justify-content-between align-items-center",
-            div(icon("microscope"), "Molecular vs Serology Concordance"),
-            tags$small(class = "text-muted", "Concordance between MIC qPCR and any serological test (ELISA/iELISA)")
-          ),
-          card_body(
-            # Top row: Key KPIs
-            layout_column_wrap(
-              width = 1/4,
-              value_box(title = "Samples tested", value = uiOutput(ns("kpi_samples_tested")), showcase = icon("users"), theme = "secondary"),
-              value_box(title = "Concordance", value = uiOutput(ns("kpi_mic_serology_concordance")), showcase = icon("handshake"), theme = "info"),
-              value_box(title = "Both Positive", value = uiOutput(ns("kpi_both_positive")), showcase = icon("check-double"), theme = "success"),
-              value_box(title = "Tests completed", value = uiOutput(ns("kpi_total")), showcase = icon("list-check"), theme = "dark")
+        div(
+          card(
+            card_header(
+              class = "d-flex justify-content-between align-items-center",
+              div(icon("chart-pie"), "Test Results by Assay"),
+              tags$small(class = "text-muted", "Click a KPI to drill into the table")
             ),
-            # Full concordance table
-            div(class = "mt-3",
-                h5("Concordance Details"),
-                DT::DTOutput(ns("concordance_table"))
+            card_body(
+              layout_column_wrap(
+                width = 1/4,
+                value_box(title = "MIC qPCR positives", value = uiOutput(ns("kpi_mic")), showcase = icon("dna"), theme = "primary"),
+                value_box(title = "ELISA PE positives", value = uiOutput(ns("kpi_pe")), showcase = icon("vial"), theme = "info"),
+                value_box(title = "ELISA VSG positives", value = uiOutput(ns("kpi_vsg")), showcase = icon("vials"), theme = "warning"),
+                value_box(title = "iELISA positives", value = uiOutput(ns("kpi_ielisa")), showcase = icon("flask"), theme = "success")
+              )
+            )
+          ),
+          card(
+            full_screen = TRUE,
+            card_header(
+              class = "d-flex justify-content-between align-items-center",
+              div(icon("microscope"), "Molecular vs Serology Concordance"),
+              tags$small(class = "text-muted", "Concordance between MIC qPCR and any serological test (ELISA/iELISA)")
+            ),
+            card_body(
+              # Top row: Key KPIs
+              layout_column_wrap(
+                width = 1/4,
+                value_box(title = "Samples tested", value = uiOutput(ns("kpi_samples_tested")), showcase = icon("users"), theme = "secondary"),
+                value_box(title = "Concordance", value = uiOutput(ns("kpi_mic_serology_concordance")), showcase = icon("handshake"), theme = "info"),
+                value_box(title = "Both Positive", value = uiOutput(ns("kpi_both_positive")), showcase = icon("check-double"), theme = "success"),
+                value_box(title = "Tests completed", value = uiOutput(ns("kpi_total")), showcase = icon("list-check"), theme = "dark")
+              ),
+              # Full concordance table
+              div(class = "mt-3",
+                  h5("Concordance Details"),
+                  DT::DTOutput(ns("concordance_table"))
+              )
             )
           )
         )
@@ -302,10 +304,13 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
 
     render_kpi("kpi_samples_tested", function() {
       concordance <- prepared()$molecular_serology_concordance
-      n_samples <- length(unique(concordance$sample_id))
+      # Only count samples with both molecular and serology tests
+      samples_with_both <- concordance %>% filter(mic_tested & serology_tested)
+      n_samples <- nrow(samples_with_both)
+      n_total <- nrow(concordance)
       list(
         label = n_samples,
-        detail = "Unique samples"
+        detail = sprintf("%d with both test types", n_samples)
       )
     })
 

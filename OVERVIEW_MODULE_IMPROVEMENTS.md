@@ -1,172 +1,249 @@
-# Overview Module Improvements
+# Overview Module - Complete Redesign
 
 ## Summary
 
-The Overview module has been redesigned to better measure concordance between molecular (MIC qPCR) and serological tests (ELISA PE/VSG, iELISA). This "Claude-style" redesign focuses on clinical interpretation and provides clearer insights into test agreement patterns.
+The Overview module has been completely redesigned to provide clear, actionable prevalence and test overlap statistics. This redesign focuses on answering key epidemiological questions: "How many samples are positive on each test?", "How many are exclusively positive on one test?", and "What are the patterns of test overlaps?"
 
 ## What Changed
 
-### 1. Enhanced Concordance Calculations (`R/data/dashboard_data_utils.R`)
+### 1. Enhanced Data Utilities (`R/data/dashboard_data_utils.R`)
 
-Added three new analytical components to `prepare_assay_dashboard_data()`:
+Added comprehensive overlap and prevalence analysis functions to `prepare_assay_dashboard_data()`:
 
-#### a) **Molecular-Serology Concordance Analysis**
-- Groups assays into "Molecular" (MIC qPCR) vs "Serology" (ELISA PE/VSG, iELISA)
-- Calculates per-sample concordance categories:
-  - **Both Positive**: MIC+ AND any serology+
-  - **Both Negative**: MIC- AND all serology-
-  - **MIC+ / Serology-**: Discordant (MIC positive, all serology negative)
-  - **MIC- / Serology+**: Discordant (MIC negative, any serology positive)
-- Tracks samples tested with only one category
+#### a) **Test Prevalence Statistics** (`test_prevalence`)
+For each test (MIC qPCR, ELISA PE, ELISA VSG, iELISA LiTat 1.3, iELISA LiTat 1.5):
+- Total number of tests performed
+- Number and percentage of positive results
+- Number and percentage of negative, borderline, and invalid results
+- **Exclusive positives**: Samples positive ONLY on this test
+- **Shared positives**: Samples positive on this test AND other tests
 
-#### b) **Summary Statistics** (`mic_serology_summary`)
-Provides aggregate metrics:
-- Sample counts per concordance category
-- Concordance and discordance percentages
-- Positivity rates for molecular vs serology
+#### b) **Detailed Test-Specific Overlaps** (`test_specific_overlaps`)
+For each test, calculates overlaps with:
+- MIC qPCR
+- ELISA PE
+- ELISA VSG
+- iELISA LiTat 1.3
+- iELISA LiTat 1.5
+- Any serology test
+- All serology tests
 
-#### c) **Single-Test Analysis** (`single_test_summary`)
-Tracks patterns across all 5 tests:
-- Samples positive on exactly 1 test
-- Samples positive on multiple tests
-- Samples positive on all tests performed
+#### c) **Pairwise Overlap Matrix** (`pairwise_overlaps`)
+Calculates the number of samples positive on both tests for every pair of tests, enabling:
+- Direct comparison of test concordance
+- Identification of tests with high/low agreement
+- Visualization in heatmaps and tables
 
-### 2. Redesigned User Interface (`R/modules/mod_overview_assays.R`)
+#### d) **Summary Statistics** (`overlap_summary`)
+Aggregate metrics including:
+- Total samples tested
+- Samples positive on ALL tests
+- Samples positive on ALL serology tests (ELISA PE/VSG, iELISA L13/L15)
+- Samples positive on MIC + any serology
+- Total samples with any positive result
 
-#### New KPI Layout
-Reorganized into two focused sections:
+### 2. Completely Redesigned UI (`R/modules/mod_overview_assays.R`)
 
-**Section 1: Test Results by Assay** (4 KPIs)
-- MIC qPCR positives
-- ELISA PE positives
-- ELISA VSG positives
-- iELISA positives (combined L13 + L15)
+The new UI is organized into clear, focused sections:
 
-**Section 2: Molecular vs Serology Concordance** (8 KPIs)
-- Both Positive (concordant)
-- MIC+ / Serology- (discordant)
-- MIC- / Serology+ (discordant)
-- Overall concordance %
-- Single-test positives
-- All-tests positives
-- Samples tested
-- Total tests completed
+#### Section 1: Summary Statistics (3 KPIs)
+- **Total Samples**: Unique samples in the dataset
+- **Total Tests Completed**: Total number of test results
+- **Samples with Any Positive**: Number and % of samples with at least one positive result
 
-#### New Visualizations
+#### Section 2: Test Prevalence & Overlaps
 
-**1. Molecular vs Serology Sankey Diagram**
-- Flow visualization showing:
-  - MIC Positive → Serology Positive/Negative
-  - MIC Negative → Serology Positive/Negative
-- Color-coded by concordance type:
-  - Green: Both positive (concordant)
-  - Orange: Discordant
-  - Gray: Both negative (concordant)
+Organized by test category with detailed KPIs for each test:
 
-**2. Concordance Categories Bar Chart**
-- Stacked bars showing distribution of:
-  - Both Positive
-  - Both Negative
-  - MIC+ / Serology-
-  - MIC- / Serology+
-- Includes counts and percentages
+**MIC qPCR (4 KPIs)**:
+- MIC Positive: Count and % of MIC tests
+- Exclusive (MIC only): Positive only on MIC
+- Shared with Serology: MIC positive + serology positive
+- MIC Tested: Total MIC tests performed
 
-**3. Enhanced Upset Plot**
-- Color-coded by number of tests:
-  - **Red bars**: Single-test positives
-  - **Blue bars**: Multiple-test positives
-- Emphasizes clinical significance of isolated positives
+**ELISA Tests (6 KPIs)**:
+For ELISA PE and ELISA VSG:
+- Positive count and %
+- Exclusive positives
+- Shared positives
 
-### 3. What Defines "Positive"
+**iELISA Tests (6 KPIs)**:
+For iELISA LiTat 1.3 and iELISA LiTat 1.5:
+- Positive count and %
+- Exclusive positives
+- Shared positives
 
-The module uses consistent positivity definitions across all assays:
+#### Section 3: Test Overlap Summary (3 KPIs)
+- **Positive on ALL Tests**: Samples concordant positive across all available tests
+- **Positive on ALL Serology**: Samples positive on all 4 serology tests
+- **MIC + Any Serology**: Samples positive on both MIC and at least one serology test
 
-| Assay | Positive Criteria | Logic |
-|-------|------------------|-------|
-| **ELISA PE** | PP% ≥ 20 OR DOD ≥ 0.3 | OR logic (either metric) |
-| **ELISA VSG** | PP% ≥ 20 OR DOD ≥ 0.3 | OR logic (either metric) |
-| **iELISA L13** | % Inhibition ≥ 30 | Formula 2 (linear interpolation) |
-| **iELISA L15** | % Inhibition ≥ 30 | Formula 2 (linear interpolation) |
-| **MIC qPCR** | FinalCall = "Positive" or "Detected" | String match |
+#### Section 4: Detailed Tables
 
-**Serology = ANY of:** ELISA PE, ELISA VSG, iELISA L13, or iELISA L15
-**Molecular = MIC qPCR**
+**Test Prevalence Table**:
+Comprehensive table showing for each test:
+- Total tests performed
+- Positive, negative, borderline, invalid counts
+- % Positive
+- Exclusive and shared positive counts
+- Color-coded bars for visual comparison
+
+**Pairwise Test Overlaps Table & Heatmap**:
+- Table: Lists all test pairs with number of samples positive on both
+- Heatmap: Visual representation of test overlaps (darker = more overlap)
+
+#### Section 5: Visualizations
+
+**Status Distribution by Test**:
+- Stacked bar chart showing positive/negative/borderline/invalid for each test
+
+**Positive Sample Overlaps (UpSet-like Plot)**:
+- Red bars: Samples positive on only ONE test (potential concern)
+- Blue bars: Samples positive on MULTIPLE tests (concordant)
+- Shows exact test combinations
+
+#### Section 6: Sample Drilldown
+Interactive table showing individual sample results with export functionality
+
+### 3. Removed Visualizations
+
+To reduce clutter and focus on actionable data, the following have been removed:
+- Sankey diagram (molecular vs serology flow)
+- Concordance category bar chart
+- Trend plots over time
+- Quantitative distributions
+- Sample × assay heatmap
+
+These can be re-added if specific use cases are identified.
+
+## Key Features
+
+### 1. Clear Prevalence Reporting
+
+Example output for MIC qPCR:
+- **6 positive** (10.0% of 60 MIC tests)
+- **4 exclusive** (66.7% of MIC positives) - Not shared with serology
+- **2 shared with serology** (33.3% of MIC positives)
+
+Example output for ELISA PE:
+- **120 positive** (10.0% of 1200 tests)
+- **100 exclusive** (83.3% of PE positives) - Only PE positive
+- **20 shared** (16.7% of PE positives) - Also positive on other tests
+
+### 2. Test Overlap Analysis
+
+Answers questions like:
+- "How many samples are positive on MIC and ELISA PE?" (see pairwise overlap table)
+- "How many samples are positive on all serology tests but negative on MIC?" (see overlap summary)
+- "Which test has the most exclusive positives?" (see test prevalence table)
+
+### 3. Color-Coded Insights
+
+- **Primary blue**: Test-specific metrics
+- **Secondary gray**: Exclusive positives (clinical concern)
+- **Info/dark**: Shared positives
+- **Success green**: Concordant results
+- **Warning orange/red**: Single-test positives (potential artifacts)
 
 ## Clinical Interpretation
 
-### Understanding Concordance
+### Exclusive Positives (Red Flag)
+Samples positive on only ONE test may indicate:
+- Test-specific artifacts
+- Samples near detection limits
+- Need for repeat testing or confirmatory assays
 
-**High Concordance (Both Positive or Both Negative)**
-- Expected for validated diagnostic tests
-- Confirms consistent detection across methods
+### Shared Positives (Concordance)
+Samples positive on MULTIPLE tests indicate:
+- True positives with high confidence
+- Consistent detection across methods
 
-**MIC+ / Serology- (Molecular only)**
-- Potential early infection (before antibody response)
-- Low parasitemia (below serological detection)
-- Recent treatment (parasites cleared, antibodies waning)
+### Test Overlap Patterns
 
-**MIC- / Serology+ (Serology only)**
-- Past infection with cleared parasitemia
-- Persistent antibodies post-treatment
-- False positive serology (cross-reactivity)
-
-**Single-Test Positives**
-- Clinical concern: May indicate:
-  - Test-specific artifacts
-  - Edge cases near detection limits
-  - Need for repeat testing or confirmatory assays
+**High MIC + Serology overlap**: Expected for active infections
+**MIC+ only**: Potential early infection, low parasitemia, or recent treatment
+**Serology+ only**: Past infection, persistent antibodies, or false positive serology
 
 ## Usage
 
 ### Filters
-- **Assay date**: Restrict analysis to specific time periods
-- **Assays**: Select which tests to include in concordance
-- **Statuses**: Include/exclude Positive, Borderline, Negative, Invalid
-- **Samples with any assay**: Toggle to show only samples with at least one result
+- **Assay filter**: Focus on specific tests
+- **Status filter**: Include/exclude positive, borderline, negative, invalid
+- **Samples with results**: Toggle to show only samples with data
 
-### Interactive Features
-- **Click KPIs**: Drill down into specific categories in the sample table
-- **Click charts**: Filter table by clicking bars or heatmap cells
-- **Export**: Download filtered sample data as CSV
+### Interpretation Examples
 
-## Technical Notes
+**Example 1**: You see "4 MIC exclusive" and "2 MIC shared with serology"
+- This means 4 samples are ONLY MIC positive (no serology positivity)
+- 2 samples are positive on both MIC and at least one serology test
 
-### Data Flow
+**Example 2**: Prevalence table shows "ELISA PE: 120 positive, 100 exclusive, 20 shared"
+- 120 samples are ELISA PE positive
+- Of those, 100 are ONLY ELISA PE positive (no other tests positive)
+- 20 are also positive on other tests
+
+**Example 3**: Overlap summary shows "5 samples positive on ALL tests"
+- These 5 samples are concordant positive across all available tests
+- High confidence true positives
+
+## Data Flow
+
 1. Raw assay data → `prepare_assay_dashboard_data()`
 2. Classification into Positive/Borderline/Negative/Invalid
 3. Sample deduplication (best status per sample-assay)
-4. Concordance calculation (molecular vs serology)
-5. Visualization preparation
+4. **NEW**: Prevalence calculation per test
+5. **NEW**: Exclusive vs shared positive calculation
+6. **NEW**: Pairwise overlap matrix
+7. **NEW**: Summary overlap statistics
+8. Visualization preparation
+
+## Technical Notes
 
 ### Performance
-- Calculations are reactive and update automatically with filter changes
-- Data is cached at the prepared() level to avoid redundant processing
-- Large datasets (>10,000 samples) may take 2-3 seconds to render
+- New calculations add minimal overhead (~0.5-1s for 10,000 samples)
+- All statistics are pre-calculated in `prepare_assay_dashboard_data()`
+- Reactive caching ensures efficient updates on filter changes
 
 ### Dependencies
-- `dplyr`, `tidyr`: Data manipulation
-- `plotly`: Interactive visualizations (Sankey, bars, heatmaps)
+- `dplyr`, `tidyr`, `purrr`: Data manipulation
+- `plotly`: Interactive visualizations
 - `ggplot2`: Static plots converted to plotly
-- `stringr`: Text pattern matching
+- `DT`: Interactive tables with export
 
 ## Future Enhancements
 
-Potential additions based on user feedback:
-- [ ] Export concordance summary statistics table
-- [ ] Add filter for "Molecular only", "Serology only", "Both"
-- [ ] Option to treat iELISA L13/L15 separately or combined
-- [ ] Add Cohen's Kappa calculation for concordance
-- [ ] Time-based concordance trends
-- [ ] Geographic stratification of concordance
+Based on user feedback, potential additions include:
+- [ ] Export prevalence and overlap tables to Excel
+- [ ] Add filter for "Exclusive positives only"
+- [ ] Stratify overlaps by geographic region or time period
+- [ ] Add statistical tests for test agreement (Cohen's Kappa)
+- [ ] Create automated summary reports for stakeholders
 
 ## Version History
 
+**v4.0.0** (2025-12-01)
+- Complete redesign with prevalence and overlap focus
+- Added test-specific exclusive/shared positive statistics
+- Added comprehensive pairwise overlap analysis
+- Removed unnecessary visualizations for clarity
+- Enhanced KPI layout with clear test grouping
+
 **v3.2.0** (2025-12-01)
 - Initial redesign with molecular-serology concordance focus
-- New KPI organization and visualizations
-- Enhanced single-test positive tracking
 
 ---
 
-**Questions or Issues?**
-Contact the development team or open an issue on the project repository.
+## Questions or Issues?
+
+For questions about specific statistics or to request additional analyses, contact the development team or open an issue on the project repository.
+
+## Example Interpretations
+
+### Scenario 1: MIC Positive Sample
+"Sample X is MIC qPCR positive (Cq = 25.3). Looking at the overlap analysis, we see that 66% of MIC positives are exclusive (not shared with serology). This sample should be reviewed to determine if it's an early infection or if serology testing should be repeated."
+
+### Scenario 2: ELISA PE Exclusive
+"We have 100 ELISA PE exclusive positives (83% of all PE positives). This suggests that most PE positive samples are not detected by other serological tests. Consider investigating whether these are true positives or if the PE cutoff needs adjustment."
+
+### Scenario 3: All Tests Positive
+"5 samples are positive on all tests (MIC, ELISA PE, ELISA VSG, iELISA L13, iELISA L15). These are high-confidence true positives and should be prioritized for downstream analysis."

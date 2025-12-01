@@ -1,5 +1,5 @@
 # Assay Overview Module
-# High-level KPI and concordance view across MIC qPCR, ELISA, and iELISA assays
+# Comprehensive prevalence and concordance analysis across MIC qPCR, ELISA, and iELISA assays
 
 mod_overview_assays_ui <- function(id) {
   ns <- NS(id)
@@ -25,44 +25,209 @@ mod_overview_assays_ui <- function(id) {
           )
         ),
         div(
+          # Summary KPIs
           card(
-            card_header(
-              class = "d-flex justify-content-between align-items-center",
-              div(icon("chart-pie"), "Test Results by Assay"),
-              tags$small(class = "text-muted", "Click a KPI to drill into the table")
-            ),
+            card_header(icon("chart-line"), "Summary Statistics"),
             card_body(
               layout_column_wrap(
-                width = 1/4,
-                value_box(title = "MIC qPCR positives", value = uiOutput(ns("kpi_mic")), showcase = icon("dna"), theme = "primary"),
-                value_box(title = "ELISA PE positives", value = uiOutput(ns("kpi_pe")), showcase = icon("vial"), theme = "info"),
-                value_box(title = "ELISA VSG positives", value = uiOutput(ns("kpi_vsg")), showcase = icon("vials"), theme = "warning"),
-                value_box(title = "iELISA positives", value = uiOutput(ns("kpi_ielisa")), showcase = icon("flask"), theme = "success")
+                width = 1/3,
+                value_box(title = "Total Samples", value = uiOutput(ns("kpi_total_samples")), showcase = icon("users"), theme = "primary"),
+                value_box(title = "Total Tests Completed", value = uiOutput(ns("kpi_total_tests")), showcase = icon("vials"), theme = "info"),
+                value_box(title = "Samples with Any Positive", value = uiOutput(ns("kpi_any_positive")), showcase = icon("check"), theme = "success")
               )
             )
           ),
+
+          # Test Prevalence Section
           card(
             full_screen = TRUE,
             card_header(
               class = "d-flex justify-content-between align-items-center",
-              div(icon("microscope"), "Molecular vs Serology Concordance"),
-              tags$small(class = "text-muted", "Concordance between MIC qPCR and any serological test (ELISA/iELISA)")
+              div(icon("chart-pie"), "Test Prevalence & Overlaps"),
+              tags$small(class = "text-muted", "Click a test to view details in the sample table")
             ),
             card_body(
-              # Top row: Key KPIs
+              h5("MIC qPCR"),
               layout_column_wrap(
                 width = 1/4,
-                value_box(title = "Samples tested", value = uiOutput(ns("kpi_samples_tested")), showcase = icon("users"), theme = "secondary"),
-                value_box(title = "Concordance", value = uiOutput(ns("kpi_mic_serology_concordance")), showcase = icon("handshake"), theme = "info"),
-                value_box(title = "Both Positive", value = uiOutput(ns("kpi_both_positive")), showcase = icon("check-double"), theme = "success"),
-                value_box(title = "Tests completed", value = uiOutput(ns("kpi_total")), showcase = icon("list-check"), theme = "dark")
+                value_box(
+                  title = "MIC Positive",
+                  value = uiOutput(ns("kpi_mic_positive")),
+                  showcase = icon("dna"),
+                  theme = "primary",
+                  showcase_layout = "left center"
+                ),
+                value_box(
+                  title = "Exclusive (MIC only)",
+                  value = uiOutput(ns("kpi_mic_exclusive")),
+                  showcase = icon("circle"),
+                  theme = "secondary",
+                  showcase_layout = "left center"
+                ),
+                value_box(
+                  title = "Shared with Serology",
+                  value = uiOutput(ns("kpi_mic_with_serology")),
+                  showcase = icon("share-nodes"),
+                  theme = "info",
+                  showcase_layout = "left center"
+                ),
+                value_box(
+                  title = "MIC Tested",
+                  value = uiOutput(ns("kpi_mic_tested")),
+                  showcase = icon("flask"),
+                  theme = "dark",
+                  showcase_layout = "left center"
+                )
               ),
-              # Full concordance table
-              div(class = "mt-3",
-                  h5("Concordance Details"),
-                  DT::DTOutput(ns("concordance_table"))
+
+              tags$hr(),
+              h5("ELISA Tests"),
+              layout_column_wrap(
+                width = 1/3,
+                # ELISA PE
+                value_box(
+                  title = "ELISA PE Positive",
+                  value = uiOutput(ns("kpi_pe_positive")),
+                  showcase = icon("vial"),
+                  theme = "info",
+                  showcase_layout = "left center"
+                ),
+                value_box(
+                  title = "PE Exclusive",
+                  value = uiOutput(ns("kpi_pe_exclusive")),
+                  showcase = icon("circle"),
+                  theme = "secondary",
+                  showcase_layout = "left center"
+                ),
+                value_box(
+                  title = "PE Shared",
+                  value = uiOutput(ns("kpi_pe_shared")),
+                  showcase = icon("share-nodes"),
+                  theme = "dark",
+                  showcase_layout = "left center"
+                )
+              ),
+
+              layout_column_wrap(
+                width = 1/3,
+                # ELISA VSG
+                value_box(
+                  title = "ELISA VSG Positive",
+                  value = uiOutput(ns("kpi_vsg_positive")),
+                  showcase = icon("vials"),
+                  theme = "warning",
+                  showcase_layout = "left center"
+                ),
+                value_box(
+                  title = "VSG Exclusive",
+                  value = uiOutput(ns("kpi_vsg_exclusive")),
+                  showcase = icon("circle"),
+                  theme = "secondary",
+                  showcase_layout = "left center"
+                ),
+                value_box(
+                  title = "VSG Shared",
+                  value = uiOutput(ns("kpi_vsg_shared")),
+                  showcase = icon("share-nodes"),
+                  theme = "dark",
+                  showcase_layout = "left center"
+                )
+              ),
+
+              tags$hr(),
+              h5("iELISA Tests"),
+              layout_column_wrap(
+                width = 1/3,
+                # iELISA L13
+                value_box(
+                  title = "iELISA LiTat 1.3 Positive",
+                  value = uiOutput(ns("kpi_l13_positive")),
+                  showcase = icon("flask"),
+                  theme = "success",
+                  showcase_layout = "left center"
+                ),
+                value_box(
+                  title = "L13 Exclusive",
+                  value = uiOutput(ns("kpi_l13_exclusive")),
+                  showcase = icon("circle"),
+                  theme = "secondary",
+                  showcase_layout = "left center"
+                ),
+                value_box(
+                  title = "L13 Shared",
+                  value = uiOutput(ns("kpi_l13_shared")),
+                  showcase = icon("share-nodes"),
+                  theme = "dark",
+                  showcase_layout = "left center"
+                )
+              ),
+
+              layout_column_wrap(
+                width = 1/3,
+                # iELISA L15
+                value_box(
+                  title = "iELISA LiTat 1.5 Positive",
+                  value = uiOutput(ns("kpi_l15_positive")),
+                  showcase = icon("flask-vial"),
+                  theme = "success",
+                  showcase_layout = "left center"
+                ),
+                value_box(
+                  title = "L15 Exclusive",
+                  value = uiOutput(ns("kpi_l15_exclusive")),
+                  showcase = icon("circle"),
+                  theme = "secondary",
+                  showcase_layout = "left center"
+                ),
+                value_box(
+                  title = "L15 Shared",
+                  value = uiOutput(ns("kpi_l15_shared")),
+                  showcase = icon("share-nodes"),
+                  theme = "dark",
+                  showcase_layout = "left center"
+                )
               )
             )
+          ),
+
+          # Overlap Summary KPIs
+          card(
+            card_header(icon("diagram-project"), "Test Overlap Summary"),
+            card_body(
+              layout_column_wrap(
+                width = 1/3,
+                value_box(
+                  title = "Positive on ALL Tests",
+                  value = uiOutput(ns("kpi_all_tests_positive")),
+                  showcase = icon("check-double"),
+                  theme = "success"
+                ),
+                value_box(
+                  title = "Positive on ALL Serology",
+                  value = uiOutput(ns("kpi_all_serology_positive")),
+                  showcase = icon("layer-group"),
+                  theme = "info"
+                ),
+                value_box(
+                  title = "MIC + Any Serology",
+                  value = uiOutput(ns("kpi_mic_and_serology")),
+                  showcase = icon("handshake"),
+                  theme = "warning"
+                )
+              )
+            )
+          )
+        )
+      ),
+
+      # Detailed Tables Section
+      layout_columns(
+        col_widths = c(12),
+        card(
+          full_screen = TRUE,
+          card_header(icon("table"), "Detailed Test Prevalence Table"),
+          card_body(
+            DT::DTOutput(ns("prevalence_table"))
           )
         )
       ),
@@ -70,59 +235,42 @@ mod_overview_assays_ui <- function(id) {
       layout_columns(
         col_widths = c(6, 6),
         card(
-          card_header(icon("bars"), "Stacked results by assay"),
+          full_screen = TRUE,
+          card_header(icon("th"), "Pairwise Test Overlaps"),
+          card_body(
+            tags$p(class = "text-muted small", "Number of samples positive on both tests"),
+            DT::DTOutput(ns("overlap_table"))
+          )
+        ),
+        card(
+          full_screen = TRUE,
+          card_header(icon("heat"), "Overlap Heatmap"),
+          card_body_fill(
+            plotlyOutput(ns("overlap_heatmap"), height = "400px"),
+            tags$small(class = "text-muted", "Darker colors indicate more samples positive on both tests")
+          )
+        )
+      ),
+
+      layout_columns(
+        col_widths = c(6, 6),
+        card(
+          card_header(icon("bars"), "Status Distribution by Test"),
           card_body_fill(plotlyOutput(ns("assay_bars"), height = "350px"))
         ),
         card(
-          card_header(icon("th"), "Pairwise agreement"),
-          card_body_fill(plotlyOutput(ns("agreement_heatmap"), height = "350px"))
-        )
-      ),
-
-      layout_columns(
-        col_widths = c(6, 6),
-        card(
-          card_header(icon("project-diagram"), "Molecular vs Serology Concordance"),
-          card_body_fill(plotlyOutput(ns("concordance_sankey"), height = "400px"),
-                         tags$small(class = "text-muted", "Flow diagram showing concordance between MIC qPCR (molecular) and any serological test (ELISA PE/VSG, iELISA)."))
-        ),
-        card(
-          card_header(icon("layer-group"), "Concordance categories"),
-          card_body_fill(plotlyOutput(ns("concordance_bars"), height = "400px"),
-                         tags$small(class = "text-muted", "Sample distribution across molecular-serology concordance categories."))
-        )
-      ),
-
-      layout_columns(
-        col_widths = c(6, 6),
-        card(
-          card_header(icon("layer-group"), "Positive overlaps"),
-          card_body_fill(plotlyOutput(ns("upset_plot"), height = "320px"),
-                         tags$small(class = "text-muted", "Bars show counts of samples positive in each assay combination."))
-        ),
-        card(
-          card_header(icon("table-cells"), "Sample × assay status"),
-          card_body_fill(plotlyOutput(ns("sample_heatmap"), height = "400px"),
-                         tags$small(class = "text-muted", "Hover to view quantitative values and cutoffs."))
-        )
-      ),
-
-      layout_columns(
-        col_widths = c(6, 6),
-        card(
-          card_header(icon("line-chart"), "Trends"),
-          card_body_fill(plotlyOutput(ns("trend_plot"), height = "320px"))
-        ),
-        card(
-          card_header(icon("wave-square"), "Quantitative distributions"),
-          card_body_fill(plotlyOutput(ns("quant_plot"), height = "320px"))
+          card_header(icon("project-diagram"), "Positive Sample Overlaps"),
+          card_body_fill(
+            plotlyOutput(ns("upset_plot"), height = "350px"),
+            tags$small(class = "text-muted", "Red bars = single test positive, Blue bars = multiple tests positive")
+          )
         )
       ),
 
       card(
         card_header(
           class = "d-flex justify-content-between align-items-center",
-          div(icon("table"), "Sample drilldown"),
+          div(icon("table"), "Sample Drilldown"),
           downloadButton(ns("export_table"), "Export CSV", class = "btn-sm btn-primary")
         ),
         card_body(DT::DTOutput(ns("sample_table")))
@@ -177,233 +325,389 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       df
     })
 
-    sample_summary <- reactive({
-      filtered_tidy() %>%
-        mutate(is_positive = status == "Positive") %>%
-        group_by(sample_id) %>%
-        summarise(
-          assays_tested = n_distinct(assay),
-          positives = sum(is_positive, na.rm = TRUE),
-          unique_positive = positives == 1,
-          concordant_positive = positives == assays_tested & positives > 0,
-          any_result = assays_tested > 0,
-          .groups = "drop"
-        )
-    })
+    # Helper function to get stats for a specific test
+    get_test_stats <- function(test_name) {
+      prevalence <- prepared()$test_prevalence %>% filter(assay == test_name)
+      overlaps <- prepared()$test_specific_overlaps %>% filter(assay == test_name)
 
-    set_drill <- function(status = NULL, assay = NULL) {
-      if (identical(drill_state$status, status) && identical(drill_state$assay, assay)) {
-        drill_state$status <- NULL
-        drill_state$assay <- NULL
-      } else {
-        drill_state$status <- status
-        drill_state$assay <- assay
+      if (nrow(prevalence) == 0) {
+        return(list(
+          n_positive = 0,
+          pct_positive = 0,
+          total_tests = 0,
+          n_exclusive = 0,
+          n_shared = 0,
+          n_with_serology = 0
+        ))
       }
+
+      n_with_serology <- if (nrow(overlaps) > 0) {
+        overlaps$n_with_any_serology
+      } else {
+        0
+      }
+
+      list(
+        n_positive = prevalence$n_positive,
+        pct_positive = prevalence$pct_positive,
+        total_tests = prevalence$total_tests,
+        n_exclusive = prevalence$n_exclusive,
+        n_shared = prevalence$n_shared,
+        n_with_serology = n_with_serology
+      )
     }
 
-    render_kpi <- function(output_id, expr, drill_status = NULL, drill_assay = NULL) {
-      output[[output_id]] <- renderUI({
-        val <- expr()
-        actionLink(
-          ns(paste0(output_id, "_click")),
-          label = tagList(strong(val$label), tags$br(), tags$span(class = "fs-4", val$detail)),
-          class = "text-reset text-decoration-none w-100 d-block"
-        )
-      })
-
-      if (!is.null(drill_status) || !is.null(drill_assay)) {
-        observeEvent(input[[paste0(output_id, "_click")]], {
-          set_drill(status = drill_status, assay = drill_assay)
-        }, ignoreInit = TRUE)
-      }
-    }
-
-    render_kpi("kpi_mic", function() {
-      df <- prepared()$tidy_assays %>% filter(assay == "MIC qPCR", status == "Positive")
-      list(label = nrow(df), detail = sprintf("%.1f%% of MIC tests", 100 * nrow(df) / max(1, nrow(prepared()$tidy_assays %>% filter(assay == "MIC qPCR")))))
-    }, drill_status = "Positive", drill_assay = "MIC qPCR")
-
-    render_kpi("kpi_pe", function() {
-      df <- prepared()$tidy_assays %>% filter(assay == "ELISA PE", status == "Positive")
-      list(label = nrow(df), detail = sprintf("%.1f%% of PE tests", 100 * nrow(df) / max(1, nrow(prepared()$tidy_assays %>% filter(assay == "ELISA PE")))))
-    }, drill_status = "Positive", drill_assay = "ELISA PE")
-
-    render_kpi("kpi_vsg", function() {
-      df <- prepared()$tidy_assays %>% filter(assay == "ELISA VSG", status == "Positive")
-      list(label = nrow(df), detail = sprintf("%.1f%% of VSG tests", 100 * nrow(df) / max(1, nrow(prepared()$tidy_assays %>% filter(assay == "ELISA VSG")))))
-    }, drill_status = "Positive", drill_assay = "ELISA VSG")
-
-    render_kpi("kpi_ielisa", function() {
-      df <- prepared()$tidy_assays %>% filter(grepl("iELISA", assay), status == "Positive")
-      list(label = nrow(df), detail = sprintf("%.1f%% of iELISA tests", 100 * nrow(df) / max(1, nrow(prepared()$tidy_assays %>% filter(grepl("iELISA", assay))))))
-    }, drill_status = "Positive", drill_assay = c("iELISA LiTat 1.3", "iELISA LiTat 1.5"))
-
-    render_kpi("kpi_both_positive", function() {
-      summary <- prepared()$mic_serology_summary
-      if (nrow(summary) == 0 || summary$n_samples == 0) {
-        list(label = "0", detail = "0% of tested samples")
-      } else {
-        list(
-          label = summary$n_both_positive,
-          detail = sprintf("%.1f%% of tested samples", summary$pct_both_positive)
-        )
-      }
-    })
-
-    render_kpi("kpi_mic_only", function() {
-      summary <- prepared()$mic_serology_summary
-      if (nrow(summary) == 0 || summary$n_samples == 0) {
-        list(label = "0", detail = "0% of tested samples")
-      } else {
-        list(
-          label = summary$n_mic_only,
-          detail = sprintf("%.1f%% of tested samples", summary$pct_mic_only)
-        )
-      }
-    })
-
-    render_kpi("kpi_serology_only", function() {
-      summary <- prepared()$mic_serology_summary
-      if (nrow(summary) == 0 || summary$n_samples == 0) {
-        list(label = "0", detail = "0% of tested samples")
-      } else {
-        list(
-          label = summary$n_serology_only,
-          detail = sprintf("%.1f%% of tested samples", summary$pct_serology_only)
-        )
-      }
-    })
-
-    render_kpi("kpi_mic_serology_concordance", function() {
-      summary <- prepared()$mic_serology_summary
-      if (nrow(summary) == 0 || summary$n_samples == 0) {
-        list(label = "N/A", detail = "No samples with both tests")
-      } else {
-        list(
-          label = sprintf("%.1f%%", summary$pct_concordant),
-          detail = sprintf("%d/%d samples concordant", summary$n_concordant, summary$n_samples)
-        )
-      }
-    })
-
-    render_kpi("kpi_single_test", function() {
-      summary <- prepared()$single_test_summary
-      list(
-        label = summary$n_single_test_positive,
-        detail = "Positive on only one test"
+    # Summary KPIs
+    output$kpi_total_samples <- renderUI({
+      summary <- prepared()$overlap_summary
+      tags$div(
+        tags$strong(style = "font-size: 2em;", summary$total_samples),
+        tags$br(),
+        tags$span(class = "text-muted", "Unique samples")
       )
     })
 
-    render_kpi("kpi_all_tests", function() {
-      summary <- prepared()$single_test_summary
-      list(
-        label = summary$n_all_tests_positive,
-        detail = "Positive on all tests"
+    output$kpi_total_tests <- renderUI({
+      n_tests <- nrow(prepared()$tidy_assays)
+      tags$div(
+        tags$strong(style = "font-size: 2em;", n_tests),
+        tags$br(),
+        tags$span(class = "text-muted", "Total test results")
       )
     })
 
-    render_kpi("kpi_samples_tested", function() {
-      concordance <- prepared()$molecular_serology_concordance
-      # Only count samples with both molecular and serology tests
-      samples_with_both <- concordance %>% filter(mic_tested & serology_tested)
-      n_samples <- nrow(samples_with_both)
-      n_total <- nrow(concordance)
-      list(
-        label = n_samples,
-        detail = sprintf("%d with both test types", n_samples)
+    output$kpi_any_positive <- renderUI({
+      summary <- prepared()$overlap_summary
+      pct <- if (summary$total_samples > 0) {
+        (summary$n_any_positive / summary$total_samples) * 100
+      } else {
+        0
+      }
+      tags$div(
+        tags$strong(style = "font-size: 2em;", summary$n_any_positive),
+        tags$br(),
+        tags$span(class = "text-muted", sprintf("%.1f%% of samples", pct))
       )
     })
 
-    render_kpi("kpi_total", function() {
-      df <- prepared()$tidy_assays
-      list(label = nrow(df), detail = "Total assay rows")
+    # MIC KPIs
+    output$kpi_mic_positive <- renderUI({
+      stats <- get_test_stats("MIC qPCR")
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_positive),
+        tags$br(),
+        tags$span(class = "text-muted", sprintf("%.1f%% of %d MIC tests", stats$pct_positive, stats$total_tests))
+      )
     })
 
-    # Concordance table
-    output$concordance_table <- DT::renderDT({
-      concordance <- prepared()$molecular_serology_concordance
+    output$kpi_mic_exclusive <- renderUI({
+      stats <- get_test_stats("MIC qPCR")
+      pct <- if (stats$n_positive > 0) {
+        (stats$n_exclusive / stats$n_positive) * 100
+      } else {
+        0
+      }
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_exclusive),
+        tags$br(),
+        tags$span(class = "text-muted", sprintf("%.1f%% of MIC positives", pct))
+      )
+    })
 
-      if (nrow(concordance) == 0) {
+    output$kpi_mic_with_serology <- renderUI({
+      stats <- get_test_stats("MIC qPCR")
+      pct <- if (stats$n_positive > 0) {
+        (stats$n_with_serology / stats$n_positive) * 100
+      } else {
+        0
+      }
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_with_serology),
+        tags$br(),
+        tags$span(class = "text-muted", sprintf("%.1f%% of MIC positives", pct))
+      )
+    })
+
+    output$kpi_mic_tested <- renderUI({
+      stats <- get_test_stats("MIC qPCR")
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$total_tests),
+        tags$br(),
+        tags$span(class = "text-muted", "Total MIC tests")
+      )
+    })
+
+    # ELISA PE KPIs
+    output$kpi_pe_positive <- renderUI({
+      stats <- get_test_stats("ELISA PE")
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_positive),
+        tags$br(),
+        tags$span(class = "text-muted", sprintf("%.1f%% of %d tests", stats$pct_positive, stats$total_tests))
+      )
+    })
+
+    output$kpi_pe_exclusive <- renderUI({
+      stats <- get_test_stats("ELISA PE")
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_exclusive),
+        tags$br(),
+        tags$span(class = "text-muted", "Only PE positive")
+      )
+    })
+
+    output$kpi_pe_shared <- renderUI({
+      stats <- get_test_stats("ELISA PE")
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_shared),
+        tags$br(),
+        tags$span(class = "text-muted", "Also positive on others")
+      )
+    })
+
+    # ELISA VSG KPIs
+    output$kpi_vsg_positive <- renderUI({
+      stats <- get_test_stats("ELISA VSG")
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_positive),
+        tags$br(),
+        tags$span(class = "text-muted", sprintf("%.1f%% of %d tests", stats$pct_positive, stats$total_tests))
+      )
+    })
+
+    output$kpi_vsg_exclusive <- renderUI({
+      stats <- get_test_stats("ELISA VSG")
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_exclusive),
+        tags$br(),
+        tags$span(class = "text-muted", "Only VSG positive")
+      )
+    })
+
+    output$kpi_vsg_shared <- renderUI({
+      stats <- get_test_stats("ELISA VSG")
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_shared),
+        tags$br(),
+        tags$span(class = "text-muted", "Also positive on others")
+      )
+    })
+
+    # iELISA L13 KPIs
+    output$kpi_l13_positive <- renderUI({
+      stats <- get_test_stats("iELISA LiTat 1.3")
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_positive),
+        tags$br(),
+        tags$span(class = "text-muted", sprintf("%.1f%% of %d tests", stats$pct_positive, stats$total_tests))
+      )
+    })
+
+    output$kpi_l13_exclusive <- renderUI({
+      stats <- get_test_stats("iELISA LiTat 1.3")
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_exclusive),
+        tags$br(),
+        tags$span(class = "text-muted", "Only L13 positive")
+      )
+    })
+
+    output$kpi_l13_shared <- renderUI({
+      stats <- get_test_stats("iELISA LiTat 1.3")
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_shared),
+        tags$br(),
+        tags$span(class = "text-muted", "Also positive on others")
+      )
+    })
+
+    # iELISA L15 KPIs
+    output$kpi_l15_positive <- renderUI({
+      stats <- get_test_stats("iELISA LiTat 1.5")
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_positive),
+        tags$br(),
+        tags$span(class = "text-muted", sprintf("%.1f%% of %d tests", stats$pct_positive, stats$total_tests))
+      )
+    })
+
+    output$kpi_l15_exclusive <- renderUI({
+      stats <- get_test_stats("iELISA LiTat 1.5")
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_exclusive),
+        tags$br(),
+        tags$span(class = "text-muted", "Only L15 positive")
+      )
+    })
+
+    output$kpi_l15_shared <- renderUI({
+      stats <- get_test_stats("iELISA LiTat 1.5")
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_shared),
+        tags$br(),
+        tags$span(class = "text-muted", "Also positive on others")
+      )
+    })
+
+    # Overlap Summary KPIs
+    output$kpi_all_tests_positive <- renderUI({
+      summary <- prepared()$overlap_summary
+      pct <- if (summary$total_samples > 0) {
+        (summary$n_all_tests_positive / summary$total_samples) * 100
+      } else {
+        0
+      }
+      tags$div(
+        tags$strong(style = "font-size: 2em;", summary$n_all_tests_positive),
+        tags$br(),
+        tags$span(class = "text-muted", sprintf("%.1f%% of samples", pct))
+      )
+    })
+
+    output$kpi_all_serology_positive <- renderUI({
+      summary <- prepared()$overlap_summary
+      pct <- if (summary$total_samples > 0) {
+        (summary$n_all_serology_positive / summary$total_samples) * 100
+      } else {
+        0
+      }
+      tags$div(
+        tags$strong(style = "font-size: 2em;", summary$n_all_serology_positive),
+        tags$br(),
+        tags$span(class = "text-muted", sprintf("%.1f%% of samples", pct))
+      )
+    })
+
+    output$kpi_mic_and_serology <- renderUI({
+      summary <- prepared()$overlap_summary
+      pct <- if (summary$total_samples > 0) {
+        (summary$n_mic_and_any_serology / summary$total_samples) * 100
+      } else {
+        0
+      }
+      tags$div(
+        tags$strong(style = "font-size: 2em;", summary$n_mic_and_any_serology),
+        tags$br(),
+        tags$span(class = "text-muted", sprintf("%.1f%% of samples", pct))
+      )
+    })
+
+    # Prevalence Table
+    output$prevalence_table <- DT::renderDT({
+      prevalence <- prepared()$test_prevalence
+      overlaps <- prepared()$test_specific_overlaps
+
+      if (nrow(prevalence) == 0) {
         return(DT::datatable(
-          data.frame(Message = "No concordance data available"),
+          data.frame(Message = "No data available"),
           options = list(dom = 't', paging = FALSE)
         ))
       }
 
-      # Create summary table with all concordance categories
-      summary_table <- concordance %>%
-        filter(mic_tested & serology_tested) %>%
-        count(concordance_category) %>%
-        mutate(
-          percentage = n / sum(n) * 100,
-          concordance_category = factor(concordance_category,
-            levels = c("Both Positive", "Both Negative", "MIC+ / Serology-", "MIC- / Serology+"))
-        ) %>%
-        arrange(concordance_category) %>%
-        rename(
-          Category = concordance_category,
-          Count = n,
-          Percentage = percentage
+      # Join prevalence with detailed overlaps
+      table_data <- prevalence %>%
+        left_join(overlaps, by = "assay") %>%
+        select(
+          Test = assay,
+          `Total Tests` = total_tests,
+          Positive = n_positive,
+          `% Positive` = pct_positive,
+          `Exclusive` = n_exclusive,
+          `Shared` = n_shared,
+          Negative = n_negative,
+          Borderline = n_borderline,
+          Invalid = n_invalid
         )
-
-      # Add a summary row
-      totals <- concordance %>%
-        filter(mic_tested & serology_tested) %>%
-        summarise(
-          Category = "TOTAL",
-          Count = n(),
-          Percentage = 100
-        )
-
-      # Only add concordant/discordant summary if we have data
-      if (totals$Count > 0) {
-        # Add concordant/discordant summary
-        concordant <- sum(summary_table$Count[summary_table$Category %in% c("Both Positive", "Both Negative")])
-        discordant <- sum(summary_table$Count[summary_table$Category %in% c("MIC+ / Serology-", "MIC- / Serology+")])
-
-        summary_stats <- data.frame(
-          Category = c("Concordant (Both +/Both -)", "Discordant (Mismatch)"),
-          Count = c(concordant, discordant),
-          Percentage = c((concordant / totals$Count) * 100, (discordant / totals$Count) * 100)
-        )
-      } else {
-        # No samples with both tests
-        summary_stats <- data.frame(
-          Category = character(),
-          Count = numeric(),
-          Percentage = numeric()
-        )
-      }
-
-      # Combine all
-      final_table <- bind_rows(summary_table, summary_stats, totals)
 
       DT::datatable(
-        final_table,
+        table_data,
         options = list(
-          pageLength = 15,
+          pageLength = 10,
           scrollX = TRUE,
-          dom = 't',
-          paging = FALSE
+          dom = 'Bfrtip'
         ),
         class = "table-sm table-striped",
         rownames = FALSE
       ) %>%
-        DT::formatPercentage("Percentage", digits = 1) %>%
+        DT::formatPercentage("% Positive", digits = 1) %>%
         DT::formatStyle(
-          "Category",
-          target = "row",
-          backgroundColor = DT::styleEqual(
-            c("Both Positive", "Both Negative", "Concordant (Both +/Both -)", "TOTAL"),
-            c("#d4edda", "#f8f9fa", "#cfe2ff", "#f0f0f0")
-          ),
-          fontWeight = DT::styleEqual(
-            c("Concordant (Both +/Both -)", "Discordant (Mismatch)", "TOTAL"),
-            c("bold", "bold", "bold")
-          )
+          "Positive",
+          background = DT::styleColorBar(range(table_data$Positive, na.rm = TRUE), "#2563EB"),
+          backgroundSize = '100% 90%',
+          backgroundRepeat = 'no-repeat',
+          backgroundPosition = 'center'
         )
     })
 
+    # Overlap Table
+    output$overlap_table <- DT::renderDT({
+      overlaps <- prepared()$pairwise_overlaps
+
+      if (nrow(overlaps) == 0) {
+        return(DT::datatable(
+          data.frame(Message = "No overlap data available"),
+          options = list(dom = 't', paging = FALSE)
+        ))
+      }
+
+      # Create a symmetric matrix for display
+      overlap_matrix <- overlaps %>%
+        select(`Test 1` = assay1, `Test 2` = assay2, `Both Positive` = n_both_positive)
+
+      DT::datatable(
+        overlap_matrix,
+        options = list(
+          pageLength = 15,
+          scrollX = TRUE,
+          dom = 'frtip'
+        ),
+        class = "table-sm table-striped",
+        rownames = FALSE
+      ) %>%
+        DT::formatStyle(
+          "Both Positive",
+          background = DT::styleColorBar(range(overlap_matrix$`Both Positive`, na.rm = TRUE), "#10B981"),
+          backgroundSize = '100% 90%',
+          backgroundRepeat = 'no-repeat',
+          backgroundPosition = 'center'
+        )
+    })
+
+    # Overlap Heatmap
+    output$overlap_heatmap <- renderPlotly({
+      overlaps <- prepared()$pairwise_overlaps
+
+      if (nrow(overlaps) == 0) {
+        return(plotly_empty() %>%
+          layout(annotations = list(
+            text = "No overlap data available",
+            xref = "paper", yref = "paper",
+            x = 0.5, y = 0.5, showarrow = FALSE,
+            font = list(size = 16)
+          ))
+        )
+      }
+
+      p <- plot_ly(
+        data = overlaps,
+        x = ~assay2,
+        y = ~assay1,
+        z = ~n_both_positive,
+        type = "heatmap",
+        text = ~paste0(assay1, " ∩ ", assay2, "<br>", n_both_positive, " samples"),
+        hoverinfo = "text",
+        colors = colorRamp(c("#FFFFFF", "#10B981", "#047857"))
+      ) %>%
+        layout(
+          xaxis = list(title = ""),
+          yaxis = list(title = ""),
+          margin = list(l = 100, r = 20, t = 20, b = 100)
+        )
+
+      p
+    })
+
+    # Status bars
     output$assay_bars <- renderPlotly({
       df <- filtered_tidy() %>%
         count(assay, status) %>%
@@ -412,199 +716,12 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       p <- ggplot(df, aes(x = assay, y = n, fill = status, text = paste("Assay:", assay, "<br>Status:", status, "<br>n:", n))) +
         geom_bar(stat = "identity", position = "stack") +
         scale_fill_manual(values = assay_palette()) +
-        theme_minimal() + labs(x = NULL, y = "Samples")
-      ggplotly(p, tooltip = "text") %>% event_register("plotly_click")
+        theme_minimal() + labs(x = NULL, y = "Samples") +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+      ggplotly(p, tooltip = "text")
     })
 
-    observeEvent(plotly::event_data("plotly_click", source = NULL), {
-      ev <- plotly::event_data("plotly_click")
-      if (!is.null(ev) && !is.null(ev$x) && !is.null(ev$curveNumber)) {
-        drill_state$assay <- as.character(ev$x)
-        drill_state$status <- levels(filtered_tidy()$status)[ev$curveNumber + 1]
-      }
-    })
-
-    output$agreement_heatmap <- renderPlotly({
-      pw <- prepared()$pairwise_agreement
-      if (!nrow(pw)) return(NULL)
-      p <- plot_ly(
-        data = pw,
-        x = ~assay2,
-        y = ~assay1,
-        z = ~agreement,
-        type = "heatmap",
-        text = ~paste0("Agreement: ", round(agreement, 1), "%", "<br>n=", n),
-        hoverinfo = "text",
-        colors = colorRamp(c("#E0F2FE", "#1D4ED8"))
-      ) %>%
-        layout(xaxis = list(title = "Assay"), yaxis = list(title = "Assay"))
-      p
-    })
-
-    output$concordance_sankey <- renderPlotly({
-      concordance <- prepared()$molecular_serology_concordance
-
-      if (nrow(concordance) == 0) {
-        return(plotly_empty() %>%
-          layout(annotations = list(
-            text = "No concordance data available",
-            xref = "paper", yref = "paper",
-            x = 0.5, y = 0.5, showarrow = FALSE,
-            font = list(size = 16)
-          ))
-        )
-      }
-
-      # Filter samples with both tests
-      concordance_filtered <- concordance %>%
-        filter(mic_tested & serology_tested)
-
-      if (nrow(concordance_filtered) == 0) {
-        return(plotly_empty() %>%
-          layout(annotations = list(
-            text = sprintf("No samples with both MIC and serology tests\n(Total samples: %d)", nrow(concordance)),
-            xref = "paper", yref = "paper",
-            x = 0.5, y = 0.5, showarrow = FALSE,
-            font = list(size = 16)
-          ))
-        )
-      }
-
-      # Define nodes: MIC Positive/Negative -> Serology Positive/Serology Negative
-      nodes <- data.frame(
-        name = c("MIC Positive", "MIC Negative", "Serology Positive", "Serology Negative")
-      )
-
-      # Calculate links
-      mic_pos_serology_pos <- sum(concordance_filtered$mic_positive & concordance_filtered$serology_positive, na.rm = TRUE)
-      mic_pos_serology_neg <- sum(concordance_filtered$mic_positive & !concordance_filtered$serology_positive, na.rm = TRUE)
-      mic_neg_serology_pos <- sum(!concordance_filtered$mic_positive & concordance_filtered$serology_positive, na.rm = TRUE)
-      mic_neg_serology_neg <- sum(!concordance_filtered$mic_positive & !concordance_filtered$serology_positive, na.rm = TRUE)
-
-      # Create links (source and target are 0-indexed)
-      links <- data.frame(
-        source = c(0, 0, 1, 1),  # MIC Pos, MIC Pos, MIC Neg, MIC Neg
-        target = c(2, 3, 2, 3),  # Serology Pos, Serology Neg, Serology Pos, Serology Neg
-        value = c(mic_pos_serology_pos, mic_pos_serology_neg, mic_neg_serology_pos, mic_neg_serology_neg),
-        color = c("rgba(16, 185, 129, 0.5)", "rgba(255, 165, 0, 0.5)",
-                  "rgba(255, 165, 0, 0.5)", "rgba(156, 163, 175, 0.5)")
-      )
-
-      # Filter out zero values
-      links <- links %>% filter(value > 0)
-
-      if (nrow(links) == 0) {
-        return(plotly_empty() %>%
-          layout(annotations = list(
-            text = "No data to display in flow diagram",
-            xref = "paper", yref = "paper",
-            x = 0.5, y = 0.5, showarrow = FALSE,
-            font = list(size = 16)
-          ))
-        )
-      }
-
-      plot_ly(
-        type = "sankey",
-        orientation = "h",
-        node = list(
-          label = nodes$name,
-          color = c("#2563EB", "#9CA3AF", "#10B981", "#9CA3AF"),
-          pad = 15,
-          thickness = 20
-        ),
-        link = list(
-          source = links$source,
-          target = links$target,
-          value = links$value,
-          color = links$color
-        )
-      ) %>%
-        layout(
-          title = "",
-          font = list(size = 12),
-          margin = list(l = 20, r = 20, t = 20, b = 20)
-        )
-    })
-
-    output$concordance_bars <- renderPlotly({
-      concordance <- prepared()$molecular_serology_concordance
-
-      if (nrow(concordance) == 0) {
-        return(plotly_empty() %>%
-          layout(annotations = list(
-            text = "No concordance data available",
-            xref = "paper", yref = "paper",
-            x = 0.5, y = 0.5, showarrow = FALSE,
-            font = list(size = 16)
-          ))
-        )
-      }
-
-      # Filter samples with both tests
-      concordance_filtered <- concordance %>%
-        filter(mic_tested & serology_tested)
-
-      if (nrow(concordance_filtered) == 0) {
-        return(plotly_empty() %>%
-          layout(annotations = list(
-            text = sprintf("No samples with both MIC and serology tests\n(Total samples: %d)", nrow(concordance)),
-            xref = "paper", yref = "paper",
-            x = 0.5, y = 0.5, showarrow = FALSE,
-            font = list(size = 16)
-          ))
-        )
-      }
-
-      category_counts <- concordance_filtered %>%
-        count(concordance_category) %>%
-        mutate(
-          concordance_category = factor(concordance_category,
-            levels = c("Both Positive", "Both Negative", "MIC+ / Serology-", "MIC- / Serology+")),
-          percentage = n / sum(n) * 100,
-          color = case_when(
-            concordance_category == "Both Positive" ~ "#10B981",
-            concordance_category == "Both Negative" ~ "#9CA3AF",
-            concordance_category == "MIC+ / Serology-" ~ "#2563EB",
-            concordance_category == "MIC- / Serology+" ~ "#F59E0B",
-            TRUE ~ "#E5E7EB"
-          )
-        ) %>%
-        filter(!is.na(concordance_category))
-
-      if (nrow(category_counts) == 0) {
-        return(plotly_empty() %>%
-          layout(annotations = list(
-            text = "No data to display",
-            xref = "paper", yref = "paper",
-            x = 0.5, y = 0.5, showarrow = FALSE,
-            font = list(size = 16)
-          ))
-        )
-      }
-
-      p <- plot_ly(
-        data = category_counts,
-        x = ~concordance_category,
-        y = ~n,
-        type = "bar",
-        marker = list(color = ~color),
-        text = ~paste0(concordance_category, "<br>n=", n, " (", sprintf("%.1f%%", percentage), ")"),
-        hoverinfo = "text"
-      ) %>%
-        layout(
-          xaxis = list(
-            title = "Concordance Category",
-            tickangle = -45
-          ),
-          yaxis = list(title = "Number of Samples"),
-          showlegend = FALSE,
-          margin = list(b = 100)
-        )
-
-      p
-    })
-
+    # UpSet plot
     output$upset_plot <- renderPlotly({
       inter <- prepared()$intersections
       if (!nrow(inter)) return(NULL)
@@ -625,61 +742,12 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
         scale_fill_identity() +
         coord_flip() +
         theme_minimal() +
-        labs(x = "Assay combination", y = "Positive samples") +
+        labs(x = "Test combination", y = "Positive samples") +
         theme(legend.position = "none")
       ggplotly(p, tooltip = "text")
     })
 
-    output$sample_heatmap <- renderPlotly({
-      mat <- prepared()$sample_matrix
-      if (!nrow(mat)) return(NULL)
-      long <- mat %>% pivot_longer(-sample_id, names_to = "assay", values_to = "status") %>%
-        mutate(status = factor(status, levels = names(assay_palette())))
-      pal <- assay_palette()
-      p <- plot_ly(
-        data = long,
-        x = ~assay,
-        y = ~sample_id,
-        type = "heatmap",
-        z = ~as.numeric(status),
-        colors = unname(pal),
-        text = ~paste("Sample:", sample_id, "<br>Assay:", assay, "<br>Status:", status),
-        hoverinfo = "text"
-      )
-      p
-    })
-
-    output$trend_plot <- renderPlotly({
-      df <- filtered_tidy()
-      if (!"assay_date" %in% names(df) || all(is.na(df$assay_date))) return(NULL)
-      df <- df %>% filter(!is.na(assay_date)) %>%
-        mutate(month = floor_date(assay_date, "month")) %>%
-        group_by(month, assay) %>%
-        summarise(pos_rate = mean(status == "Positive"), n = n(), .groups = "drop")
-      if (!nrow(df)) return(NULL)
-      p <- ggplot(df, aes(x = month, y = pos_rate, color = assay, group = assay,
-                         text = paste("Month:", month, "<br>Positivity:", scales::percent(pos_rate), "<br>n=", n))) +
-        geom_line() + geom_point() + scale_y_continuous(labels = scales::percent) +
-        theme_minimal() + labs(x = NULL, y = "Positivity")
-      ggplotly(p, tooltip = "text")
-    })
-
-    output$quant_plot <- renderPlotly({
-      df <- filtered_tidy() %>% filter(!is.na(quantitative))
-      if (!nrow(df)) return(NULL)
-      cuts <- prepared()$cutoffs
-      p <- ggplot(df, aes(x = quantitative, fill = assay, text = paste("Assay:", assay, "<br>", metric, ":", round(quantitative, 2)))) +
-        geom_histogram(alpha = 0.7, position = "identity", bins = 30) +
-        theme_minimal() + labs(x = "Quantitative value", y = "Count")
-      p <- ggplotly(p, tooltip = "text")
-      # Add cutoff lines for ELISA and iELISA metrics when present
-      if ("elisa_pp_positive" %in% names(cuts)) {
-        p <- p %>% add_segments(x = cuts$elisa_pp_positive, xend = cuts$elisa_pp_positive, y = 0, yend = max(df$quantitative, na.rm = TRUE),
-                                line = list(color = "#EF4444", dash = "dash"), inherit = FALSE, showlegend = FALSE)
-      }
-      p
-    })
-
+    # Sample table
     output$sample_table <- DT::renderDT({
       df <- filtered_tidy()
       DT::datatable(

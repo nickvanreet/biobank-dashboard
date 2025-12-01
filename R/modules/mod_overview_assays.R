@@ -39,22 +39,25 @@ mod_overview_assays_ui <- function(id) {
           )
         ),
         card(
+          full_screen = TRUE,
           card_header(
             class = "d-flex justify-content-between align-items-center",
             div(icon("microscope"), "Molecular vs Serology Concordance"),
             tags$small(class = "text-muted", "Concordance between MIC qPCR and any serological test (ELISA/iELISA)")
           ),
           card_body(
+            # Top row: Key KPIs
             layout_column_wrap(
               width = 1/4,
-              value_box(title = "Both Positive", value = uiOutput(ns("kpi_both_positive")), showcase = icon("check-double"), theme = "success"),
-              value_box(title = "MIC+ / Serology-", value = uiOutput(ns("kpi_mic_only")), showcase = icon("dna"), theme = "primary"),
-              value_box(title = "MIC- / Serology+", value = uiOutput(ns("kpi_serology_only")), showcase = icon("vials"), theme = "warning"),
-              value_box(title = "Concordance", value = uiOutput(ns("kpi_mic_serology_concordance")), showcase = icon("handshake"), theme = "info"),
-              value_box(title = "Single-test positive", value = uiOutput(ns("kpi_single_test")), showcase = icon("star"), theme = "danger"),
-              value_box(title = "All-tests positive", value = uiOutput(ns("kpi_all_tests")), showcase = icon("check-circle"), theme = "success"),
               value_box(title = "Samples tested", value = uiOutput(ns("kpi_samples_tested")), showcase = icon("users"), theme = "secondary"),
+              value_box(title = "Concordance", value = uiOutput(ns("kpi_mic_serology_concordance")), showcase = icon("handshake"), theme = "info"),
+              value_box(title = "Both Positive", value = uiOutput(ns("kpi_both_positive")), showcase = icon("check-double"), theme = "success"),
               value_box(title = "Tests completed", value = uiOutput(ns("kpi_total")), showcase = icon("list-check"), theme = "dark")
+            ),
+            # Full concordance table
+            div(class = "mt-3",
+                h5("Concordance Details"),
+                DT::DTOutput(ns("concordance_table"))
             )
           )
         )
@@ -313,6 +316,81 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       list(label = nrow(df), detail = "Total assay rows")
     })
 
+    # Concordance table
+    output$concordance_table <- DT::renderDT({
+      concordance <- prepared()$molecular_serology_concordance
+
+      if (nrow(concordance) == 0) {
+        return(DT::datatable(
+          data.frame(Message = "No concordance data available"),
+          options = list(dom = 't', paging = FALSE)
+        ))
+      }
+
+      # Create summary table with all concordance categories
+      summary_table <- concordance %>%
+        filter(mic_tested & serology_tested) %>%
+        count(concordance_category) %>%
+        mutate(
+          percentage = n / sum(n) * 100,
+          concordance_category = factor(concordance_category,
+            levels = c("Both Positive", "Both Negative", "MIC+ / Serology-", "MIC- / Serology+"))
+        ) %>%
+        arrange(concordance_category) %>%
+        rename(
+          Category = concordance_category,
+          Count = n,
+          Percentage = percentage
+        )
+
+      # Add a summary row
+      totals <- concordance %>%
+        filter(mic_tested & serology_tested) %>%
+        summarise(
+          Category = "TOTAL",
+          Count = n(),
+          Percentage = 100
+        )
+
+      # Add concordant/discordant summary
+      concordant <- sum(summary_table$Category %in% c("Both Positive", "Both Negative"))
+      discordant <- sum(summary_table$Category %in% c("MIC+ / Serology-", "MIC- / Serology+"))
+
+      summary_stats <- data.frame(
+        Category = c("Concordant (Both +/Both -)", "Discordant (Mismatch)"),
+        Count = c(concordant, discordant),
+        Percentage = c(concordant / totals$Count * 100, discordant / totals$Count * 100)
+      )
+
+      # Combine all
+      final_table <- bind_rows(summary_table, summary_stats, totals)
+
+      DT::datatable(
+        final_table,
+        options = list(
+          pageLength = 15,
+          scrollX = TRUE,
+          dom = 't',
+          paging = FALSE
+        ),
+        class = "table-sm table-striped",
+        rownames = FALSE
+      ) %>%
+        DT::formatPercentage("Percentage", digits = 1) %>%
+        DT::formatStyle(
+          "Category",
+          target = "row",
+          backgroundColor = DT::styleEqual(
+            c("Both Positive", "Both Negative", "Concordant (Both +/Both -)", "TOTAL"),
+            c("#d4edda", "#f8f9fa", "#cfe2ff", "#f0f0f0")
+          ),
+          fontWeight = DT::styleEqual(
+            c("Concordant (Both +/Both -)", "Discordant (Mismatch)", "TOTAL"),
+            c("bold", "bold", "bold")
+          )
+        )
+    })
+
     output$assay_bars <- renderPlotly({
       df <- filtered_tidy() %>%
         count(assay, status) %>%
@@ -351,37 +429,67 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
     })
 
     output$concordance_sankey <- renderPlotly({
-      concordance <- prepared()$molecular_serology_concordance %>%
+      concordance <- prepared()$molecular_serology_concordance
+
+      if (nrow(concordance) == 0) {
+        return(plotly_empty() %>%
+          layout(annotations = list(
+            text = "No concordance data available",
+            xref = "paper", yref = "paper",
+            x = 0.5, y = 0.5, showarrow = FALSE,
+            font = list(size = 16)
+          ))
+        )
+      }
+
+      # Filter samples with both tests
+      concordance_filtered <- concordance %>%
         filter(mic_tested & serology_tested)
 
-      if (nrow(concordance) == 0) return(NULL)
+      if (nrow(concordance_filtered) == 0) {
+        return(plotly_empty() %>%
+          layout(annotations = list(
+            text = sprintf("No samples with both MIC and serology tests\n(Total samples: %d)", nrow(concordance)),
+            xref = "paper", yref = "paper",
+            x = 0.5, y = 0.5, showarrow = FALSE,
+            font = list(size = 16)
+          ))
+        )
+      }
 
-      # Create Sankey data
-      category_counts <- concordance %>%
-        count(concordance_category)
-
-      # Define nodes: MIC Positive/Negative -> Serology Positive/Negative
+      # Define nodes: MIC Positive/Negative -> Serology Positive/Serology Negative
       nodes <- data.frame(
         name = c("MIC Positive", "MIC Negative", "Serology Positive", "Serology Negative")
       )
 
       # Calculate links
-      mic_pos_serology_pos <- sum(concordance$mic_positive & concordance$serology_positive)
-      mic_pos_serology_neg <- sum(concordance$mic_positive & !concordance$serology_positive)
-      mic_neg_serology_pos <- sum(!concordance$mic_positive & concordance$serology_positive)
-      mic_neg_serology_neg <- sum(!concordance$mic_positive & !concordance$serology_positive)
+      mic_pos_serology_pos <- sum(concordance_filtered$mic_positive & concordance_filtered$serology_positive, na.rm = TRUE)
+      mic_pos_serology_neg <- sum(concordance_filtered$mic_positive & !concordance_filtered$serology_positive, na.rm = TRUE)
+      mic_neg_serology_pos <- sum(!concordance_filtered$mic_positive & concordance_filtered$serology_positive, na.rm = TRUE)
+      mic_neg_serology_neg <- sum(!concordance_filtered$mic_positive & !concordance_filtered$serology_positive, na.rm = TRUE)
 
       # Create links (source and target are 0-indexed)
       links <- data.frame(
         source = c(0, 0, 1, 1),  # MIC Pos, MIC Pos, MIC Neg, MIC Neg
         target = c(2, 3, 2, 3),  # Serology Pos, Serology Neg, Serology Pos, Serology Neg
         value = c(mic_pos_serology_pos, mic_pos_serology_neg, mic_neg_serology_pos, mic_neg_serology_neg),
-        color = c("rgba(34, 139, 34, 0.4)", "rgba(255, 165, 0, 0.4)",
-                  "rgba(255, 165, 0, 0.4)", "rgba(128, 128, 128, 0.4)")
+        color = c("rgba(16, 185, 129, 0.5)", "rgba(255, 165, 0, 0.5)",
+                  "rgba(255, 165, 0, 0.5)", "rgba(156, 163, 175, 0.5)")
       )
 
       # Filter out zero values
       links <- links %>% filter(value > 0)
+
+      if (nrow(links) == 0) {
+        return(plotly_empty() %>%
+          layout(annotations = list(
+            text = "No data to display in flow diagram",
+            xref = "paper", yref = "paper",
+            x = 0.5, y = 0.5, showarrow = FALSE,
+            font = list(size = 16)
+          ))
+        )
+      }
 
       plot_ly(
         type = "sankey",
@@ -401,17 +509,41 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       ) %>%
         layout(
           title = "",
-          font = list(size = 12)
+          font = list(size = 12),
+          margin = list(l = 20, r = 20, t = 20, b = 20)
         )
     })
 
     output$concordance_bars <- renderPlotly({
-      concordance <- prepared()$molecular_serology_concordance %>%
+      concordance <- prepared()$molecular_serology_concordance
+
+      if (nrow(concordance) == 0) {
+        return(plotly_empty() %>%
+          layout(annotations = list(
+            text = "No concordance data available",
+            xref = "paper", yref = "paper",
+            x = 0.5, y = 0.5, showarrow = FALSE,
+            font = list(size = 16)
+          ))
+        )
+      }
+
+      # Filter samples with both tests
+      concordance_filtered <- concordance %>%
         filter(mic_tested & serology_tested)
 
-      if (nrow(concordance) == 0) return(NULL)
+      if (nrow(concordance_filtered) == 0) {
+        return(plotly_empty() %>%
+          layout(annotations = list(
+            text = sprintf("No samples with both MIC and serology tests\n(Total samples: %d)", nrow(concordance)),
+            xref = "paper", yref = "paper",
+            x = 0.5, y = 0.5, showarrow = FALSE,
+            font = list(size = 16)
+          ))
+        )
+      }
 
-      category_counts <- concordance %>%
+      category_counts <- concordance_filtered %>%
         count(concordance_category) %>%
         mutate(
           concordance_category = factor(concordance_category,
@@ -421,9 +553,22 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
             concordance_category == "Both Positive" ~ "#10B981",
             concordance_category == "Both Negative" ~ "#9CA3AF",
             concordance_category == "MIC+ / Serology-" ~ "#2563EB",
-            concordance_category == "MIC- / Serology+" ~ "#F59E0B"
+            concordance_category == "MIC- / Serology+" ~ "#F59E0B",
+            TRUE ~ "#E5E7EB"
           )
+        ) %>%
+        filter(!is.na(concordance_category))
+
+      if (nrow(category_counts) == 0) {
+        return(plotly_empty() %>%
+          layout(annotations = list(
+            text = "No data to display",
+            xref = "paper", yref = "paper",
+            x = 0.5, y = 0.5, showarrow = FALSE,
+            font = list(size = 16)
+          ))
         )
+      }
 
       p <- plot_ly(
         data = category_counts,
@@ -435,9 +580,13 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
         hoverinfo = "text"
       ) %>%
         layout(
-          xaxis = list(title = "Concordance Category"),
+          xaxis = list(
+            title = "Concordance Category",
+            tickangle = -45
+          ),
           yaxis = list(title = "Number of Samples"),
-          showlegend = FALSE
+          showlegend = FALSE,
+          margin = list(b = 100)
         )
 
       p

@@ -243,26 +243,67 @@ prepare_assay_dashboard_data <- function(
 
   # MIC qPCR
   if (!is.null(mic_data) && !is.null(mic_data$samples) && nrow(mic_data$samples)) {
+    message(sprintf("Processing %d MIC samples...", nrow(mic_data$samples)))
+
+    # MIC-specific ID columns (prioritize MIC column names)
+    mic_id_columns <- c("SampleID", "SampleName", "Name", "sample_id", "Sample_ID",
+                        "code_barres_kps", "barcode")
+
+    # Extract barcode and lab_id for MIC data
+    mic_barcodes <- coalesce_any_column(mic_data$samples, c("SampleID", "sample_id", "Sample_ID"))
+    mic_lab_ids <- coalesce_any_column(mic_data$samples, c("SampleName", "Name"))
+
     tibs$mic <- mic_data$samples %>%
       mutate(
-        sample_id = normalize_sample_id(
-          barcode = coalesce_any_column(., id_columns)
+        sample_id = mapply(
+          normalize_sample_id,
+          barcode = mic_barcodes,
+          lab_id = mic_lab_ids,
+          SIMPLIFY = TRUE
         ),
         assay = "MIC qPCR",
         status = vapply(PipelineCategory, classify_mic, character(1), cutoffs = cutoffs),
         quantitative = coalesce(Avg_177T_Positive_Cq, Avg_18S2_Positive_Cq),
         metric = "Cq",
         assay_date = suppressWarnings(lubridate::as_date(
-          coalesce_any_column(., c("CollectionDate", "SampleDate", "RunDate", "plate_date"))
+          coalesce_any_column(., c("CollectionDate", "SampleDate", "RunDate", "RunDateTime", "plate_date"))
         ))
-      ) %>%
-      select(sample_id, assay, status, quantitative, metric, assay_date, PipelineCategory, Avg_177T_Positive_Cq, Avg_18S2_Positive_Cq)
+      )
+
+    # Debug: Check how many samples have valid IDs
+    n_valid <- sum(!is.na(tibs$mic$sample_id) & tibs$mic$sample_id != "")
+    message(sprintf("  MIC samples with valid IDs: %d out of %d", n_valid, nrow(tibs$mic)))
+
+    tibs$mic <- tibs$mic %>%
+      select(sample_id, assay, status, quantitative, metric, assay_date, PipelineCategory,
+             Avg_177T_Positive_Cq, Avg_18S2_Positive_Cq)
   }
 
   status_levels <- c("Positive", "Borderline", "Negative", "Invalid", "Missing")
 
-  tidy <- bind_rows(tibs) %>%
-    filter(!is.na(sample_id) & sample_id != "") %>%
+  # Combine all assay data
+  tidy_raw <- bind_rows(tibs)
+  message(sprintf("Combined assay data: %d total rows before filtering", nrow(tidy_raw)))
+
+  # Count by assay before filtering
+  if (nrow(tidy_raw) > 0) {
+    pre_filter_counts <- tidy_raw %>%
+      group_by(assay) %>%
+      summarise(n = n(), .groups = "drop")
+    message("  Rows per assay before filtering:")
+    for (i in seq_len(nrow(pre_filter_counts))) {
+      message(sprintf("    %s: %d", pre_filter_counts$assay[i], pre_filter_counts$n[i]))
+    }
+  }
+
+  # Filter out samples with invalid IDs
+  tidy <- tidy_raw %>%
+    filter(!is.na(sample_id) & sample_id != "")
+
+  message(sprintf("After filtering invalid sample IDs: %d rows remaining", nrow(tidy)))
+
+  # Deduplicate and rank by status
+  tidy <- tidy %>%
     mutate(
       status = factor(status, levels = status_levels),
       status_rank = match(status, status_levels),
@@ -274,6 +315,9 @@ prepare_assay_dashboard_data <- function(
     ungroup() %>%
     select(-status_rank, -quantitative_missing) %>%
     mutate(assay = factor(assay))
+
+  message(sprintf("After deduplication: %d unique sample-assay combinations", nrow(tidy)))
+  message(sprintf("Unique samples: %d", length(unique(tidy$sample_id))))
 
   # Apply global filters if provided
   if (!is.null(filters)) {

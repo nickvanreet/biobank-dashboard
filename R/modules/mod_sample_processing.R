@@ -1,0 +1,682 @@
+# ==============================================================================
+# MODULE: SAMPLE PROCESSING - Comprehensive sample tracking across all tests
+# ==============================================================================
+
+suppressPackageStartupMessages({
+  library(shiny)
+  library(bslib)
+  library(tidyverse)
+  library(DT)
+  library(plotly)
+})
+
+#' Sample Processing UI
+#' @param id Module namespace ID
+#' @export
+mod_sample_processing_ui <- function(id) {
+  ns <- NS(id)
+
+  nav_panel(
+    title = "Sample Processing",
+    icon = icon("list-check"),
+
+    tagList(
+      tags$style(HTML("
+        .sample-processing-panel {
+          max-height: calc(100vh - 160px);
+          overflow-y: auto;
+          padding-right: 0.5rem;
+          padding-bottom: 1rem;
+        }
+      ")),
+
+      div(
+        class = "sample-processing-panel",
+
+        # Summary KPIs
+        card(
+          class = "mb-3",
+          card_header("Sample Processing Overview"),
+          card_body(
+            uiOutput(ns("summary_kpis"))
+          )
+        ),
+
+        # Filters Card
+        card(
+          class = "mb-3",
+          card_header(
+            div(
+              class = "d-flex justify-content-between align-items-center",
+              span(icon("filter"), " Filters"),
+              actionButton(ns("reset_filters"), "Reset", class = "btn-sm btn-outline-secondary")
+            )
+          ),
+          card_body(
+            layout_column_wrap(
+              width = 1/4,
+              selectInput(
+                ns("filter_positivity"),
+                "Positivity Status",
+                choices = c(
+                  "All Samples" = "all",
+                  "Any Positive Result" = "any_positive",
+                  "All Negative" = "all_negative",
+                  "MIC Positive" = "mic_positive",
+                  "ELISA Positive" = "elisa_positive",
+                  "iELISA Positive" = "ielisa_positive"
+                ),
+                selected = "all"
+              ),
+              selectInput(
+                ns("filter_qc"),
+                "QC Status",
+                choices = c(
+                  "All Samples" = "all",
+                  "QC Pass Only" = "qc_pass",
+                  "QC Fail Only" = "qc_fail"
+                ),
+                selected = "all"
+              ),
+              selectInput(
+                ns("filter_processing"),
+                "Processing Status",
+                choices = c(
+                  "All Samples" = "all",
+                  "Extracted" = "has_extraction",
+                  "Not Extracted" = "no_extraction",
+                  "Has MIC Test" = "has_mic",
+                  "Has ELISA Test" = "has_elisa",
+                  "Has iELISA Test" = "has_ielisa",
+                  "Complete Testing" = "complete"
+                ),
+                selected = "all"
+              ),
+              selectInput(
+                ns("filter_completeness"),
+                "Data Completeness",
+                choices = c(
+                  "All Samples" = "all",
+                  "Fully Tested (All 3)" = "fully_tested",
+                  "Partially Tested" = "partially_tested",
+                  "Biobank Only" = "biobank_only"
+                ),
+                selected = "all"
+              )
+            )
+          )
+        ),
+
+        # Processing stages visualization
+        card(
+          class = "mb-3",
+          card_header("Sample Flow Through Processing Stages"),
+          card_body(
+            plotlyOutput(ns("processing_flow"), height = "300px")
+          )
+        ),
+
+        # Samples table
+        card(
+          card_header("Sample Details"),
+          card_body(
+            DTOutput(ns("samples_table"))
+          )
+        )
+      )
+    )
+  )
+}
+
+#' Sample Processing Server
+#' @param id Module namespace ID
+#' @param biobank_df Reactive returning biobank data
+#' @param extraction_df Reactive returning extraction data
+#' @param mic_df Reactive returning MIC data
+#' @param elisa_pe_df Reactive returning ELISA PE data
+#' @param elisa_vsg_df Reactive returning ELISA VSG data
+#' @param ielisa_df Reactive returning iELISA data
+#' @param filters Reactive filters from data manager
+#' @export
+mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
+                                          elisa_pe_df, elisa_vsg_df, ielisa_df, filters) {
+  moduleServer(id, function(input, output, session) {
+    ns <- session$ns
+
+    # ========================================================================
+    # REACTIVE DATA PROCESSING
+    # ========================================================================
+
+    # Comprehensive sample data combining all sources
+    comprehensive_samples <- reactive({
+      req(biobank_df())
+
+      biobank <- biobank_df()
+
+      # Get extraction data
+      extractions <- tryCatch(extraction_df(), error = function(e) tibble())
+
+      # Get test data
+      mic_data <- tryCatch(mic_df(), error = function(e) tibble())
+      elisa_pe_data <- tryCatch(elisa_pe_df(), error = function(e) tibble())
+      elisa_vsg_data <- tryCatch(elisa_vsg_df(), error = function(e) tibble())
+      ielisa_data <- tryCatch(ielisa_df(), error = function(e) tibble())
+
+      # Start with biobank data
+      samples <- biobank %>%
+        mutate(
+          sample_id = coalesce(code_barres_kps, numero_labo, as.character(row_number())),
+          barcode = code_barres_kps,
+          lab_id = numero_labo
+        ) %>%
+        select(
+          sample_id, barcode, lab_id,
+          province, health_zone,
+          starts_with("date_"),
+          everything()
+        )
+
+      # Add extraction info
+      if (nrow(extractions) > 0) {
+        extraction_summary <- extractions %>%
+          mutate(
+            sample_id = coalesce(barcode, numero, sample_id, as.character(row_number()))
+          ) %>%
+          group_by(sample_id) %>%
+          summarise(
+            has_extraction = TRUE,
+            n_extractions = n(),
+            latest_extraction_date = max(extraction_date, na.rm = TRUE),
+            drs_volume = last(drs_volume_ml, order_by = extraction_date),
+            .groups = "drop"
+          )
+
+        samples <- samples %>%
+          left_join(extraction_summary, by = "sample_id") %>%
+          mutate(has_extraction = replace_na(has_extraction, FALSE))
+      } else {
+        samples <- samples %>%
+          mutate(
+            has_extraction = FALSE,
+            n_extractions = 0,
+            latest_extraction_date = as.Date(NA),
+            drs_volume = NA_real_
+          )
+      }
+
+      # Add MIC test info
+      if (nrow(mic_data) > 0) {
+        mic_summary <- mic_data %>%
+          mutate(
+            sample_id = coalesce(
+              barcode, numero_echantillon, lab_id, sample_id,
+              as.character(row_number())
+            )
+          ) %>%
+          group_by(sample_id) %>%
+          summarise(
+            has_mic = TRUE,
+            n_mic_tests = n(),
+            mic_positive = any(result_category %in% c("TNA Positive", "DNA Only Positive", "RNA Only Positive"), na.rm = TRUE),
+            mic_result = first(result_category),
+            mic_qc_pass = all(qc_overall_pass, na.rm = TRUE),
+            .groups = "drop"
+          )
+
+        samples <- samples %>%
+          left_join(mic_summary, by = "sample_id") %>%
+          mutate(
+            has_mic = replace_na(has_mic, FALSE),
+            mic_positive = replace_na(mic_positive, FALSE),
+            mic_qc_pass = replace_na(mic_qc_pass, TRUE)
+          )
+      } else {
+        samples <- samples %>%
+          mutate(
+            has_mic = FALSE,
+            n_mic_tests = 0,
+            mic_positive = FALSE,
+            mic_result = NA_character_,
+            mic_qc_pass = TRUE
+          )
+      }
+
+      # Add ELISA PE test info
+      if (nrow(elisa_pe_data) > 0) {
+        elisa_pe_summary <- elisa_pe_data %>%
+          filter(sample_type == "sample") %>%
+          mutate(
+            sample_id = coalesce(code_barres_kps, numero_labo, as.character(row_number()))
+          ) %>%
+          group_by(sample_id) %>%
+          summarise(
+            has_elisa_pe = TRUE,
+            n_elisa_pe_tests = n(),
+            elisa_pe_positive = any(sample_positive, na.rm = TRUE),
+            elisa_pe_qc_pass = all(qc_overall, na.rm = TRUE),
+            elisa_pe_dod = mean(DOD, na.rm = TRUE),
+            .groups = "drop"
+          )
+
+        samples <- samples %>%
+          left_join(elisa_pe_summary, by = "sample_id") %>%
+          mutate(
+            has_elisa_pe = replace_na(has_elisa_pe, FALSE),
+            elisa_pe_positive = replace_na(elisa_pe_positive, FALSE),
+            elisa_pe_qc_pass = replace_na(elisa_pe_qc_pass, TRUE)
+          )
+      } else {
+        samples <- samples %>%
+          mutate(
+            has_elisa_pe = FALSE,
+            n_elisa_pe_tests = 0,
+            elisa_pe_positive = FALSE,
+            elisa_pe_qc_pass = TRUE,
+            elisa_pe_dod = NA_real_
+          )
+      }
+
+      # Add ELISA VSG test info
+      if (nrow(elisa_vsg_data) > 0) {
+        elisa_vsg_summary <- elisa_vsg_data %>%
+          filter(sample_type == "sample") %>%
+          mutate(
+            sample_id = coalesce(code_barres_kps, numero_labo, as.character(row_number()))
+          ) %>%
+          group_by(sample_id) %>%
+          summarise(
+            has_elisa_vsg = TRUE,
+            n_elisa_vsg_tests = n(),
+            elisa_vsg_positive = any(sample_positive, na.rm = TRUE),
+            elisa_vsg_qc_pass = all(qc_overall, na.rm = TRUE),
+            elisa_vsg_dod = mean(DOD, na.rm = TRUE),
+            .groups = "drop"
+          )
+
+        samples <- samples %>%
+          left_join(elisa_vsg_summary, by = "sample_id") %>%
+          mutate(
+            has_elisa_vsg = replace_na(has_elisa_vsg, FALSE),
+            elisa_vsg_positive = replace_na(elisa_vsg_positive, FALSE),
+            elisa_vsg_qc_pass = replace_na(elisa_vsg_qc_pass, TRUE)
+          )
+      } else {
+        samples <- samples %>%
+          mutate(
+            has_elisa_vsg = FALSE,
+            n_elisa_vsg_tests = 0,
+            elisa_vsg_positive = FALSE,
+            elisa_vsg_qc_pass = TRUE,
+            elisa_vsg_dod = NA_real_
+          )
+      }
+
+      # Add iELISA test info
+      if (nrow(ielisa_data) > 0) {
+        ielisa_summary <- ielisa_data %>%
+          mutate(
+            sample_id = coalesce(Barcode, LabID, as.character(row_number()))
+          ) %>%
+          group_by(sample_id) %>%
+          summarise(
+            has_ielisa = TRUE,
+            n_ielisa_tests = n(),
+            ielisa_positive = any(positive_L13 | positive_L15, na.rm = TRUE),
+            ielisa_l13_positive = any(positive_L13, na.rm = TRUE),
+            ielisa_l15_positive = any(positive_L15, na.rm = TRUE),
+            .groups = "drop"
+          )
+
+        samples <- samples %>%
+          left_join(ielisa_summary, by = "sample_id") %>%
+          mutate(
+            has_ielisa = replace_na(has_ielisa, FALSE),
+            ielisa_positive = replace_na(ielisa_positive, FALSE)
+          )
+      } else {
+        samples <- samples %>%
+          mutate(
+            has_ielisa = FALSE,
+            n_ielisa_tests = 0,
+            ielisa_positive = FALSE,
+            ielisa_l13_positive = FALSE,
+            ielisa_l15_positive = FALSE
+          )
+      }
+
+      # Calculate composite fields
+      samples <- samples %>%
+        mutate(
+          # Any positive result across all tests
+          any_positive = mic_positive | elisa_pe_positive | elisa_vsg_positive | ielisa_positive,
+
+          # Aggregate ELISA results
+          elisa_positive = elisa_pe_positive | elisa_vsg_positive,
+          has_elisa = has_elisa_pe | has_elisa_vsg,
+
+          # Overall QC status (all tests that were done must pass)
+          overall_qc_pass = case_when(
+            has_mic & !mic_qc_pass ~ FALSE,
+            has_elisa_pe & !elisa_pe_qc_pass ~ FALSE,
+            has_elisa_vsg & !elisa_vsg_qc_pass ~ FALSE,
+            TRUE ~ TRUE
+          ),
+
+          # Processing completeness
+          n_test_types = (has_mic + has_elisa + has_ielisa),
+          processing_stage = case_when(
+            n_test_types == 3 ~ "Fully Tested",
+            n_test_types > 0 ~ "Partially Tested",
+            has_extraction ~ "Extracted Only",
+            TRUE ~ "Biobank Only"
+          ),
+
+          # Create a processing status indicator
+          processing_status = case_when(
+            any_positive ~ "Positive",
+            n_test_types >= 2 & !any_positive ~ "Tested - Negative",
+            n_test_types == 1 ~ "Limited Testing",
+            has_extraction ~ "Awaiting Testing",
+            TRUE ~ "Not Processed"
+          )
+        )
+
+      samples
+    })
+
+    # Filtered samples based on user selections
+    filtered_samples <- reactive({
+      samples <- comprehensive_samples()
+
+      # Apply positivity filter
+      if (input$filter_positivity != "all") {
+        samples <- switch(
+          input$filter_positivity,
+          "any_positive" = samples %>% filter(any_positive),
+          "all_negative" = samples %>% filter(!any_positive),
+          "mic_positive" = samples %>% filter(mic_positive),
+          "elisa_positive" = samples %>% filter(elisa_positive),
+          "ielisa_positive" = samples %>% filter(ielisa_positive),
+          samples
+        )
+      }
+
+      # Apply QC filter
+      if (input$filter_qc != "all") {
+        samples <- switch(
+          input$filter_qc,
+          "qc_pass" = samples %>% filter(overall_qc_pass),
+          "qc_fail" = samples %>% filter(!overall_qc_pass),
+          samples
+        )
+      }
+
+      # Apply processing filter
+      if (input$filter_processing != "all") {
+        samples <- switch(
+          input$filter_processing,
+          "has_extraction" = samples %>% filter(has_extraction),
+          "no_extraction" = samples %>% filter(!has_extraction),
+          "has_mic" = samples %>% filter(has_mic),
+          "has_elisa" = samples %>% filter(has_elisa),
+          "has_ielisa" = samples %>% filter(has_ielisa),
+          "complete" = samples %>% filter(has_extraction & has_mic & has_elisa),
+          samples
+        )
+      }
+
+      # Apply completeness filter
+      if (input$filter_completeness != "all") {
+        samples <- switch(
+          input$filter_completeness,
+          "fully_tested" = samples %>% filter(n_test_types == 3),
+          "partially_tested" = samples %>% filter(n_test_types > 0 & n_test_types < 3),
+          "biobank_only" = samples %>% filter(n_test_types == 0),
+          samples
+        )
+      }
+
+      samples
+    })
+
+    # Reset filters
+    observeEvent(input$reset_filters, {
+      updateSelectInput(session, "filter_positivity", selected = "all")
+      updateSelectInput(session, "filter_qc", selected = "all")
+      updateSelectInput(session, "filter_processing", selected = "all")
+      updateSelectInput(session, "filter_completeness", selected = "all")
+    })
+
+    # ========================================================================
+    # SUMMARY KPIs
+    # ========================================================================
+
+    output$summary_kpis <- renderUI({
+      samples <- filtered_samples()
+
+      n_total <- nrow(samples)
+      n_extracted <- sum(samples$has_extraction)
+      n_mic <- sum(samples$has_mic)
+      n_elisa <- sum(samples$has_elisa)
+      n_ielisa <- sum(samples$has_ielisa)
+      n_fully_tested <- sum(samples$n_test_types == 3)
+      n_positive <- sum(samples$any_positive)
+      n_qc_fail <- sum(!samples$overall_qc_pass)
+
+      layout_column_wrap(
+        width = 1/4,
+        heights_equal = "row",
+
+        value_box(
+          title = "Total Samples",
+          value = scales::comma(n_total),
+          showcase = icon("vial"),
+          theme = "primary"
+        ),
+
+        value_box(
+          title = "Extracted",
+          value = sprintf("%d (%.1f%%)", n_extracted, 100 * n_extracted / max(n_total, 1)),
+          showcase = icon("flask"),
+          theme = "info"
+        ),
+
+        value_box(
+          title = "Fully Tested",
+          value = sprintf("%d (%.1f%%)", n_fully_tested, 100 * n_fully_tested / max(n_total, 1)),
+          showcase = icon("check-double"),
+          theme = "success"
+        ),
+
+        value_box(
+          title = "Any Positive",
+          value = sprintf("%d (%.1f%%)", n_positive, 100 * n_positive / max(n_total, 1)),
+          showcase = icon("plus-circle"),
+          theme = if (n_positive > 0) "danger" else "secondary"
+        ),
+
+        value_box(
+          title = "Has MIC Test",
+          value = sprintf("%d (%.1f%%)", n_mic, 100 * n_mic / max(n_total, 1)),
+          showcase = icon("dna"),
+          theme = "info"
+        ),
+
+        value_box(
+          title = "Has ELISA Test",
+          value = sprintf("%d (%.1f%%)", n_elisa, 100 * n_elisa / max(n_total, 1)),
+          showcase = icon("vial-circle-check"),
+          theme = "info"
+        ),
+
+        value_box(
+          title = "Has iELISA Test",
+          value = sprintf("%d (%.1f%%)", n_ielisa, 100 * n_ielisa / max(n_total, 1)),
+          showcase = icon("microscope"),
+          theme = "info"
+        ),
+
+        value_box(
+          title = "QC Failures",
+          value = sprintf("%d (%.1f%%)", n_qc_fail, 100 * n_qc_fail / max(n_total, 1)),
+          showcase = icon("triangle-exclamation"),
+          theme = if (n_qc_fail > 0) "warning" else "success"
+        )
+      )
+    })
+
+    # ========================================================================
+    # PROCESSING FLOW VISUALIZATION
+    # ========================================================================
+
+    output$processing_flow <- renderPlotly({
+      samples <- comprehensive_samples()
+
+      # Calculate numbers for each stage
+      n_biobank <- nrow(samples)
+      n_extracted <- sum(samples$has_extraction)
+      n_mic <- sum(samples$has_mic)
+      n_elisa <- sum(samples$has_elisa)
+      n_ielisa <- sum(samples$has_ielisa)
+      n_fully_tested <- sum(samples$n_test_types == 3)
+
+      # Create a Sankey-style funnel plot
+      flow_data <- tibble(
+        stage = c("Biobank", "Extracted", "MIC Tested", "ELISA Tested", "iELISA Tested", "Fully Tested"),
+        count = c(n_biobank, n_extracted, n_mic, n_elisa, n_ielisa, n_fully_tested),
+        percentage = round(100 * count / n_biobank, 1)
+      ) %>%
+        mutate(
+          stage = factor(stage, levels = stage),
+          label = sprintf("%s\n%d samples (%.1f%%)", stage, count, percentage)
+        )
+
+      plot_ly(
+        data = flow_data,
+        x = ~stage,
+        y = ~count,
+        type = "bar",
+        text = ~label,
+        textposition = "auto",
+        marker = list(
+          color = c("#4F46E5", "#10B981", "#F59E0B", "#06B6D4", "#8B5CF6", "#14B8A6"),
+          line = list(color = "white", width = 2)
+        ),
+        hovertemplate = "%{text}<extra></extra>"
+      ) %>%
+        layout(
+          xaxis = list(title = "Processing Stage"),
+          yaxis = list(title = "Number of Samples"),
+          showlegend = FALSE,
+          margin = list(t = 20, b = 80)
+        )
+    })
+
+    # ========================================================================
+    # SAMPLES TABLE
+    # ========================================================================
+
+    output$samples_table <- renderDT({
+      samples <- filtered_samples()
+
+      if (nrow(samples) == 0) {
+        return(datatable(
+          tibble(Message = "No samples match the current filters"),
+          options = list(dom = 't'),
+          rownames = FALSE
+        ))
+      }
+
+      # Select and format columns for display
+      display_data <- samples %>%
+        select(
+          sample_id,
+          barcode,
+          lab_id,
+          province,
+          health_zone,
+          processing_status,
+          processing_stage,
+          has_extraction,
+          has_mic,
+          mic_result,
+          has_elisa_pe,
+          elisa_pe_positive,
+          has_elisa_vsg,
+          elisa_vsg_positive,
+          has_ielisa,
+          ielisa_positive,
+          any_positive,
+          overall_qc_pass,
+          n_test_types
+        ) %>%
+        mutate(
+          has_extraction = ifelse(has_extraction, "✓", "✗"),
+          has_mic = ifelse(has_mic, "✓", "✗"),
+          has_elisa_pe = ifelse(has_elisa_pe, "✓", "✗"),
+          has_elisa_vsg = ifelse(has_elisa_vsg, "✓", "✗"),
+          has_ielisa = ifelse(has_ielisa, "✓", "✗"),
+          elisa_pe_positive = ifelse(elisa_pe_positive, "POS", "NEG"),
+          elisa_vsg_positive = ifelse(elisa_vsg_positive, "POS", "NEG"),
+          ielisa_positive = ifelse(ielisa_positive, "POS", "NEG"),
+          any_positive = ifelse(any_positive, "YES", "NO"),
+          overall_qc_pass = ifelse(overall_qc_pass, "PASS", "FAIL")
+        )
+
+      # Rename columns
+      names(display_data) <- c(
+        "Sample ID", "Barcode", "Lab ID", "Province", "Health Zone",
+        "Status", "Stage", "Extracted", "MIC", "MIC Result",
+        "ELISA PE", "PE Result", "ELISA VSG", "VSG Result",
+        "iELISA", "iELISA Result", "Any Positive", "QC Status", "# Tests"
+      )
+
+      datatable(
+        display_data,
+        options = list(
+          pageLength = 25,
+          scrollX = TRUE,
+          scrollY = "600px",
+          scrollCollapse = TRUE,
+          dom = 'Bfrtip',
+          buttons = c('copy', 'csv', 'excel'),
+          columnDefs = list(
+            list(className = 'dt-center', targets = "_all")
+          )
+        ),
+        extensions = 'Buttons',
+        rownames = FALSE,
+        filter = 'top',
+        class = "table table-striped table-hover table-sm"
+      ) %>%
+        formatStyle(
+          "Any Positive",
+          backgroundColor = styleEqual(c("YES", "NO"), c('#f8d7da', '#d4edda')),
+          fontWeight = "bold"
+        ) %>%
+        formatStyle(
+          "QC Status",
+          backgroundColor = styleEqual(c("PASS", "FAIL"), c('#d4edda', '#f8d7da'))
+        ) %>%
+        formatStyle(
+          "PE Result",
+          backgroundColor = styleEqual(c("POS", "NEG"), c('#cfe2ff', '#f8f9fa'))
+        ) %>%
+        formatStyle(
+          "VSG Result",
+          backgroundColor = styleEqual(c("POS", "NEG"), c('#cfe2ff', '#f8f9fa'))
+        ) %>%
+        formatStyle(
+          "iELISA Result",
+          backgroundColor = styleEqual(c("POS", "NEG"), c('#cfe2ff', '#f8f9fa'))
+        ) %>%
+        formatStyle(
+          "Status",
+          backgroundColor = styleEqual(
+            c("Positive", "Tested - Negative", "Limited Testing", "Awaiting Testing", "Not Processed"),
+            c('#f8d7da', '#d4edda', '#fff3cd', '#cfe2ff', '#e9ecef')
+          )
+        )
+    })
+  })
+}

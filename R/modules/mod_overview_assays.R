@@ -11,13 +11,15 @@ mod_overview_assays_ui <- function(id) {
       layout_columns(
         col_widths = c(3, 9),
         card(
-          card_header(icon("filter"), "Filters"),
+          card_header(icon("filter"), "Drill-down Filters"),
           card_body(
-            dateRangeInput(ns("assay_date"), "Assay date", start = NULL, end = NULL),
-            selectInput(ns("assay_filter"), "Assays", choices = NULL, multiple = TRUE),
-            checkboxGroupInput(ns("status_filter"), "Statuses", choices = c("Positive", "Borderline", "Negative", "Invalid"),
+            tags$p(class = "text-muted small mb-3",
+                   "Use these filters to focus visualizations and the sample table on specific assays and statuses. KPI boxes show all available data."),
+            selectInput(ns("assay_filter"), "Filter by Assays", choices = NULL, multiple = TRUE),
+            checkboxGroupInput(ns("status_filter"), "Filter by Statuses", choices = c("Positive", "Borderline", "Negative", "Invalid"),
                                selected = c("Positive", "Borderline", "Negative")),
-            checkboxInput(ns("available_only"), "Samples with any assay", value = TRUE),
+            checkboxInput(ns("available_only"), "Only samples with results", value = TRUE),
+            tags$hr(),
             tags$small(class = "text-muted",
                        "Cutoffs: ELISA PP% ≥20 or DOD ≥0.3 positive; PP% 15-20/DOD 0.2-0.3 borderline. iELISA ≥30% inhibition positive; 25-30% borderline. MIC status based on final call string.")
           )
@@ -160,10 +162,6 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       }
       if (length(input$status_filter)) {
         df <- df %>% filter(as.character(status) %in% input$status_filter)
-      }
-      if (!is.null(input$assay_date[1])) {
-        dr <- as.Date(input$assay_date)
-        df <- df %>% filter(is.na(assay_date) | (assay_date >= dr[1] & assay_date <= dr[2]))
       }
       if (isTRUE(input$available_only)) {
         df <- df %>% filter(!is.na(status) & status != "Missing")
@@ -352,15 +350,25 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
           Percentage = 100
         )
 
-      # Add concordant/discordant summary
-      concordant <- sum(summary_table$Category %in% c("Both Positive", "Both Negative"))
-      discordant <- sum(summary_table$Category %in% c("MIC+ / Serology-", "MIC- / Serology+"))
+      # Only add concordant/discordant summary if we have data
+      if (totals$Count > 0) {
+        # Add concordant/discordant summary
+        concordant <- sum(summary_table$Count[summary_table$Category %in% c("Both Positive", "Both Negative")])
+        discordant <- sum(summary_table$Count[summary_table$Category %in% c("MIC+ / Serology-", "MIC- / Serology+")])
 
-      summary_stats <- data.frame(
-        Category = c("Concordant (Both +/Both -)", "Discordant (Mismatch)"),
-        Count = c(concordant, discordant),
-        Percentage = c(concordant / totals$Count * 100, discordant / totals$Count * 100)
-      )
+        summary_stats <- data.frame(
+          Category = c("Concordant (Both +/Both -)", "Discordant (Mismatch)"),
+          Count = c(concordant, discordant),
+          Percentage = c((concordant / totals$Count) * 100, (discordant / totals$Count) * 100)
+        )
+      } else {
+        # No samples with both tests
+        summary_stats <- data.frame(
+          Category = character(),
+          Count = numeric(),
+          Percentage = numeric()
+        )
+      }
 
       # Combine all
       final_table <- bind_rows(summary_table, summary_stats, totals)

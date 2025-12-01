@@ -233,14 +233,14 @@ prepare_assay_dashboard_data <- function(
           barcode = coalesce_any_column(., id_columns)
         ),
         assay = "MIC qPCR",
-        status = vapply(final_category, classify_mic, character(1), cutoffs = cutoffs),
-        quantitative = coalesce(avg_177T_Cq, avg_18S2_Cq),
+        status = vapply(PipelineCategory, classify_mic, character(1), cutoffs = cutoffs),
+        quantitative = coalesce(Avg_177T_Positive_Cq, Avg_18S2_Positive_Cq),
         metric = "Cq",
         assay_date = suppressWarnings(lubridate::as_date(
           coalesce_any_column(., c("CollectionDate", "SampleDate", "RunDate", "plate_date"))
         ))
       ) %>%
-      select(sample_id, assay, status, quantitative, metric, assay_date, final_category, avg_177T_Cq, avg_18S2_Cq)
+      select(sample_id, assay, status, quantitative, metric, assay_date, PipelineCategory, Avg_177T_Positive_Cq, Avg_18S2_Positive_Cq)
   }
 
   status_levels <- c("Positive", "Borderline", "Negative", "Invalid", "Missing")

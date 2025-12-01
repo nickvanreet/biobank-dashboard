@@ -389,6 +389,192 @@ prepare_assay_dashboard_data <- function(
       n_all_tests_positive = sum(all_tests_positive)
     )
 
+  # Detailed test prevalence and overlap analysis
+  test_prevalence <- tidy %>%
+    group_by(assay) %>%
+    summarise(
+      total_tests = n(),
+      n_positive = sum(status == "Positive", na.rm = TRUE),
+      n_negative = sum(status == "Negative", na.rm = TRUE),
+      n_borderline = sum(status == "Borderline", na.rm = TRUE),
+      n_invalid = sum(status == "Invalid", na.rm = TRUE),
+      pct_positive = if_else(total_tests > 0, (n_positive / total_tests) * 100, NA_real_),
+      .groups = "drop"
+    )
+
+  # Calculate exclusive vs shared positives for each test
+  # A positive is "exclusive" if it's the only positive test for that sample
+  # A positive is "shared" if the sample is also positive on other tests
+  test_overlap_details <- tidy %>%
+    filter(status == "Positive") %>%
+    group_by(sample_id) %>%
+    mutate(
+      n_positive_tests = n(),
+      is_exclusive = n_positive_tests == 1
+    ) %>%
+    ungroup() %>%
+    group_by(assay) %>%
+    summarise(
+      n_exclusive = sum(is_exclusive),
+      n_shared = sum(!is_exclusive),
+      .groups = "drop"
+    )
+
+  # Merge prevalence with overlap details
+  test_prevalence <- test_prevalence %>%
+    left_join(test_overlap_details, by = "assay") %>%
+    mutate(
+      n_exclusive = if_else(is.na(n_exclusive), 0L, as.integer(n_exclusive)),
+      n_shared = if_else(is.na(n_shared), 0L, as.integer(n_shared))
+    )
+
+  # Calculate specific overlap combinations
+  # 1. Positive on all tests
+  all_tests_data <- tidy %>%
+    select(sample_id, assay, status) %>%
+    group_by(sample_id) %>%
+    summarise(
+      n_tests = n_distinct(assay),
+      n_positive = sum(status == "Positive"),
+      all_tests_positive = n_tests > 0 & n_positive == n_tests,
+      .groups = "drop"
+    )
+
+  # 2. Positive on all serology tests (ELISA PE, ELISA VSG, iELISA L13, iELISA L15)
+  serology_tests <- c("ELISA PE", "ELISA VSG", "iELISA LiTat 1.3", "iELISA LiTat 1.5")
+  all_serology_positive_data <- tidy %>%
+    filter(assay %in% serology_tests) %>%
+    group_by(sample_id) %>%
+    summarise(
+      n_serology_tests = n_distinct(assay),
+      n_serology_positive = sum(status == "Positive"),
+      all_serology_positive = n_serology_tests > 0 & n_serology_positive == n_serology_tests,
+      any_serology_positive = n_serology_positive > 0,
+      .groups = "drop"
+    )
+
+  # 3. MIC positive + any serology positive
+  mic_plus_serology <- tidy %>%
+    mutate(
+      is_mic = assay == "MIC qPCR",
+      is_serology = assay %in% serology_tests,
+      is_positive = status == "Positive"
+    ) %>%
+    group_by(sample_id) %>%
+    summarise(
+      mic_positive = any(is_mic & is_positive),
+      serology_positive = any(is_serology & is_positive),
+      mic_and_serology_positive = mic_positive & serology_positive,
+      .groups = "drop"
+    )
+
+  # 4. Detailed pairwise overlaps between specific tests
+  # For each pair of tests, count samples positive on both
+  if (length(assays) >= 2) {
+    pairwise_overlaps <- expand.grid(
+      assay1 = assays,
+      assay2 = assays,
+      stringsAsFactors = FALSE
+    ) %>%
+      filter(assay1 != assay2) %>%
+      rowwise() %>%
+      mutate(
+        n_both_positive = {
+          a1_pos <- tidy %>% filter(assay == assay1, status == "Positive") %>% pull(sample_id)
+          a2_pos <- tidy %>% filter(assay == assay2, status == "Positive") %>% pull(sample_id)
+          length(intersect(a1_pos, a2_pos))
+        }
+      ) %>%
+      ungroup()
+  } else {
+    pairwise_overlaps <- tibble()
+  }
+
+  # Summary statistics
+  overlap_summary <- tibble(
+    total_samples = n_distinct(tidy$sample_id),
+    n_all_tests_positive = sum(all_tests_data$all_tests_positive, na.rm = TRUE),
+    n_all_serology_positive = sum(all_serology_positive_data$all_serology_positive, na.rm = TRUE),
+    n_mic_and_any_serology = sum(mic_plus_serology$mic_and_serology_positive, na.rm = TRUE),
+    n_any_positive = n_distinct(tidy$sample_id[tidy$status == "Positive"])
+  )
+
+  # Detailed breakdown for each test showing what they overlap with
+  test_overlap_breakdown <- tidy %>%
+    filter(status == "Positive") %>%
+    select(sample_id, assay) %>%
+    group_by(sample_id) %>%
+    summarise(
+      positive_assays = list(as.character(assay)),
+      n_positive_assays = n(),
+      .groups = "drop"
+    )
+
+  # For each test, calculate overlaps with other specific tests
+  if (length(assays) > 0) {
+    test_specific_overlaps <- map_dfr(assays, function(test) {
+      # Get samples positive for this test
+      test_positive_samples <- tidy %>%
+        filter(assay == test, status == "Positive") %>%
+        pull(sample_id)
+
+      if (length(test_positive_samples) == 0) {
+        return(tibble(
+          assay = test,
+          n_positive = 0,
+          n_exclusive = 0,
+          n_with_mic = 0,
+          n_with_elisa_pe = 0,
+          n_with_elisa_vsg = 0,
+          n_with_ielisa_l13 = 0,
+          n_with_ielisa_l15 = 0,
+          n_with_any_serology = 0,
+          n_with_all_serology = 0
+        ))
+      }
+
+      # For each test, find overlaps
+      overlaps <- test_overlap_breakdown %>%
+        filter(sample_id %in% test_positive_samples) %>%
+        summarise(
+          n_exclusive = sum(n_positive_assays == 1),
+          n_with_mic = sum(map_lgl(positive_assays, ~"MIC qPCR" %in% .x)),
+          n_with_elisa_pe = sum(map_lgl(positive_assays, ~"ELISA PE" %in% .x)),
+          n_with_elisa_vsg = sum(map_lgl(positive_assays, ~"ELISA VSG" %in% .x)),
+          n_with_ielisa_l13 = sum(map_lgl(positive_assays, ~"iELISA LiTat 1.3" %in% .x)),
+          n_with_ielisa_l15 = sum(map_lgl(positive_assays, ~"iELISA LiTat 1.5" %in% .x))
+        )
+
+      # Calculate "with any serology" and "with all serology"
+      overlaps <- overlaps %>%
+        mutate(
+          n_with_any_serology = test_overlap_breakdown %>%
+            filter(sample_id %in% test_positive_samples) %>%
+            summarise(n = sum(map_lgl(positive_assays, ~any(serology_tests %in% .x)))) %>%
+            pull(n),
+          n_with_all_serology = test_overlap_breakdown %>%
+            filter(sample_id %in% test_positive_samples) %>%
+            summarise(n = sum(map_lgl(positive_assays, ~all(serology_tests %in% .x)))) %>%
+            pull(n)
+        )
+
+      tibble(
+        assay = test,
+        n_positive = length(test_positive_samples),
+        n_exclusive = overlaps$n_exclusive,
+        n_with_mic = overlaps$n_with_mic,
+        n_with_elisa_pe = overlaps$n_with_elisa_pe,
+        n_with_elisa_vsg = overlaps$n_with_elisa_vsg,
+        n_with_ielisa_l13 = overlaps$n_with_ielisa_l13,
+        n_with_ielisa_l15 = overlaps$n_with_ielisa_l15,
+        n_with_any_serology = overlaps$n_with_any_serology,
+        n_with_all_serology = overlaps$n_with_all_serology
+      )
+    })
+  } else {
+    test_specific_overlaps <- tibble()
+  }
+
   list(
     tidy_assays = tidy,
     sample_matrix = sample_matrix,
@@ -397,6 +583,10 @@ prepare_assay_dashboard_data <- function(
     molecular_serology_concordance = molecular_serology_concordance,
     mic_serology_summary = mic_serology_summary,
     single_test_summary = single_test_summary,
+    test_prevalence = test_prevalence,
+    test_specific_overlaps = test_specific_overlaps,
+    pairwise_overlaps = pairwise_overlaps,
+    overlap_summary = overlap_summary,
     cutoffs = cutoffs
   )
 }

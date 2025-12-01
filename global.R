@@ -185,6 +185,9 @@ source("R/sampleJourneyHelpers.R")
 source("R/sampleJourneyVisualizations.R")
 source("R/modules/mod_10_sample_journey.R")
 
+# Sample Processing module (comprehensive sample processing overview)
+source("R/modules/mod_sample_processing.R")
+
 # Concordance Analysis module (comprehensive statistical analysis)
 source("R/concordanceStatistics.R")
 source("R/concordanceVisualizations.R")

@@ -42,8 +42,9 @@ normalize_sample_id <- function(barcode = NULL, lab_id = NULL) {
   if (!length(ids)) return(NA_character_)
   ids <- tolower(trimws(ids))
   ids <- gsub("^kps", "", ids)
-  ids <- gsub("^0+", "", ids)
   ids <- gsub("[^a-z0-9]", "", ids)
+  ids <- ids[ids != ""]
+  if (!length(ids)) return(NA_character_)
   ids[1]
 }
 
@@ -249,7 +250,7 @@ prepare_assay_dashboard_data <- function(
   status_levels <- c("Positive", "Borderline", "Negative", "Invalid", "Missing")
 
   tidy <- bind_rows(tibs) %>%
-    filter(!is.na(sample_id)) %>%
+    filter(!is.na(sample_id) & sample_id != "") %>%
     mutate(
       status = factor(status, levels = status_levels),
       status_rank = match(status, status_levels),

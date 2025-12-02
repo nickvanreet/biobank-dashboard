@@ -1,6 +1,7 @@
 # =============================================================================
 # ELISA Modular Processing Integration
 # Wrapper that connects new 4-step pipeline with existing infrastructure
+# Supports ELISA-PE, ELISA-VSG, and iELISA
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -18,6 +19,10 @@ source(file.path("R", "modules", "elisa_vsg", "ingest_vsg.R"), local = TRUE)
 source(file.path("R", "modules", "elisa_vsg", "qc_vsg.R"), local = TRUE)
 source(file.path("R", "modules", "elisa_vsg", "interpret_vsg.R"), local = TRUE)
 source(file.path("R", "modules", "elisa_vsg", "output_vsg.R"), local = TRUE)
+source(file.path("R", "modules", "ielisa", "ingest_ielisa.R"), local = TRUE)
+source(file.path("R", "modules", "ielisa", "qc_ielisa.R"), local = TRUE)
+source(file.path("R", "modules", "ielisa", "interpret_ielisa.R"), local = TRUE)
+source(file.path("R", "modules", "ielisa", "output_ielisa.R"), local = TRUE)
 
 # =============================================================================
 # FILE TYPE DETECTION
@@ -25,9 +30,13 @@ source(file.path("R", "modules", "elisa_vsg", "output_vsg.R"), local = TRUE)
 
 #' Detect ELISA type from file path and content
 #' @param file_path Path to ELISA file
-#' @return "PE" or "VSG"
+#' @return "PE", "VSG", or "iELISA"
 detect_elisa_type <- function(file_path) {
   # First try path-based detection (most reliable)
+  if (grepl("ielisa|/ielisa/|iELISA", file_path, ignore.case = TRUE)) {
+    return("iELISA")
+  }
+
   if (grepl("elisa_vsg|/vsg/", file_path, ignore.case = TRUE)) {
     return("VSG")
   }
@@ -36,16 +45,30 @@ detect_elisa_type <- function(file_path) {
     return("PE")
   }
 
-  # Fall back to checking for 4-plate markers in file
+  # Fall back to checking file structure
   tryCatch({
-    raw <- readxl::read_excel(file_path, sheet = "450 nm - 600 nm", col_names = FALSE, n_max = 50)
-    has_plaque_markers <- any(grepl("Plaque \\d+:", raw[[1]], ignore.case = TRUE))
-
-    if (has_plaque_markers) {
-      return("VSG")
-    } else {
-      return("PE")
+    # Check for iELISA-specific sheets (450-600 nm and ECHANTILLONS)
+    sheets <- readxl::excel_sheets(file_path)
+    if ("ECHANTILLONS" %in% sheets && "450-600 nm" %in% sheets) {
+      return("iELISA")
     }
+
+    # Check for PE/VSG sheets (Results and Controls)
+    if ("Results" %in% sheets && "Controls" %in% sheets) {
+      # Check for 4-plate markers (VSG)
+      raw <- readxl::read_excel(file_path, sheet = "450 nm - 600 nm", col_names = FALSE, n_max = 50)
+      has_plaque_markers <- any(grepl("Plaque \\d+:", raw[[1]], ignore.case = TRUE))
+
+      if (has_plaque_markers) {
+        return("VSG")
+      } else {
+        return("PE")
+      }
+    }
+
+    # Default to PE if structure unclear
+    warning("Could not detect ELISA type for ", basename(file_path), ", defaulting to PE")
+    return("PE")
   }, error = function(e) {
     # Default to PE if detection fails
     warning("Could not detect ELISA type for ", basename(file_path), ", defaulting to PE")
@@ -57,23 +80,36 @@ detect_elisa_type <- function(file_path) {
 # UNIFIED PROCESSING FUNCTION
 # =============================================================================
 
-#' Process ELISA file using modular pipeline (auto-detects PE vs VSG)
+#' Process ELISA file using modular pipeline (auto-detects PE vs VSG vs iELISA)
 #' @param file_path Path to ELISA file
 #' @param qc_settings QC settings (optional, uses defaults if NULL)
+#' @param ielisa_threshold Positivity threshold for iELISA (default: 30%)
+#' @param ielisa_formula Formula for iELISA interpretation ("f1" or "f2", default: "f1")
 #' @return Standardized output tibble
 #' @export
-process_elisa_file_modular <- function(file_path, qc_settings = NULL) {
-  if (is.null(qc_settings)) {
-    qc_settings <- elisa_default_qc_settings()
-  }
-
+process_elisa_file_modular <- function(file_path,
+                                        qc_settings = NULL,
+                                        ielisa_threshold = 30,
+                                        ielisa_formula = "f1") {
   # Detect file type
   elisa_type <- detect_elisa_type(file_path)
 
   # Route to appropriate pipeline
-  if (elisa_type == "VSG") {
+  if (elisa_type == "iELISA") {
+    # iELISA uses different QC settings
+    if (is.null(qc_settings)) {
+      qc_settings <- ielisa_default_qc_settings()
+    }
+    result <- process_ielisa_file(file_path, qc_settings, ielisa_threshold, ielisa_formula)
+  } else if (elisa_type == "VSG") {
+    if (is.null(qc_settings)) {
+      qc_settings <- elisa_default_qc_settings()
+    }
     result <- process_elisa_vsg_file(file_path, qc_settings)
-  } else {
+  } else {  # PE
+    if (is.null(qc_settings)) {
+      qc_settings <- elisa_default_qc_settings()
+    }
     result <- process_elisa_pe_file(file_path, qc_settings)
   }
 

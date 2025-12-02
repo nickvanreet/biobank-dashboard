@@ -389,27 +389,27 @@ elisa_cache_is_fresh <- function(elisa_file, cache_path) {
 .elisa_cache_env <- new.env(parent = emptyenv())
 
 # Cache version - increment this when data structure changes to invalidate old caches
-.elisa_cache_version <- "v12_add_plate_number_field"
+.elisa_cache_version <- "v13_modular_pipeline"
 
-#' Ensure ELISA parser is loaded
+#' Ensure ELISA modular pipeline is loaded
 ensure_elisa_parser <- function() {
-  parser_path <- file.path("scripts", "parse_indirect_elisa.R")
+  modular_path <- file.path("R", "modules", "elisa_shared", "process_elisa_modular.R")
 
-  if (!file.exists(parser_path)) {
-    stop("ELISA parser script not found: ", parser_path)
+  if (!file.exists(modular_path)) {
+    stop("ELISA modular processing script not found: ", modular_path)
   }
 
-  parser_digest <- digest(file = parser_path)
+  parser_digest <- digest(file = modular_path)
   cached_digest <- .elisa_cache_env$parser_digest
 
-  # Always (re)load when the function is missing or when the parser file changed
-  if (!exists("extract_elisa_plate_summary", mode = "function") ||
+  # Always (re)load when the function is missing or when the modular pipeline changed
+  if (!exists("process_elisa_file_modular", mode = "function") ||
       is.null(cached_digest) || !identical(cached_digest, parser_digest)) {
-    source(parser_path, local = .GlobalEnv)
+    source(modular_path, local = .GlobalEnv)
     .elisa_cache_env$parser_digest <- parser_digest
 
     # Invalidate RDS caches when parser changes
-    message("✓ Parser changed, clearing RDS caches...")
+    message("✓ Modular pipeline changed, clearing RDS caches...")
     cache_dir <- get_elisa_cache_dir()
     if (dir.exists(cache_dir)) {
       cache_files <- list.files(cache_dir, pattern = "\\.rds$", full.names = TRUE)
@@ -424,7 +424,7 @@ ensure_elisa_parser <- function() {
     .elisa_cache_env$hash <- NULL
     .elisa_cache_env$version <- NULL
 
-    message("✓ Loaded ELISA parser from ", parser_path, " (digest: ", parser_digest, ")")
+    message("✓ Loaded ELISA modular pipeline from ", modular_path, " (digest: ", parser_digest, ")")
   }
 }
 
@@ -457,19 +457,24 @@ parse_single_elisa_file <- function(file_path, cv_max_ag_plus = 20, cv_max_ag0 =
     }
   }
 
-  # Parse file
+  # Parse file using modular pipeline
   result <- tryCatch(
     {
-      parsed <- extract_elisa_plate_summary(
-        file_path,
-        cv_max_ag_plus = cv_max_ag_plus,
-        cv_max_ag0 = cv_max_ag0
-      )
+      # Build QC settings
+      qc_settings <- elisa_default_qc_settings()
+      qc_settings$cv_max_ag_plus <- cv_max_ag_plus
+      qc_settings$cv_max_ag0 <- cv_max_ag0
 
-      if (is.null(parsed) || !nrow(parsed)) {
+      # Process using modular pipeline
+      modular_output <- process_elisa_file_modular(file_path, qc_settings)
+
+      if (is.null(modular_output) || !nrow(modular_output)) {
         warning("No data parsed from ", basename(file_path))
         return(NULL)
       }
+
+      # Convert to legacy format for backward compatibility
+      parsed <- convert_to_legacy_format(modular_output)
 
       # Save to cache
       tryCatch(

@@ -42,15 +42,30 @@ mod_mic_overview_ui <- function(id) {
               )
             ),
             div(
-              class = "d-flex flex-column justify-content-end",
-              checkboxInput(
-                parent_ns("exclude_invalid_runs"),
-                "Exclude invalid runs",
-                value = TRUE
+              class = "d-flex flex-column justify-content-start gap-2",
+              div(
+                class = "d-flex align-items-center",
+                checkboxInput(
+                  parent_ns("exclude_invalid_runs"),
+                  "Exclude invalid runs",
+                  value = TRUE
+                ),
+                tags$small(
+                  class = "text-muted ms-2",
+                  "Removes failed runs"
+                )
               ),
-              tags$small(
-                class = "text-muted",
-                "Removes failed runs from all downstream analyses"
+              div(
+                class = "d-flex align-items-center",
+                checkboxInput(
+                  parent_ns("show_retests_only"),
+                  "Show retested samples only",
+                  value = FALSE
+                ),
+                tags$small(
+                  class = "text-muted ms-2",
+                  "Filter samples with multiple run dates"
+                )
               )
             )
           )

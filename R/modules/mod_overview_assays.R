@@ -11,10 +11,42 @@ mod_overview_assays_ui <- function(id) {
       layout_columns(
         col_widths = c(3, 9),
         card(
-          card_header(icon("info-circle"), "Test Classification"),
+          card_header(icon("filter"), "Data Quality Controls"),
           card_body(
+            tags$h6("Test Result Filters", class = "mb-3"),
+            tags$small(class = "text-muted mb-2",
+                       "Control which test results are included in the overview analysis"),
+            tags$hr(),
+            checkboxInput(
+              ns("include_borderline"),
+              label = tags$span(
+                icon("triangle-exclamation"),
+                " Include Borderline Results"
+              ),
+              value = TRUE
+            ),
+            tags$small(class = "text-muted mb-3",
+                       "Show tests with uncertain results (e.g., PP% 15-20, inhibition 25-30%)"),
+            checkboxInput(
+              ns("include_invalid"),
+              label = tags$span(
+                icon("ban"),
+                " Include Invalid Test Results"
+              ),
+              value = FALSE
+            ),
+            tags$small(class = "text-muted mb-3",
+                       "Show tests with failed controls or invalid runs"),
+            tags$hr(),
+            tags$h6("Classification Cutoffs", class = "mb-2 mt-3"),
             tags$small(class = "text-muted",
-                       "Cutoffs: ELISA PP% ≥20 or DOD ≥0.3 positive; PP% 15-20/DOD 0.2-0.3 borderline. iELISA ≥30% inhibition positive; 25-30% borderline. MIC status based on final call string.")
+                       "ELISA: PP% ≥20 or DOD ≥0.3 positive; PP% 15-20/DOD 0.2-0.3 borderline."),
+            tags$br(),
+            tags$small(class = "text-muted",
+                       "iELISA: ≥30% inhibition positive; 25-30% borderline."),
+            tags$br(),
+            tags$small(class = "text-muted",
+                       "MIC: Status based on final call string and confidence.")
           )
         ),
         div(
@@ -293,7 +325,9 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
           elisa_df = if (is.null(elisa_df)) NULL else elisa_df(),
           ielisa_df = if (is.null(ielisa_df)) NULL else ielisa_df(),
           mic_data = if (is.null(mic_df)) NULL else mic_df(),
-          filters = if (is.null(filters)) NULL else filters()
+          filters = if (is.null(filters)) NULL else filters(),
+          include_borderline = input$include_borderline,
+          include_invalid = input$include_invalid
         )
 
         # Validate result structure

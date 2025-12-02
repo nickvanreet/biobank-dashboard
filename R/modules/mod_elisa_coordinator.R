@@ -27,22 +27,37 @@ mod_elisa_coordinator_ui <- function(id, label = "ELISA", elisa_type = "ELISA_pe
         div(
           class = "d-flex justify-content-between align-items-center",
           div(
-            class = "d-flex flex-column justify-content-end",
-            checkboxInput(
-              ns("exclude_invalid_plates"),
-              "Exclude invalid plates",
-              value = TRUE
+            class = "d-flex flex-column justify-content-start gap-2",
+            div(
+              class = "d-flex align-items-center",
+              checkboxInput(
+                ns("exclude_invalid_plates"),
+                "Exclude invalid plates",
+                value = TRUE
+              ),
+              tags$small(
+                class = "text-muted ms-2",
+                "Removes plates with failed control QC"
+              )
             ),
-            tags$small(
-              class = "text-muted",
-              "Removes plates with failed control QC from all analyses"
+            div(
+              class = "d-flex align-items-center",
+              checkboxInput(
+                ns("show_retests_only"),
+                "Show retested samples only",
+                value = FALSE
+              ),
+              tags$small(
+                class = "text-muted ms-2",
+                "Filter samples with multiple test dates"
+              )
             )
           ),
           div(
             class = "d-flex align-items-center gap-2",
             actionButton(
               ns("settings_btn"),
-              "Settings",
+              "QC Thresholds",
               icon = icon("sliders"),
               class = "btn-sm btn-outline-secondary"
             )
@@ -368,10 +383,26 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
       if (!nrow(data)) return(data)
 
       if ("sample_type" %in% names(data)) {
-        data %>% filter(sample_type == "sample")
-      } else {
-        data
+        data <- data %>% filter(sample_type == "sample")
       }
+
+      # Apply retest filter if enabled
+      if (isTRUE(input$show_retests_only)) {
+        # Identify samples that have been tested multiple times
+        if (all(c("code_barres_kps", "plate_date") %in% names(data))) {
+          retested_samples <- data %>%
+            group_by(code_barres_kps) %>%
+            filter(n_distinct(plate_date) > 1) %>%
+            ungroup()
+
+          message("DEBUG [mod_elisa_coordinator]: Showing only retested samples: ",
+                  n_distinct(retested_samples$code_barres_kps), " samples")
+
+          data <- retested_samples
+        }
+      }
+
+      data
     })
 
     controls_data <- reactive({

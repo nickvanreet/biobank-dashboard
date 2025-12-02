@@ -198,7 +198,26 @@ mod_mic_qpcr_coordinator_server <- function(id, biobank_df, extractions_df, filt
     filtered_base <- reactive({
       df <- processed_data()$samples
       if (!nrow(df)) return(df)
-      apply_global_filters(df, if (is.null(filters)) NULL else filters())
+
+      df <- apply_global_filters(df, if (is.null(filters)) NULL else filters())
+
+      # Apply retest filter if enabled
+      if (isTRUE(input$show_retests_only)) {
+        # Identify samples that have been tested multiple times
+        if (all(c("SampleID", "RunDate") %in% names(df))) {
+          retested_samples <- df %>%
+            group_by(SampleID) %>%
+            filter(n_distinct(RunDate) > 1) %>%
+            ungroup()
+
+          message("DEBUG [mod_mic_coordinator]: Showing only retested samples: ",
+                  n_distinct(retested_samples$SampleID), " samples")
+
+          df <- retested_samples
+        }
+      }
+
+      df
     })
 
     filtered_replicates <- reactive({

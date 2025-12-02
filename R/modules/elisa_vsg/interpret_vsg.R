@@ -66,7 +66,7 @@ consolidate_retests <- function(interpreted_data) {
     filter(sample_type == "sample") %>%
     group_by(numero_labo, code_barres_kps, elisa_type) %>%
     arrange(desc(plate_date), desc(plate_valid)) %>%
-    slice_head(n = 1) %>%
+    dplyr::slice(1) %>%
     ungroup() %>%
     select(numero_labo, code_barres_kps, elisa_type, status_final = status_raw)
 

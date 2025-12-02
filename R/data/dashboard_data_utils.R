@@ -318,7 +318,8 @@ prepare_assay_dashboard_data <- function(
     tibs$ielisa <- antigen_configs %>%
       map(build_ielisa_tibble) %>%
       compact() %>%
-      bind_rows()
+      bind_rows() %>%
+      mutate(is_from_invalid_plate = FALSE)  # iELISA doesn't use plate validation like ELISA
 
     if (nrow(tibs$ielisa) > 0) {
       n_valid <- sum(!is.na(tibs$ielisa$sample_id) & tibs$ielisa$sample_id != "")
@@ -361,7 +362,8 @@ prepare_assay_dashboard_data <- function(
           biobank_lookup %>% select(lab_number_norm, sample_id),
           by = "lab_number_norm"
         ) %>%
-        select(sample_id, assay, status, quantitative, metric, assay_date, PipelineCategory,
+        mutate(is_from_invalid_plate = FALSE) %>%  # MIC doesn't use plate validation like ELISA
+        select(sample_id, assay, status, is_from_invalid_plate, quantitative, metric, assay_date, PipelineCategory,
                Avg_177T_Positive_Cq, Avg_18S2_Positive_Cq, lab_number_norm)
 
       # Debug: Check matching
@@ -385,8 +387,11 @@ prepare_assay_dashboard_data <- function(
     } else {
       message("  WARNING: No biobank lookup available - MIC samples cannot be linked!")
       tibs$mic <- mic_with_lab_numbers %>%
-        mutate(sample_id = NA_character_) %>%
-        select(sample_id, assay, status, quantitative, metric, assay_date, PipelineCategory,
+        mutate(
+          sample_id = NA_character_,
+          is_from_invalid_plate = FALSE  # MIC doesn't use plate validation like ELISA
+        ) %>%
+        select(sample_id, assay, status, is_from_invalid_plate, quantitative, metric, assay_date, PipelineCategory,
                Avg_177T_Positive_Cq, Avg_18S2_Positive_Cq)
     }
   }
@@ -461,8 +466,9 @@ prepare_assay_dashboard_data <- function(
 
     # Also exclude tests from invalid plates if that info is available
     if ("is_from_invalid_plate" %in% names(tidy)) {
-      n_from_invalid_plates <- sum(tidy$is_from_invalid_plate, na.rm = TRUE)
-      tidy <- tidy %>% filter(status != "Invalid" & !is_from_invalid_plate)
+      # Handle potential NAs in is_from_invalid_plate (should not happen now, but being safe)
+      n_from_invalid_plates <- sum(tidy$is_from_invalid_plate == TRUE, na.rm = TRUE)
+      tidy <- tidy %>% filter(status != "Invalid" & (is.na(is_from_invalid_plate) | is_from_invalid_plate == FALSE))
       message(sprintf("🔹 FILTER: Excluded %d invalid results (%d with Invalid status + %d from invalid plates, include_invalid = FALSE)",
                       n_before - nrow(tidy), n_invalid, n_from_invalid_plates))
     } else {

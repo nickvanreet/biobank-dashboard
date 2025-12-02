@@ -196,6 +196,7 @@ convert_to_legacy_format <- function(modular_output) {
       qc_Ag0 = sample_valid,
       qc_overall = sample_valid,
       plate_date = test_date,
+      plate_valid = run_valid,  # Map run_valid to plate_valid for legacy compatibility
       plate_positive_control_valid = run_valid,
       plate_negative_control_valid = run_valid
     )

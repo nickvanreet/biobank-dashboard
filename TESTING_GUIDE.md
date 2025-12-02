@@ -217,7 +217,64 @@ all(expected_cols %in% names(pe_result))  # Should be TRUE
 
 ---
 
-### **6. Backward Compatibility**
+### **6. Biobank Linkage & Global Filters** 🔗
+
+**CRITICAL:** The modular pipeline must preserve biobank demographic data so global filters work correctly.
+
+**What to test:**
+
+1. **Launch the app** and navigate to ELISA-PE or ELISA-VSG tabs
+
+2. **Check biobank columns are present:**
+   ```r
+   # After data loads, verify biobank columns exist
+   biobank_cols <- c("Province", "HealthZone", "Structure", "Sex",
+                     "Age", "Cohort", "BiobankMatched")
+
+   # Check columns present
+   all(biobank_cols %in% names(elisa_data))  # Should be TRUE
+   ```
+
+3. **Test global filters** in the side panel:
+   - [ ] **Province filter** - Select a province → verify data filters correctly
+   - [ ] **Health Zone filter** - Select a zone → verify data filters correctly
+   - [ ] **Structure filter** - Select a structure → verify data filters correctly
+   - [ ] **Cohort filter** - Select a cohort → verify data filters correctly
+   - [ ] **Date range filter** - Adjust dates → verify data filters correctly
+
+4. **Verify biobank match rate** in console:
+   ```
+   ✓ Matched 285/320 records to biobank (89.1%)
+   ```
+
+**Sample data check:**
+```r
+# View biobank linkage for samples
+elisa_data %>%
+  filter(sample_type == "sample") %>%
+  select(sample_id, numero_labo, code_barres_kps,
+         Province, HealthZone, BiobankMatched) %>%
+  head(20)
+```
+
+**What to verify:**
+- [ ] Biobank columns present in final dataset
+- [ ] Match rate displayed in console during data loading
+- [ ] Global filters modify the visible data correctly
+- [ ] Unmatched samples still appear (BiobankMatched = FALSE)
+- [ ] Demographic columns show NA for unmatched samples
+- [ ] Filter combinations work correctly (e.g., Province + Cohort)
+
+**Expected behavior:**
+- Samples matched by `code_barres_kps` (barcode) first
+- If no barcode match, tries `numero_labo` (lab ID)
+- Matched samples get: Province, HealthZone, Structure, Sex, Age, etc.
+- Unmatched samples: BiobankMatched = FALSE, demographics = NA
+- Global filters apply to matched samples only
+
+---
+
+### **7. Backward Compatibility**
 
 The new pipeline maintains full backward compatibility with existing coordinators.
 

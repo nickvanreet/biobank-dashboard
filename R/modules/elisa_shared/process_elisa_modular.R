@@ -185,27 +185,49 @@ parse_elisa_folder_modular <- function(dir,
 #' @return Tibble in legacy format (matches old parse_indirect_elisa output)
 #' @export
 convert_to_legacy_format <- function(modular_output) {
-  modular_output %>%
+  # Create base legacy columns
+  legacy_data <- modular_output %>%
     mutate(
       # Map back to legacy column names
       plate_number = as.integer(factor(paste(plate_id, plate_num, sep = "_"))),
-      sample_positive = (status_final == "Positive")
-    ) %>%
-    # Keep legacy columns
-    select(
-      plate_id, plate_num, plate_number, plate_date = test_date,
-      elisa_type,
-      sample_type, sample, sample_code,
-      numero_labo, code_barres_kps,
-      PP_percent, DOD, sample_positive,
-      Ag_plus_1, Ag_plus_2, Ag0_1, Ag0_2,
-      mean_Ag_plus, mean_Ag0,
-      cv_Ag_plus, cv_Ag0,
-      qc_Ag_plus = sample_valid, qc_Ag0 = sample_valid, qc_overall = sample_valid,
-      positive_control_od, negative_control_od,
+      sample_positive = (status_final == "Positive"),
+      qc_Ag_plus = sample_valid,
+      qc_Ag0 = sample_valid,
+      qc_overall = sample_valid,
+      plate_date = test_date,
       plate_positive_control_valid = run_valid,
-      plate_negative_control_valid = run_valid,
-      plate_valid = run_valid,
-      PC_DOD, NC_DOD
+      plate_negative_control_valid = run_valid
     )
+
+  # Select core columns (including biobank columns if present)
+  core_cols <- c(
+    "plate_id", "plate_num", "plate_number", "plate_date",
+    "elisa_type",
+    "sample_type", "sample", "sample_code",
+    "numero_labo", "code_barres_kps",
+    "PP_percent", "DOD", "sample_positive",
+    "Ag_plus_1", "Ag_plus_2", "Ag0_1", "Ag0_2",
+    "mean_Ag_plus", "mean_Ag0",
+    "cv_Ag_plus", "cv_Ag0",
+    "qc_Ag_plus", "qc_Ag0", "qc_overall",
+    "positive_control_od", "negative_control_od",
+    "plate_positive_control_valid", "plate_negative_control_valid",
+    "plate_valid",
+    "PC_DOD", "NC_DOD"
+  )
+
+  # Biobank columns to preserve if present
+  biobank_cols <- c(
+    "Province", "HealthZone", "Structure",
+    "Sex", "Age", "AgeGroup",
+    "SampleDate", "Cohort",
+    "BiobankMatched",
+    "biobank_barcode", "biobank_lab_id"  # Also keep lookup columns
+  )
+
+  # Keep all columns that exist (core + biobank)
+  all_cols <- c(core_cols, biobank_cols)
+  existing_cols <- intersect(all_cols, names(legacy_data))
+
+  legacy_data %>% select(all_of(existing_cols))
 }

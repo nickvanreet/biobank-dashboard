@@ -623,49 +623,61 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
 
     # Prevalence Table
     output$prevalence_table <- DT::renderDT({
-      prevalence <- prepared()$test_prevalence
-      overlaps <- prepared()$test_specific_overlaps
+      req(prepared())
 
-      if (nrow(prevalence) == 0) {
-        return(DT::datatable(
-          data.frame(Message = "No data available"),
-          options = list(dom = 't', paging = FALSE)
-        ))
-      }
+      tryCatch({
+        prevalence <- prepared()$test_prevalence
+        overlaps <- prepared()$test_specific_overlaps
 
-      # Join prevalence with detailed overlaps
-      table_data <- prevalence %>%
-        left_join(overlaps, by = "assay") %>%
-        select(
-          Test = assay,
-          `Total Tests` = total_tests,
-          Positive = n_positive,
-          `% Positive` = pct_positive,
-          `Exclusive` = n_exclusive,
-          `Shared` = n_shared,
-          Negative = n_negative,
-          Borderline = n_borderline,
-          Invalid = n_invalid
+        if (is.null(prevalence) || nrow(prevalence) == 0) {
+          return(DT::datatable(
+            data.frame(Message = "No test data available"),
+            options = list(dom = 't', paging = FALSE),
+            rownames = FALSE
+          ))
+        }
+
+        # Join prevalence with detailed overlaps
+        table_data <- prevalence %>%
+          left_join(overlaps, by = "assay", suffix = c("", "_overlap")) %>%
+          select(
+            Test = assay,
+            `Total Tests` = total_tests,
+            Positive = n_positive,
+            `% Positive` = pct_positive,
+            `Exclusive` = n_exclusive,
+            `Shared` = n_shared,
+            Negative = n_negative,
+            Borderline = n_borderline,
+            Invalid = n_invalid
+          )
+
+        DT::datatable(
+          table_data,
+          options = list(
+            pageLength = 10,
+            scrollX = TRUE,
+            dom = 'Bfrtip'
+          ),
+          class = "table-sm table-striped",
+          rownames = FALSE
+        ) %>%
+          DT::formatPercentage("% Positive", digits = 1) %>%
+          DT::formatStyle(
+            "Positive",
+            background = DT::styleColorBar(range(0, max(table_data$Positive, na.rm = TRUE)), "#2563EB"),
+            backgroundSize = '100% 90%',
+            backgroundRepeat = 'no-repeat',
+            backgroundPosition = 'center'
+          )
+      }, error = function(e) {
+        message(sprintf("Error rendering prevalence table: %s", e$message))
+        DT::datatable(
+          data.frame(Error = paste("Error:", e$message)),
+          options = list(dom = 't', paging = FALSE),
+          rownames = FALSE
         )
-
-      DT::datatable(
-        table_data,
-        options = list(
-          pageLength = 10,
-          scrollX = TRUE,
-          dom = 'Bfrtip'
-        ),
-        class = "table-sm table-striped",
-        rownames = FALSE
-      ) %>%
-        DT::formatPercentage("% Positive", digits = 1) %>%
-        DT::formatStyle(
-          "Positive",
-          background = DT::styleColorBar(range(table_data$Positive, na.rm = TRUE), "#2563EB"),
-          backgroundSize = '100% 90%',
-          backgroundRepeat = 'no-repeat',
-          backgroundPosition = 'center'
-        )
+      })
     })
 
     # Overlap Table

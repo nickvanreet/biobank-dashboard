@@ -189,7 +189,8 @@ convert_to_legacy_format <- function(modular_output) {
   legacy_data <- modular_output %>%
     mutate(
       # Map back to legacy column names
-      plate_number = as.integer(factor(paste(plate_id, plate_num, sep = "_"))),
+      # NOTE: plate_number is NOT created here - it will be assigned later by load_elisa_data()
+      # to ensure consistent numbering across all files
       sample_positive = (status_final == "Positive"),
       qc_Ag_plus = sample_valid,
       qc_Ag0 = sample_valid,
@@ -201,7 +202,7 @@ convert_to_legacy_format <- function(modular_output) {
 
   # Select core columns (including biobank columns if present)
   core_cols <- c(
-    "plate_id", "plate_num", "plate_number", "plate_date",
+    "plate_id", "plate_num", "plate_date",  # NOTE: plate_number excluded - created by load_elisa_data()
     "elisa_type",
     "sample_type", "sample", "sample_code",
     "numero_labo", "code_barres_kps",

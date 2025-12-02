@@ -264,7 +264,11 @@ mod_overview_assays_ui <- function(id) {
         card_header(
           class = "d-flex justify-content-between align-items-center",
           div(icon("table"), "Sample Drilldown"),
-          downloadButton(ns("export_table"), "Export CSV", class = "btn-sm btn-primary")
+          div(
+            uiOutput(ns("filter_status"), inline = TRUE),
+            actionButton(ns("clear_filter"), "Clear Filter", class = "btn-sm btn-secondary ms-2"),
+            downloadButton(ns("export_table"), "Export CSV", class = "btn-sm btn-primary ms-2")
+          )
         ),
         card_body(DT::DTOutput(ns("sample_table")))
       )
@@ -623,49 +627,61 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
 
     # Prevalence Table
     output$prevalence_table <- DT::renderDT({
-      prevalence <- prepared()$test_prevalence
-      overlaps <- prepared()$test_specific_overlaps
+      req(prepared())
 
-      if (nrow(prevalence) == 0) {
-        return(DT::datatable(
-          data.frame(Message = "No data available"),
-          options = list(dom = 't', paging = FALSE)
-        ))
-      }
+      tryCatch({
+        prevalence <- prepared()$test_prevalence
+        overlaps <- prepared()$test_specific_overlaps
 
-      # Join prevalence with detailed overlaps
-      table_data <- prevalence %>%
-        left_join(overlaps, by = "assay") %>%
-        select(
-          Test = assay,
-          `Total Tests` = total_tests,
-          Positive = n_positive,
-          `% Positive` = pct_positive,
-          `Exclusive` = n_exclusive,
-          `Shared` = n_shared,
-          Negative = n_negative,
-          Borderline = n_borderline,
-          Invalid = n_invalid
+        if (is.null(prevalence) || nrow(prevalence) == 0) {
+          return(DT::datatable(
+            data.frame(Message = "No test data available"),
+            options = list(dom = 't', paging = FALSE),
+            rownames = FALSE
+          ))
+        }
+
+        # Join prevalence with detailed overlaps
+        table_data <- prevalence %>%
+          left_join(overlaps, by = "assay", suffix = c("", "_overlap")) %>%
+          select(
+            Test = assay,
+            `Total Tests` = total_tests,
+            Positive = n_positive,
+            `% Positive` = pct_positive,
+            `Exclusive` = n_exclusive,
+            `Shared` = n_shared,
+            Negative = n_negative,
+            Borderline = n_borderline,
+            Invalid = n_invalid
+          )
+
+        DT::datatable(
+          table_data,
+          options = list(
+            pageLength = 10,
+            scrollX = TRUE,
+            dom = 'Bfrtip'
+          ),
+          class = "table-sm table-striped",
+          rownames = FALSE
+        ) %>%
+          DT::formatPercentage("% Positive", digits = 1) %>%
+          DT::formatStyle(
+            "Positive",
+            background = DT::styleColorBar(range(0, max(table_data$Positive, na.rm = TRUE)), "#2563EB"),
+            backgroundSize = '100% 90%',
+            backgroundRepeat = 'no-repeat',
+            backgroundPosition = 'center'
+          )
+      }, error = function(e) {
+        message(sprintf("Error rendering prevalence table: %s", e$message))
+        DT::datatable(
+          data.frame(Error = paste("Error:", e$message)),
+          options = list(dom = 't', paging = FALSE),
+          rownames = FALSE
         )
-
-      DT::datatable(
-        table_data,
-        options = list(
-          pageLength = 10,
-          scrollX = TRUE,
-          dom = 'Bfrtip'
-        ),
-        class = "table-sm table-striped",
-        rownames = FALSE
-      ) %>%
-        DT::formatPercentage("% Positive", digits = 1) %>%
-        DT::formatStyle(
-          "Positive",
-          background = DT::styleColorBar(range(table_data$Positive, na.rm = TRUE), "#2563EB"),
-          backgroundSize = '100% 90%',
-          backgroundRepeat = 'no-repeat',
-          backgroundPosition = 'center'
-        )
+      })
     })
 
     # Overlap Table
@@ -745,9 +761,9 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       p <- ggplot(df, aes(x = assay, y = n, fill = status, text = paste("Assay:", assay, "<br>Status:", status, "<br>n:", n))) +
         geom_bar(stat = "identity", position = "stack") +
         scale_fill_manual(values = assay_palette()) +
-        theme_minimal() + labs(x = NULL, y = "Samples") +
+        theme_minimal() + labs(x = NULL, y = "Samples", title = "Click a bar to filter samples") +
         theme(axis.text.x = element_text(angle = 45, hjust = 1))
-      ggplotly(p, tooltip = "text")
+      ggplotly(p, tooltip = "text", source = "assay_bars")
     })
 
     # UpSet plot
@@ -779,11 +795,78 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
     # Sample table
     output$sample_table <- DT::renderDT({
       df <- filtered_tidy()
+
+      # Show count message
+      total_count <- nrow(prepared()$tidy_assays)
+      filtered_count <- nrow(df)
+
       DT::datatable(
         df %>% select(sample_id, assay, status, metric, quantitative, assay_date),
-        options = list(pageLength = 15, order = list(list(0, 'asc'))),
-        selection = "single"
+        options = list(
+          pageLength = 25,
+          order = list(list(0, 'asc')),
+          dom = 'Bfrtip',
+          buttons = c('copy', 'csv', 'excel')
+        ),
+        caption = if (filtered_count < total_count) {
+          sprintf("Showing %d of %d total tests", filtered_count, total_count)
+        } else {
+          sprintf("Showing all %d tests", total_count)
+        },
+        extensions = 'Buttons',
+        selection = "single",
+        class = "table-sm table-striped",
+        rownames = FALSE
       )
+    })
+
+    # Filter status display
+    output$filter_status <- renderUI({
+      if (!is.null(drill_state$status) || !is.null(drill_state$assay)) {
+        filters_active <- c()
+        if (!is.null(drill_state$status)) {
+          filters_active <- c(filters_active, sprintf("Status: %s", drill_state$status))
+        }
+        if (!is.null(drill_state$assay)) {
+          filters_active <- c(filters_active, sprintf("Test: %s", paste(drill_state$assay, collapse = ", ")))
+        }
+        tags$span(
+          class = "badge bg-info me-2",
+          icon("filter"),
+          " ",
+          paste(filters_active, collapse = " | ")
+        )
+      } else {
+        NULL
+      }
+    })
+
+    # Clear filter button
+    observeEvent(input$clear_filter, {
+      drill_state$status <- NULL
+      drill_state$assay <- NULL
+    })
+
+    # Make KPIs clickable by detecting table row clicks
+    observeEvent(input$prevalence_table_rows_selected, {
+      req(input$prevalence_table_rows_selected)
+      selected_row <- input$prevalence_table_rows_selected
+
+      prevalence <- prepared()$test_prevalence
+      if (!is.null(prevalence) && nrow(prevalence) >= selected_row) {
+        selected_test <- as.character(prevalence$assay[selected_row])
+        drill_state$assay <- selected_test
+        drill_state$status <- NULL  # Clear status filter when selecting test
+      }
+    })
+
+    # Click on plots to filter
+    observeEvent(event_data("plotly_click", source = "assay_bars"), {
+      click_data <- event_data("plotly_click", source = "assay_bars")
+      if (!is.null(click_data)) {
+        drill_state$assay <- click_data$x
+        drill_state$status <- NULL
+      }
     })
 
     output$export_table <- downloadHandler(

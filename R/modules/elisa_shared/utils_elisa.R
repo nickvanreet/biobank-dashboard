@@ -226,25 +226,27 @@ validate_od_range <- function(od, min_od = 0, max_od = 4) {
   !is.na(od) & od >= min_od & od <= max_od
 }
 
-#' Create QC flags summary
-#' @param qc_ag_plus QC pass for Ag+ (logical)
-#' @param qc_ag0 QC pass for Ag0 (logical)
+#' Create QC flags summary (vectorized)
+#' @param qc_ag_plus QC pass for Ag+ (logical vector)
+#' @param qc_ag0 QC pass for Ag0 (logical vector)
 #' @return Character vector of QC flags
 #' @export
 create_qc_flags <- function(qc_ag_plus, qc_ag0) {
-  flags <- character()
+  purrr::map2_chr(qc_ag_plus, qc_ag0, function(plus, zero) {
+    flags <- character()
 
-  if (!is.na(qc_ag_plus) && !qc_ag_plus) {
-    flags <- c(flags, "High CV Ag+")
-  }
+    if (!is.na(plus) && !plus) {
+      flags <- c(flags, "High CV Ag+")
+    }
 
-  if (!is.na(qc_ag0) && !qc_ag0) {
-    flags <- c(flags, "High CV Ag0")
-  }
+    if (!is.na(zero) && !zero) {
+      flags <- c(flags, "High CV Ag0")
+    }
 
-  if (length(flags) == 0) {
-    return(NA_character_)
-  }
+    if (length(flags) == 0) {
+      return(NA_character_)
+    }
 
-  paste(flags, collapse = "; ")
+    paste(flags, collapse = "; ")
+  })
 }

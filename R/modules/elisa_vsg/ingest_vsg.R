@@ -11,8 +11,7 @@ suppressPackageStartupMessages({
   library(janitor)
 })
 
-# Source shared utilities
-source(file.path("R", "modules", "elisa_shared", "utils_elisa.R"), local = TRUE)
+# Note: Shared utilities (utils_elisa.R) should be sourced by the caller
 
 # =============================================================================
 # STEP 1: INGESTION (4-PLATE FORMAT)

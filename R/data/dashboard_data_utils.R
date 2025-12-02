@@ -210,6 +210,17 @@ prepare_assay_dashboard_data <- function(
       normalize_sample_id(barcode = x)
     })
 
+    # CRITICAL FIX: Preserve original status_final from ELISA data if it exists
+    # This ensures consistency between individual ELISA modules and Overview module
+    has_status_final <- "status_final" %in% names(elisa_df)
+    has_plate_valid <- "plate_valid" %in% names(elisa_df)
+
+    if (has_status_final) {
+      message("  Using original status_final from ELISA data (preserves Borderline/Invalid classifications)")
+    } else {
+      message("  WARNING: No status_final in ELISA data - using classify_elisa() fallback")
+    }
+
     tibs$elisa <- elisa_df %>%
       mutate(
         sample_id = elisa_barcodes_norm,
@@ -218,12 +229,23 @@ prepare_assay_dashboard_data <- function(
           elisa_type %in% c("ELISA_vsg", "vsg", "ELISA VSG") ~ "ELISA VSG",
           TRUE ~ coalesce(elisa_type, "ELISA")
         ),
-        status = map2_chr(PP_percent, DOD, classify_elisa, cutoffs = cutoffs),
+        # CRITICAL FIX: Use status_final if available, otherwise classify
+        status = if (has_status_final) {
+          status_final
+        } else {
+          map2_chr(PP_percent, DOD, classify_elisa, cutoffs = cutoffs)
+        },
+        # Mark tests from invalid plates
+        is_from_invalid_plate = if (has_plate_valid) {
+          !is.na(plate_valid) & plate_valid == FALSE
+        } else {
+          FALSE
+        },
         quantitative = coalesce(PP_percent, DOD),
         metric = ifelse(!is.na(PP_percent), "PP%", "DOD"),
         assay_date = suppressWarnings(lubridate::as_date(coalesce(plate_date, SampleDate)))
       ) %>%
-      select(sample_id, assay, status, quantitative, metric, assay_date, DOD, PP_percent)
+      select(sample_id, assay, status, is_from_invalid_plate, quantitative, metric, assay_date, DOD, PP_percent)
 
     n_valid <- sum(!is.na(tibs$elisa$sample_id) & tibs$elisa$sample_id != "")
     message(sprintf("  ELISA tests with valid barcodes: %d out of %d (%.1f%%)",
@@ -409,34 +431,127 @@ prepare_assay_dashboard_data <- function(
   message(sprintf("After deduplication: %d unique sample-assay combinations", nrow(tidy)))
   message(sprintf("Unique samples: %d", length(unique(tidy$sample_id))))
 
+  # Show status breakdown BEFORE filtering
+  if (nrow(tidy) > 0) {
+    status_counts_before <- tidy %>%
+      count(status) %>%
+      arrange(desc(n))
+    message("  Status counts BEFORE filtering:")
+    for (i in seq_len(nrow(status_counts_before))) {
+      message(sprintf("    %s: %d", status_counts_before$status[i], status_counts_before$n[i]))
+    }
+  }
+
   # Apply QC filters for borderline and invalid results
   if (!include_borderline) {
     n_before <- nrow(tidy)
+    n_borderline <- sum(tidy$status == "Borderline", na.rm = TRUE)
     tidy <- tidy %>% filter(status != "Borderline")
     n_removed <- n_before - nrow(tidy)
-    message(sprintf("Excluded %d borderline results (include_borderline = FALSE)", n_removed))
+    message(sprintf("🔹 FILTER: Excluded %d borderline results (%d found, include_borderline = FALSE)",
+                    n_removed, n_borderline))
+  } else {
+    n_borderline <- sum(tidy$status == "Borderline", na.rm = TRUE)
+    message(sprintf("✓ Including %d borderline results (include_borderline = TRUE)", n_borderline))
   }
 
   if (!include_invalid) {
     n_before <- nrow(tidy)
-    tidy <- tidy %>% filter(status != "Invalid")
-    n_removed <- n_before - nrow(tidy)
-    message(sprintf("Excluded %d invalid results (include_invalid = FALSE)", n_removed))
+    n_invalid <- sum(tidy$status == "Invalid", na.rm = TRUE)
+
+    # Also exclude tests from invalid plates if that info is available
+    if ("is_from_invalid_plate" %in% names(tidy)) {
+      n_from_invalid_plates <- sum(tidy$is_from_invalid_plate, na.rm = TRUE)
+      tidy <- tidy %>% filter(status != "Invalid" & !is_from_invalid_plate)
+      message(sprintf("🔹 FILTER: Excluded %d invalid results (%d with Invalid status + %d from invalid plates, include_invalid = FALSE)",
+                      n_before - nrow(tidy), n_invalid, n_from_invalid_plates))
+    } else {
+      tidy <- tidy %>% filter(status != "Invalid")
+      message(sprintf("🔹 FILTER: Excluded %d invalid results (%d found, include_invalid = FALSE)",
+                      n_before - nrow(tidy), n_invalid))
+    }
+  } else {
+    n_invalid <- sum(tidy$status == "Invalid", na.rm = TRUE)
+    message(sprintf("✓ Including %d invalid results (include_invalid = TRUE)", n_invalid))
   }
 
   message(sprintf("After QC filtering: %d rows remaining", nrow(tidy)))
 
+  # Show status breakdown AFTER filtering
+  if (nrow(tidy) > 0) {
+    status_counts_after <- tidy %>%
+      count(status) %>%
+      arrange(desc(n))
+    message("  Status counts AFTER filtering:")
+    for (i in seq_len(nrow(status_counts_after))) {
+      message(sprintf("    %s: %d", status_counts_after$status[i], status_counts_after$n[i]))
+    }
+  }
+
   # Apply global filters if provided
+  n_before_global_filters <- nrow(tidy)
+
   if (!is.null(filters)) {
+    message("Applying global filters...")
+
+    # Date range filter
     if (!is.null(filters$date_range) && length(filters$date_range) == 2) {
       dr <- filters$date_range
-      tidy <- tidy %>% mutate(assay_date = as.Date(assay_date)) %>%
+      n_before_date <- nrow(tidy)
+      tidy <- tidy %>%
+        mutate(assay_date = as.Date(assay_date)) %>%
         filter(is.na(assay_date) | (assay_date >= dr[1] & assay_date <= dr[2]))
+      n_removed_date <- n_before_date - nrow(tidy)
+      message(sprintf("  🗓️  Date filter [%s to %s]: Removed %d tests", dr[1], dr[2], n_removed_date))
     }
-    if (!is.null(filters$province) && filters$province != "all" && !is.null(biobank_base)) {
-      tidy <- tidy %>% left_join(biobank_base, by = "sample_id") %>%
-        filter(is.na(province) | province == filters$province | Province == filters$province)
+
+    # Province/demographic filters
+    if (!is.null(biobank_base) && nrow(biobank_base) > 0) {
+      # Join with biobank data to get demographic info
+      n_before_join <- nrow(tidy)
+      tidy <- tidy %>% left_join(biobank_base, by = "sample_id", suffix = c("", "_biobank"))
+
+      # Apply province filter
+      if (!is.null(filters$province) && filters$province != "all" && filters$province != "") {
+        n_before_prov <- nrow(tidy)
+        # Check which province column exists
+        if ("Province" %in% names(tidy)) {
+          tidy <- tidy %>% filter(is.na(Province) | Province == filters$province)
+        } else if ("province" %in% names(tidy)) {
+          tidy <- tidy %>% filter(is.na(province) | province == filters$province)
+        }
+        n_removed_prov <- n_before_prov - nrow(tidy)
+        message(sprintf("  📍 Province filter [%s]: Removed %d tests", filters$province, n_removed_prov))
+      }
+
+      # Apply other demographic filters if present
+      if (!is.null(filters$zone) && filters$zone != "all" && filters$zone != "" && "HealthZone" %in% names(tidy)) {
+        n_before <- nrow(tidy)
+        tidy <- tidy %>% filter(is.na(HealthZone) | HealthZone == filters$zone)
+        message(sprintf("  🏥 Health Zone filter [%s]: Removed %d tests", filters$zone, n_before - nrow(tidy)))
+      }
+
+      if (!is.null(filters$structure) && filters$structure != "all" && filters$structure != "" && "Structure" %in% names(tidy)) {
+        n_before <- nrow(tidy)
+        tidy <- tidy %>% filter(is.na(Structure) | Structure == filters$structure)
+        message(sprintf("  🏢 Structure filter [%s]: Removed %d tests", filters$structure, n_before - nrow(tidy)))
+      }
+
+      if (!is.null(filters$cohort) && filters$cohort != "all" && filters$cohort != "" && "Cohort" %in% names(tidy)) {
+        n_before <- nrow(tidy)
+        tidy <- tidy %>% filter(is.na(Cohort) | Cohort == filters$cohort)
+        message(sprintf("  👥 Cohort filter [%s]: Removed %d tests", filters$cohort, n_before - nrow(tidy)))
+      }
+    } else {
+      if (!is.null(filters$province) && filters$province != "all") {
+        message("  ⚠️  WARNING: Province filter requested but biobank_base is NULL or empty - cannot apply demographic filters")
+      }
     }
+
+    n_removed_global <- n_before_global_filters - nrow(tidy)
+    message(sprintf("Total removed by global filters: %d tests", n_removed_global))
+  } else {
+    message("No global filters provided")
   }
 
   # Sample matrix (wide for heatmap)
@@ -738,6 +853,46 @@ prepare_assay_dashboard_data <- function(
   } else {
     test_specific_overlaps <- tibble()
   }
+
+  # ==========================================================================
+  # FINAL SUMMARY
+  # ==========================================================================
+  message("\n═══════════════════════════════════════════════════════════════")
+  message("📊 OVERVIEW MODULE SUMMARY")
+  message("═══════════════════════════════════════════════════════════════")
+  message(sprintf("Total unique samples: %d", n_distinct(tidy$sample_id)))
+  message(sprintf("Total unique sample-assay combinations: %d", nrow(tidy)))
+  message("")
+  message("Test counts by assay:")
+  if (nrow(test_prevalence) > 0) {
+    for (i in seq_len(nrow(test_prevalence))) {
+      message(sprintf("  %s: %d tests, %d positive (%.1f%%)",
+                      test_prevalence$assay[i],
+                      test_prevalence$total_tests[i],
+                      test_prevalence$n_positive[i],
+                      test_prevalence$pct_positive[i]))
+    }
+  }
+  message("")
+  message("Filters applied:")
+  message(sprintf("  - Include borderline: %s (%d borderline in final data)",
+                  include_borderline,
+                  sum(tidy$status == "Borderline", na.rm = TRUE)))
+  message(sprintf("  - Include invalid: %s (%d invalid in final data)",
+                  include_invalid,
+                  sum(tidy$status == "Invalid", na.rm = TRUE)))
+  if (!is.null(filters)) {
+    message("  - Global filters: APPLIED")
+    if (!is.null(filters$province) && filters$province != "all") {
+      message(sprintf("    - Province: %s", filters$province))
+    }
+    if (!is.null(filters$date_range) && length(filters$date_range) == 2) {
+      message(sprintf("    - Date range: %s to %s", filters$date_range[1], filters$date_range[2]))
+    }
+  } else {
+    message("  - Global filters: NONE")
+  }
+  message("═══════════════════════════════════════════════════════════════\n")
 
   list(
     tidy_assays = tidy,

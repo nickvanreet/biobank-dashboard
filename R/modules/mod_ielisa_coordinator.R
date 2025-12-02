@@ -72,15 +72,30 @@ mod_ielisa_coordinator_ui <- function(id, label = "iELISA") {
         div(
           class = "d-flex justify-content-between align-items-center flex-wrap gap-3",
           div(
-            class = "d-flex flex-column justify-content-end",
-            checkboxInput(
-              ns("exclude_invalid_plates"),
-              "Exclude invalid plates",
-              value = FALSE
+            class = "d-flex flex-column justify-content-start gap-2",
+            div(
+              class = "d-flex align-items-center",
+              checkboxInput(
+                ns("exclude_invalid_plates"),
+                "Exclude invalid plates",
+                value = FALSE
+              ),
+              tags$small(
+                class = "text-muted ms-2",
+                "Removes plates with failed control QC"
+              )
             ),
-            tags$small(
-              class = "text-muted",
-              "Removes plates with failed control QC from all analyses"
+            div(
+              class = "d-flex align-items-center",
+              checkboxInput(
+                ns("show_retests_only"),
+                "Show retested samples only",
+                value = FALSE
+              ),
+              tags$small(
+                class = "text-muted ms-2",
+                "Filter samples with multiple test dates"
+              )
             )
           ),
           div(
@@ -238,6 +253,22 @@ mod_ielisa_coordinator_server <- function(id, biobank_df = reactive(NULL), filte
       if (input$exclude_invalid_plates) {
         data <- data %>%
           filter(plate_valid_L13 == TRUE | plate_valid_L15 == TRUE)
+      }
+
+      # Apply retest filter if enabled
+      if (isTRUE(input$show_retests_only)) {
+        # Identify samples that have been tested multiple times
+        if (all(c("code_barres_kps", "PlateDate") %in% names(data))) {
+          retested_samples <- data %>%
+            group_by(code_barres_kps) %>%
+            filter(n_distinct(PlateDate) > 1) %>%
+            ungroup()
+
+          message("DEBUG [mod_ielisa_coordinator]: Showing only retested samples: ",
+                  n_distinct(retested_samples$code_barres_kps), " samples")
+
+          data <- retested_samples
+        }
       }
 
       # Apply custom QC settings (threshold and formula)

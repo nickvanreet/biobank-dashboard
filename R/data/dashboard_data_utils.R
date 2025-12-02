@@ -127,6 +127,8 @@ classify_mic <- function(call, cutoffs) {
 #' @param mic_data Parsed MIC object (list with `$samples`)
 #' @param filters Optional filters list from the sidebar
 #' @param cutoffs Optional cutoff list (defaults to `assay_cutoffs()`)
+#' @param include_borderline Logical, whether to include borderline results (default TRUE)
+#' @param include_invalid Logical, whether to include invalid test results (default FALSE)
 #' @return List containing `tidy_assays`, `sample_matrix`, `pairwise_agreement`,
 #'   and `intersections`
 prepare_assay_dashboard_data <- function(
@@ -135,7 +137,9 @@ prepare_assay_dashboard_data <- function(
     ielisa_df = NULL,
     mic_data = NULL,
     filters = NULL,
-    cutoffs = assay_cutoffs()) {
+    cutoffs = assay_cutoffs(),
+    include_borderline = TRUE,
+    include_invalid = FALSE) {
 
   tibs <- list()
 
@@ -404,6 +408,23 @@ prepare_assay_dashboard_data <- function(
 
   message(sprintf("After deduplication: %d unique sample-assay combinations", nrow(tidy)))
   message(sprintf("Unique samples: %d", length(unique(tidy$sample_id))))
+
+  # Apply QC filters for borderline and invalid results
+  if (!include_borderline) {
+    n_before <- nrow(tidy)
+    tidy <- tidy %>% filter(status != "Borderline")
+    n_removed <- n_before - nrow(tidy)
+    message(sprintf("Excluded %d borderline results (include_borderline = FALSE)", n_removed))
+  }
+
+  if (!include_invalid) {
+    n_before <- nrow(tidy)
+    tidy <- tidy %>% filter(status != "Invalid")
+    n_removed <- n_before - nrow(tidy)
+    message(sprintf("Excluded %d invalid results (include_invalid = FALSE)", n_removed))
+  }
+
+  message(sprintf("After QC filtering: %d rows remaining", nrow(tidy)))
 
   # Apply global filters if provided
   if (!is.null(filters)) {

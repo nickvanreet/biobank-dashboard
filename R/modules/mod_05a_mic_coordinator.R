@@ -1,18 +1,18 @@
 # ==============================================================================
-# MIC qPCR - PARENT COORDINATOR MODULE
-# Handles data loading and coordinates child modules
+# MIC qPCR - PARENT COORDINATOR MODULE (ULTRAMODERN ARCHITECTURE)
+# ==============================================================================
+# Modular 4-step pipeline integration with clean, modern UI design
 # ==============================================================================
 
 mod_mic_qpcr_coordinator_ui <- function(id) {
   ns <- NS(id)
 
   # Return a list of nav_panels for top-level navigation
-  # Note: Action bar removed to avoid navigation container errors
   list(
-    # Module 1: Overview
+    # Module 1: Run Overview
     nav_panel(
       title = "MIC - Run",
-      icon = icon("dashboard"),
+      icon = icon("microscope"),
       value = "mic_overview",
       mod_mic_overview_ui(ns("overview"))
     ),
@@ -25,18 +25,18 @@ mod_mic_qpcr_coordinator_ui <- function(id) {
       mod_mic_samples_ui(ns("samples"))
     ),
 
-    # Module 3: Analysis
+    # Module 3: Analysis & QC
     nav_panel(
       title = "MIC - Analysis",
-      icon = icon("chart-area"),
+      icon = icon("chart-line"),
       value = "mic_analysis",
       mod_mic_analysis_ui(ns("analysis"))
     ),
 
-    # Module 4: Export
+    # Module 4: Export & Reports
     nav_panel(
       title = "MIC - Export",
-      icon = icon("download"),
+      icon = icon("file-export"),
       value = "mic_export",
       mod_mic_export_ui(ns("export"))
     )

@@ -1,10 +1,15 @@
 # ==============================================================================
-# qPCR Analysis for BioMérieux MIC (ROBUST VERSION)
+# qPCR Analysis for BioMérieux MIC (MODULAR ARCHITECTURE)
 # ------------------------------------------------------------------------------
-# Provides the analyze_qpcr() pipeline and helper utilities used by Module 05.
-# This script is sourced automatically from global.R when the application starts
-# (all files under R/core/ are loaded before modules), so the functions are
-# available for .mic_read_dir() and downstream MIC features.
+# UPDATED: Now uses modular 4-step pipeline from R/modules/mic/
+#   Step 1: ingest_mic.R  - Extract Cq values from BioMérieux Excel
+#   Step 2: qc_mic.R      - Apply cutoffs and validate controls
+#   Step 3: interpret_mic.R - Decision tree and RNA preservation
+#   Step 4: output_mic.R  - Format standardized output
+#
+# This script provides the analyze_qpcr() wrapper function and helper utilities
+# used by Module 05. It is sourced automatically from global.R when the
+# application starts (all files under R/core/ are loaded before modules).
 # ==============================================================================
 
 suppressPackageStartupMessages({
@@ -618,182 +623,37 @@ analyze_qpcr <- function(micrun_file,
                          rnasep_rna_cutoff = DEFAULT_CUTOFFS$RNAseP_RNA$positive,
                          cutoffs = DEFAULT_CUTOFFS,
                          verbose = TRUE) {
-  
+
+  # ===========================================================================
+  # MODULAR PIPELINE WRAPPER
+  # ===========================================================================
+  # This function now calls the modular pipeline internally while maintaining
+  # the same interface for backward compatibility.
+
   cutoffs <- sanitize_cutoffs(cutoffs)
   rnasep_rna_cutoff <- coerce_cutoff_numeric(rnasep_rna_cutoff)
-  
-  if (verbose) cat("📂 Loading data from:", basename(micrun_file), "\n")
-  
-  # ===========================================================================
-  # STEP 1: Extract Cq values
-  # ===========================================================================
-  extracted <- extract_cq_values(micrun_file)
-  
-  if (nrow(extracted$cq_data) == 0) {
-    stop("No Cq data extracted; check sheet names and column headings.")
-  }
-  
-  if (verbose) {
-    cat("✓ Found", nrow(extracted$samples), "samples\n")
-    cat("✓ Targets:", paste(unique(extracted$cq_data$target), collapse = ", "), "\n")
-    
-    # DIAGNOSTIC: Show extraction results by target
-    cat("\n🔍 Extraction results by target:\n")
-    target_counts <- extracted$cq_data %>%
-      group_by(target) %>%
-      summarise(
-        total_rows = n(),
-        with_cq = sum(!is.na(Cq)),
-        .groups = "drop"
-      )
-    for (i in seq_len(nrow(target_counts))) {
-      cat(sprintf("   - %s: %d rows (%d with Cq)\n",
-                  target_counts$target[i],
-                  target_counts$total_rows[i],
-                  target_counts$with_cq[i]))
-    }
-  }
-  
-  # ===========================================================================
-  # STEP 2: Interpret Cq values (apply cutoffs)
-  # ===========================================================================
-  if (verbose) cat("\n🔍 Interpreting Cq values...\n")
-  interpreted <- apply_interpretation(extracted$cq_data, cutoffs)
-  
-  if (verbose) {
-    # DIAGNOSTIC: Show interpretation results
-    cat("   Interpretation complete: ", nrow(interpreted), "rows\n")
-    interp_summary <- interpreted %>%
-      group_by(target, interpretation) %>%
-      summarise(n = n(), .groups = "drop")
-    
-    for (tgt in unique(interpreted$target)) {
-      tgt_data <- interp_summary %>% filter(target == tgt)
-      cat(sprintf("   - %s:\n", tgt))
-      for (i in seq_len(nrow(tgt_data))) {
-        cat(sprintf("      %s: %d\n", 
-                    tgt_data$interpretation[i], 
-                    tgt_data$n[i]))
-      }
-    }
-  }
-  
-  # ===========================================================================
-  # STEP 3: Summarize by replicate
-  # ===========================================================================
-  if (verbose) cat("\n📊 Summarizing by replicate...\n")
-  replicate_summary <- summarize_by_replicate(interpreted)
-  
-  if (verbose) {
-    # DIAGNOSTIC: Check replicate summary
-    cat("   Replicate summary: ", nrow(replicate_summary), "rows\n")
-    
-    # Check which marker columns exist
-    marker_cols <- grep("^marker_", names(replicate_summary), value = TRUE)
-    if (length(marker_cols) > 0) {
-      cat("   Marker columns found:", paste(marker_cols, collapse = ", "), "\n")
-      
-      # Count samples with each marker
-      for (col in marker_cols) {
-        target_name <- sub("^marker_", "", col)
-        n_positive <- sum(replicate_summary[[col]] == "Positive", na.rm = TRUE)
-        n_total <- sum(!is.na(replicate_summary[[col]]))
-        cat(sprintf("   - %s: %d/%d positive\n", target_name, n_positive, n_total))
-      }
-    }
-  }
-  
-  # ===========================================================================
-  # STEP 4: Apply decision logic
-  # ===========================================================================
-  if (verbose) cat("\n🎯 Applying decision logic...\n")
-  replicate_decisions <- apply_trypanozoon_decision(
-    replicate_summary,
-    rnasep_rna_cutoff = rnasep_rna_cutoff
+
+  # Prepare QC settings
+  qc_settings <- list(
+    thresholds = cutoffs,
+    late_window = c(38, 40),
+    delta_rp_limit = 8,
+    delta_good = PRESERVATION_DELTA_GOOD,
+    delta_warn = PRESERVATION_DELTA_WARN,
+    min_positive_reps = 2
   )
-  
-  if (verbose) {
-    # DIAGNOSTIC: Check decision results
-    cat("   Decision results: ", nrow(replicate_decisions), "rows\n")
-    
-    if ("decision" %in% names(replicate_decisions)) {
-      decision_counts <- table(replicate_decisions$decision)
-      cat("   Decisions:\n")
-      for (dec in names(decision_counts)) {
-        cat(sprintf("      %s: %d\n", dec, decision_counts[dec]))
-      }
-    }
-    
-    if ("category" %in% names(replicate_decisions)) {
-      category_counts <- table(replicate_decisions$category)
-      cat("   Categories:\n")
-      for (cat_name in names(category_counts)) {
-        cat(sprintf("      %s: %d\n", cat_name, category_counts[cat_name]))
-      }
-    }
-  }
-  
-  # ===========================================================================
-  # STEP 5: Create sample summary
-  # ===========================================================================
-  if (verbose) cat("\n📋 Creating sample summary...\n")
-  sample_summary <- summarize_by_sample(replicate_decisions)
-  
-  if (verbose) {
-    # DIAGNOSTIC: Final summary
-    cat("\n✅ Analysis complete!\n")
-    cat(sprintf("   Total samples: %d\n", nrow(sample_summary)))
-    
-    if ("final_category" %in% names(sample_summary)) {
-      cat("   By category:\n")
-      final_cats <- table(sample_summary$final_category)
-      for (cat_name in names(final_cats)) {
-        cat(sprintf("      %s: %d\n", cat_name, final_cats[cat_name]))
-      }
-    } else {
-      # Fallback to old column names
-      cat("   Positive:", sum(sample_summary$final_category == "positive", na.rm = TRUE), "\n")
-      cat("   Negative:", sum(sample_summary$final_category == "negative", na.rm = TRUE), "\n")
-      cat("   Failed/Inconclusive:",
-          sum(sample_summary$final_category %in% c("failed", "inconclusive"), na.rm = TRUE), "\n")
-    }
-    
-    # DIAGNOSTIC: Check if RNAseP data survived
-    cat("\n🔬 Checking RNAseP data in final summary:\n")
-    if ("rna_quality" %in% names(sample_summary)) {
-      rna_qual <- table(sample_summary$rna_quality, useNA = "ifany")
-      cat("   RNA quality distribution:\n")
-      for (qual in names(rna_qual)) {
-        cat(sprintf("      %s: %d\n", qual, rna_qual[qual]))
-      }
-    }
-    
-    if ("dna_quality" %in% names(sample_summary)) {
-      dna_qual <- table(sample_summary$dna_quality, useNA = "ifany")
-      cat("   DNA quality distribution:\n")
-      for (qual in names(dna_qual)) {
-        cat(sprintf("      %s: %d\n", qual, dna_qual[qual]))
-      }
-    }
-    
-    if ("rna_preservation" %in% names(sample_summary)) {
-      rna_pres <- table(sample_summary$rna_preservation, useNA = "ifany")
-      cat("   RNA preservation:\n")
-      for (pres in names(rna_pres)) {
-        cat(sprintf("      %s: %d\n", pres, rna_pres[pres]))
-      }
-    }
-    
-    cat("\n")
-  }
-  
+
+  # Call modular pipeline
+  result <- process_mic_file(micrun_file, qc_settings = qc_settings, verbose = verbose)
+
+  # Return in expected format
   list(
-    sample_summary = sample_summary,
-    replicate_data = replicate_decisions,
-    cq_data        = interpreted,
-    run_settings   = extracted$run_settings,
-    thresholds     = extracted$thresholds,
-    cutoffs        = cutoffs
+    sample_summary = result$sample_summary,
+    replicate_data = result$replicate_data,
+    cq_data        = result$cq_data,
+    run_settings   = result$run_settings,
+    thresholds     = result$thresholds,
+    cutoffs        = result$cutoffs
   )
 }
 

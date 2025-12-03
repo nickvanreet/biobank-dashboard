@@ -20,6 +20,12 @@ suppressPackageStartupMessages({
   library(purrr)
 })
 
+# Source modular pipeline components
+source(file.path("R", "modules", "mic", "ingest_mic.R"), local = TRUE)
+source(file.path("R", "modules", "mic", "qc_mic.R"), local = TRUE)
+source(file.path("R", "modules", "mic", "interpret_mic.R"), local = TRUE)
+source(file.path("R", "modules", "mic", "output_mic.R"), local = TRUE)
+
 mic_log <- function(..., .sep = "", .appendLF = TRUE) {
   if (isTRUE(getOption("mic.verbose", FALSE))) {
     base::message(..., sep = .sep, appendLF = .appendLF)

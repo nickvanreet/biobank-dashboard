@@ -1,17 +1,46 @@
 # ==============================================================================
-# MODULE 6: SETTINGS - Threshold configuration
+# MODULE 6: SETTINGS - QC Threshold Configuration (MODERN DESIGN)
 # ==============================================================================
 
 mod_mic_settings_ui <- function(id) {
   ns <- NS(id)
-  
+
   tagList(
+    tags$style(HTML("
+      .settings-section-header {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #e9ecef;
+      }
+      .threshold-group {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+      }
+      .threshold-label {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #495057;
+        margin-bottom: 0.5rem;
+      }
+    ")),
+
     layout_columns(
       col_widths = c(6, 6),
-      
+
       # Trypanozoon targets
       card(
-        card_header("Trypanozoon Targets (DNA & RNA)", class = "bg-primary text-white"),
+        card_header(
+          div(class = "d-flex align-items-center gap-2",
+              icon("dna", class = "text-white"),
+              "Trypanozoon Targets (DNA & RNA)"
+          ),
+          class = "bg-primary text-white"
+        ),
         card_body(
           class = "p-3",
           
@@ -65,7 +94,13 @@ mod_mic_settings_ui <- function(id) {
       
       # RNAseP targets
       card(
-        card_header("RNAseP Targets (Quality Control)", class = "bg-info text-white"),
+        card_header(
+          div(class = "d-flex align-items-center gap-2",
+              icon("vial-circle-check", class = "text-white"),
+              "RNAseP Targets (Quality Control)"
+          ),
+          class = "bg-info text-white"
+        ),
         card_body(
           class = "p-3",
           
@@ -120,7 +155,13 @@ mod_mic_settings_ui <- function(id) {
     
     # QC parameters
     card(
-      card_header("Quality Control Parameters", class = "bg-warning"),
+      card_header(
+        div(class = "d-flex align-items-center gap-2",
+            icon("chart-line"),
+            "Quality Control Parameters"
+        ),
+        class = "bg-warning"
+      ),
       card_body(
         class = "p-3",
         layout_columns(
@@ -181,7 +222,13 @@ mod_mic_settings_ui <- function(id) {
 
     # Calling Rules Configuration
     card(
-      card_header("Sample Calling Rules", class = "bg-success text-white"),
+      card_header(
+        div(class = "d-flex align-items-center gap-2",
+            icon("check-double", class = "text-white"),
+            "Sample Calling Rules"
+        ),
+        class = "bg-success text-white"
+      ),
       card_body(
         class = "p-3",
         layout_columns(

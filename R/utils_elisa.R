@@ -60,13 +60,23 @@ add_screening_numbers <- function(elisa_data) {
 
   # For samples, add screening numbers
   if (nrow(samples) > 0) {
+    # Check if normalized columns already exist (from link_elisa_to_biobank)
+    # If not, compute them (fallback for standalone use)
+    if (!"barcode_norm" %in% names(samples) || !"numero_norm" %in% names(samples)) {
+      samples <- samples %>%
+        mutate(
+          barcode_norm = .norm_key(code_barres_kps, "barcode"),
+          numero_norm = .norm_key(numero_labo, "labid")
+        )
+      remove_norm_cols <- TRUE
+    } else {
+      remove_norm_cols <- FALSE
+    }
+
     samples <- samples %>%
       mutate(
-        # Create sample identifier (prefer barcode, fallback to numero_labo)
-        sample_id = coalesce(
-          .norm_key(code_barres_kps, "barcode"),
-          .norm_key(numero_labo, "labid")
-        )
+        # Reuse pre-computed normalized IDs (much faster!)
+        sample_id = coalesce(barcode_norm, numero_norm)
       ) %>%
       group_by(sample_id, elisa_type) %>%
       arrange(plate_date, .by_group = TRUE) %>%
@@ -76,6 +86,11 @@ add_screening_numbers <- function(elisa_data) {
       ) %>%
       ungroup() %>%
       select(-sample_id)
+
+    # Clean up temporary norm columns if we created them
+    if (remove_norm_cols) {
+      samples <- samples %>% select(-barcode_norm, -numero_norm)
+    }
   }
 
   # For controls, set NA

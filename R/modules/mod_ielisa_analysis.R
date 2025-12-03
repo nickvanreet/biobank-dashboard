@@ -1,5 +1,6 @@
 # R/modules/mod_ielisa_analysis.R
-# iELISA Analysis module - Duplicates and detailed analysis
+# iELISA Analysis module - Visualizations, Formula Comparison, and Multiple Testing
+# Reorganized with plots moved from Samples module
 
 suppressPackageStartupMessages({
   library(shiny)
@@ -20,10 +21,52 @@ mod_ielisa_analysis_ui <- function(id) {
     div(
       class = "ielisa-panel",
 
-      # Duplicate samples section
+      # Section 1: Inhibition Analysis
+      h4("📊 Inhibition Analysis"),
+      layout_columns(
+        col_widths = c(6, 6),
+        card(
+          card_header("Inhibition Distribution (Formula 2)"),
+          card_body(plotlyOutput(ns("plot_inhibition_dist"), height = "400px"))
+        ),
+        card(
+          card_header("Inhibition vs OD (LiTat 1.3)"),
+          card_body(plotlyOutput(ns("plot_inh_vs_od_13"), height = "400px"))
+        )
+      ),
+
+      tags$div(style = "height: 16px;"),
+
+      layout_columns(
+        col_widths = c(12),
+        card(
+          card_header("Inhibition vs OD (LiTat 1.5)"),
+          card_body(plotlyOutput(ns("plot_inh_vs_od_15"), height = "400px"))
+        )
+      ),
+
+      tags$div(style = "height: 32px;"),
+
+      # Section 2: Formula Comparison
+      h4("🔬 Formula Comparison"),
       card(
-        card_header("Duplicate Testing Summary"),
+        card_header("Formula 1 vs Formula 2 Agreement"),
         card_body(
+          p(class = "text-muted", 
+            "Compares F1 (NEG-based, Spec) vs F2 (NEG-POS normalized) inhibition calculations"),
+          plotlyOutput(ns("plot_formula_agreement"), height = "400px")
+        )
+      ),
+
+      tags$div(style = "height: 32px;"),
+
+      # Section 3: Multiple Testing
+      h4("🔄 Multiple Testing"),
+      card(
+        card_header("Multiple Testing Summary"),
+        card_body(
+          p(class = "text-muted",
+            "Samples tested multiple times across different plates"),
           uiOutput(ns("duplicate_kpis")),
 
           tags$div(style = "height: 16px;"),
@@ -32,10 +75,8 @@ mod_ielisa_analysis_ui <- function(id) {
         )
       ),
 
-      # Spacer
       tags$div(style = "height: 16px;"),
 
-      # Conflict warnings
       card(
         card_header("⚠️ Data Quality Conflicts"),
         card_body(
@@ -43,26 +84,23 @@ mod_ielisa_analysis_ui <- function(id) {
         )
       ),
 
-      # Spacer
       tags$div(style = "height: 16px;"),
 
-      # Duplicate comparison visualizations
       layout_columns(
         col_widths = c(6, 6),
         card(
-          card_header("Duplicate Test Agreement (LiTat 1.3)"),
+          card_header("Test-Retest Agreement (LiTat 1.3)"),
           card_body(plotlyOutput(ns("plot_dup_agreement_13"), height = "400px"))
         ),
         card(
-          card_header("Duplicate Test Agreement (LiTat 1.5)"),
+          card_header("Test-Retest Agreement (LiTat 1.5)"),
           card_body(plotlyOutput(ns("plot_dup_agreement_15"), height = "400px"))
         )
       ),
 
-      # Spacer
-      tags$div(style = "height: 16px;"),
+      tags$div(style = "height: 32px;"),
 
-      # Export section
+      # Section 4: Export
       card(
         card_header("📥 Data Export"),
         card_body(
@@ -89,7 +127,193 @@ mod_ielisa_analysis_server <- function(id, ielisa_data) {
     ns <- session$ns
 
     # ========================================================================
-    # DUPLICATE ANALYSIS
+    # SECTION 1: INHIBITION ANALYSIS (moved from Samples)
+    # ========================================================================
+
+    output$plot_inhibition_dist <- renderPlotly({
+      data <- ielisa_data()
+
+      if (!nrow(data)) {
+        return(plotly_empty("No data available"))
+      }
+
+      # Reshape data
+      plot_data <- data %>%
+        select(pct_inh_f2_13, pct_inh_f2_15) %>%
+        pivot_longer(
+          cols = everything(),
+          names_to = "antigen",
+          values_to = "inhibition"
+        ) %>%
+        mutate(
+          antigen = ifelse(antigen == "pct_inh_f2_13", "LiTat 1.3", "LiTat 1.5")
+        )
+
+      p <- plot_ly(data = plot_data, x = ~inhibition, color = ~antigen,
+                   colors = c("#3498db", "#e74c3c"),
+                   type = "histogram", alpha = 0.6) %>%
+        layout(
+          xaxis = list(title = "Inhibition (%)"),
+          yaxis = list(title = "Count"),
+          barmode = "overlay",
+          shapes = list(
+            list(
+              type = "line",
+              x0 = 30, x1 = 30,
+              y0 = 0, y1 = 1,
+              yref = "paper",
+              line = list(color = "red", dash = "dash", width = 2)
+            )
+          ),
+          annotations = list(
+            list(
+              x = 30,
+              y = 0.95,
+              yref = "paper",
+              text = "Positivity threshold (30%)",
+              showarrow = FALSE,
+              xanchor = "left",
+              font = list(color = "red", size = 10)
+            )
+          )
+        )
+
+      p
+    })
+
+    output$plot_inh_vs_od_13 <- renderPlotly({
+      data <- ielisa_data()
+
+      if (!nrow(data)) {
+        return(plotly_empty("No data available"))
+      }
+
+      p <- plot_ly(data = data, x = ~OD_L13, y = ~pct_inh_f2_13,
+                   type = "scatter", mode = "markers",
+                   marker = list(
+                     size = 8,
+                     color = ~positive_L13,
+                     colors = c("FALSE" = "#e74c3c", "TRUE" = "#2ecc71"),
+                     opacity = 0.7
+                   ),
+                   hovertemplate = paste(
+                     "<b>LabID:</b> %{text}<br>",
+                     "<b>OD:</b> %{x:.3f}<br>",
+                     "<b>Inhibition:</b> %{y:.1f}%<br>",
+                     "<extra></extra>"
+                   ),
+                   text = ~LabID) %>%
+        layout(
+          xaxis = list(title = "OD Value"),
+          yaxis = list(title = "Inhibition (%)"),
+          shapes = list(
+            list(
+              type = "line",
+              x0 = 0, x1 = 1,
+              xref = "paper",
+              y0 = 30, y1 = 30,
+              line = list(color = "red", dash = "dash", width = 2)
+            )
+          )
+        )
+
+      p
+    })
+
+    output$plot_inh_vs_od_15 <- renderPlotly({
+      data <- ielisa_data()
+
+      if (!nrow(data)) {
+        return(plotly_empty("No data available"))
+      }
+
+      p <- plot_ly(data = data, x = ~OD_L15, y = ~pct_inh_f2_15,
+                   type = "scatter", mode = "markers",
+                   marker = list(
+                     size = 8,
+                     color = ~positive_L15,
+                     colors = c("FALSE" = "#e74c3c", "TRUE" = "#2ecc71"),
+                     opacity = 0.7
+                   ),
+                   hovertemplate = paste(
+                     "<b>LabID:</b> %{text}<br>",
+                     "<b>OD:</b> %{x:.3f}<br>",
+                     "<b>Inhibition:</b> %{y:.1f}%<br>",
+                     "<extra></extra>"
+                   ),
+                   text = ~LabID) %>%
+        layout(
+          xaxis = list(title = "OD Value"),
+          yaxis = list(title = "Inhibition (%)"),
+          shapes = list(
+            list(
+              type = "line",
+              x0 = 0, x1 = 1,
+              xref = "paper",
+              y0 = 30, y1 = 30,
+              line = list(color = "red", dash = "dash", width = 2)
+            )
+          )
+        )
+
+      p
+    })
+
+    # ========================================================================
+    # SECTION 2: FORMULA COMPARISON (moved from Samples)
+    # ========================================================================
+
+    output$plot_formula_agreement <- renderPlotly({
+      data <- ielisa_data()
+
+      if (!nrow(data)) {
+        return(plotly_empty("No data available"))
+      }
+
+      # LiTat 1.3
+      p1 <- plot_ly(data = data, x = ~pct_inh_f1_13, y = ~pct_inh_f2_13,
+                    type = "scatter", mode = "markers",
+                    marker = list(size = 8, opacity = 0.6, color = "#3498db"),
+                    name = "LiTat 1.3",
+                    hovertemplate = paste(
+                      "<b>LabID:</b> %{text}<br>",
+                      "<b>Formula 1:</b> %{x:.1f}%<br>",
+                      "<b>Formula 2:</b> %{y:.1f}%<br>",
+                      "<extra></extra>"
+                    ),
+                    text = ~LabID)
+
+      # LiTat 1.5
+      p2 <- plot_ly(data = data, x = ~pct_inh_f1_15, y = ~pct_inh_f2_15,
+                    type = "scatter", mode = "markers",
+                    marker = list(size = 8, opacity = 0.6, color = "#e74c3c"),
+                    name = "LiTat 1.5",
+                    hovertemplate = paste(
+                      "<b>LabID:</b> %{text}<br>",
+                      "<b>Formula 1:</b> %{x:.1f}%<br>",
+                      "<b>Formula 2:</b> %{y:.1f}%<br>",
+                      "<extra></extra>"
+                    ),
+                    text = ~LabID)
+
+      # Combine and add identity line
+      subplot(p1, p2, nrows = 1, shareX = TRUE, shareY = TRUE) %>%
+        layout(
+          xaxis = list(title = "Formula 1 Inhibition (%)"),
+          yaxis = list(title = "Formula 2 Inhibition (%)"),
+          shapes = list(
+            list(
+              type = "line",
+              x0 = 0, x1 = 100,
+              y0 = 0, y1 = 100,
+              line = list(color = "gray", dash = "dash")
+            )
+          )
+        )
+    })
+
+    # ========================================================================
+    # SECTION 3: MULTIPLE TESTING (existing duplicate analysis, renamed)
     # ========================================================================
 
     duplicate_data <- reactive({
@@ -133,10 +357,6 @@ mod_ielisa_analysis_server <- function(id, ielisa_data) {
         )
     })
 
-    # ========================================================================
-    # CONFLICT ANALYSIS
-    # ========================================================================
-
     conflict_data <- reactive({
       data <- ielisa_data()
 
@@ -166,10 +386,6 @@ mod_ielisa_analysis_server <- function(id, ielisa_data) {
         labid_conflicts = labid_conflicts
       )
     })
-
-    # ========================================================================
-    # DUPLICATE KPIs
-    # ========================================================================
 
     output$duplicate_kpis <- renderUI({
       dup_data <- duplicate_data()
@@ -233,16 +449,12 @@ mod_ielisa_analysis_server <- function(id, ielisa_data) {
       )
     })
 
-    # ========================================================================
-    # DUPLICATES TABLE
-    # ========================================================================
-
     output$duplicates_table <- renderDT({
       dup_summ <- duplicate_summary()
 
       if (!nrow(dup_summ)) {
         return(datatable(
-          tibble(Message = "No duplicate samples found"),
+          tibble(Message = "No samples tested multiple times"),
           options = list(dom = 't'),
           rownames = FALSE
         ))
@@ -297,10 +509,6 @@ mod_ielisa_analysis_server <- function(id, ielisa_data) {
         )
     })
 
-    # ========================================================================
-    # CONFLICT WARNINGS
-    # ========================================================================
-
     output$conflict_warnings <- renderUI({
       conflicts <- conflict_data()
 
@@ -334,7 +542,8 @@ mod_ielisa_analysis_server <- function(id, ielisa_data) {
                   summarise(Barcodes = paste(unique(Barcode), collapse = ", ")) %>%
                   mutate(text = sprintf("%s → %s", LabID, Barcodes)) %>%
                   pull(text),
-                collapse = "\n"
+                collapse = "
+"
               )
             )
           )
@@ -355,17 +564,14 @@ mod_ielisa_analysis_server <- function(id, ielisa_data) {
                   summarise(LabIDs = paste(unique(LabID), collapse = ", ")) %>%
                   mutate(text = sprintf("%s → %s", Barcode, LabIDs)) %>%
                   pull(text),
-                collapse = "\n"
+                collapse = "
+"
               )
             )
           )
         }
       )
     })
-
-    # ========================================================================
-    # DUPLICATE AGREEMENT PLOTS
-    # ========================================================================
 
     output$plot_dup_agreement_13 <- renderPlotly({
       dup_data <- duplicate_data()
@@ -386,7 +592,7 @@ mod_ielisa_analysis_server <- function(id, ielisa_data) {
         )
 
       if (!nrow(dup_pairs)) {
-        return(plotly_empty("No paired duplicate tests found"))
+        return(plotly_empty("No paired tests found"))
       }
 
       p <- plot_ly(data = dup_pairs, x = ~test1, y = ~test2,
@@ -444,7 +650,7 @@ mod_ielisa_analysis_server <- function(id, ielisa_data) {
         )
 
       if (!nrow(dup_pairs)) {
-        return(plotly_empty("No paired duplicate tests found"))
+        return(plotly_empty("No paired tests found"))
       }
 
       p <- plot_ly(data = dup_pairs, x = ~test1, y = ~test2,
@@ -484,7 +690,7 @@ mod_ielisa_analysis_server <- function(id, ielisa_data) {
     })
 
     # ========================================================================
-    # EXPORT HANDLERS
+    # SECTION 4: EXPORT HANDLERS
     # ========================================================================
 
     output$export_full <- downloadHandler(

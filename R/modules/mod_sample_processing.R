@@ -254,9 +254,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           summarise(
             has_mic = TRUE,
             n_mic_tests = n(),
-            mic_positive = any(result_category %in% c("TNA Positive", "DNA Only Positive", "RNA Only Positive"), na.rm = TRUE),
-            mic_result = first(result_category),
-            mic_qc_pass = all(qc_overall_pass, na.rm = TRUE),
+            mic_positive = any(FinalCall %in% c("Positive", "Positive_DNA", "Positive_RNA"), na.rm = TRUE),
+            mic_result = first(FinalCall),
+            mic_qc_pass = all(QC_Pass_Count > 0, na.rm = TRUE),
             .groups = "drop"
           )
 

@@ -21,19 +21,18 @@ suppressPackageStartupMessages({
 })
 
 # Source modular pipeline components
-# Use paths relative to the application root (global environment)
-if (!exists("ingest_mic")) {
-  source(file.path("R", "modules", "mic", "ingest_mic.R"))
-}
-if (!exists("qc_mic")) {
-  source(file.path("R", "modules", "mic", "qc_mic.R"))
-}
-if (!exists("interpret_mic")) {
-  source(file.path("R", "modules", "mic", "interpret_mic.R"))
-}
-if (!exists("process_mic_file")) {
-  source(file.path("R", "modules", "mic", "output_mic.R"))
-}
+# Note: These files are sourced when this file is loaded by global.R
+# The working directory should be the app root at that time
+
+tryCatch({
+  source("R/modules/mic/ingest_mic.R")
+  source("R/modules/mic/qc_mic.R")
+  source("R/modules/mic/interpret_mic.R")
+  source("R/modules/mic/output_mic.R")
+}, error = function(e) {
+  warning(sprintf("Failed to source MIC modular files: %s", e$message))
+  warning("MIC module will not work properly!")
+})
 
 mic_log <- function(..., .sep = "", .appendLF = TRUE) {
   if (isTRUE(getOption("mic.verbose", FALSE))) {

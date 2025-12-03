@@ -104,7 +104,7 @@ calc_pos_control_inhibition <- function(od_pos, od_neg) {
 #' @param controls_with_stats Controls with calculated means and CVs
 #' @param qc_settings QC threshold settings
 #' @return Controls with QC flags added
-validate_controls <- function(controls_with_stats, qc_settings) {
+validate_ielisa_controls <- function(controls_with_stats, qc_settings) {
   controls_with_stats %>%
     mutate(
       # Calculate POS control inhibition (using Formula 1)
@@ -149,7 +149,7 @@ qc_ielisa <- function(ingestion_data, qc_settings = NULL) {
   controls_with_stats <- calculate_control_stats(ingestion_data$controls)
 
   # Validate controls
-  controls_validated <- validate_controls(controls_with_stats, qc_settings)
+  controls_validated <- validate_ielisa_controls(controls_with_stats, qc_settings)
 
   # Report QC results
   cat(sprintf("  ✓ LiTat 1.3 - NEG OD: %.3f (CV: %.1f%%), POS inhibition: %.1f%%\n",

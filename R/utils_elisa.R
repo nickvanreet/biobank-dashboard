@@ -51,6 +51,8 @@ add_screening_numbers <- function(elisa_data) {
       ))
   }
 
+  start_time <- Sys.time()
+
   # Only process samples (not controls)
   samples <- elisa_data %>%
     filter(sample_type == "sample")
@@ -58,21 +60,29 @@ add_screening_numbers <- function(elisa_data) {
   controls <- elisa_data %>%
     filter(sample_type != "sample")
 
+  message("  → Split samples/controls: ", round(difftime(Sys.time(), start_time, units = "secs"), 2), "s")
+
   # For samples, add screening numbers
   if (nrow(samples) > 0) {
+    norm_start <- Sys.time()
+
     # Check if normalized columns already exist (from link_elisa_to_biobank)
     # If not, compute them (fallback for standalone use)
     if (!"barcode_norm" %in% names(samples) || !"numero_norm" %in% names(samples)) {
+      message("  → WARNING: Normalized columns missing, computing them (", nrow(samples), " rows)...")
       samples <- samples %>%
         mutate(
           barcode_norm = .norm_key(code_barres_kps, "barcode"),
           numero_norm = .norm_key(numero_labo, "labid")
         )
       remove_norm_cols <- TRUE
+      message("  → Normalization: ", round(difftime(Sys.time(), norm_start, units = "secs"), 2), "s")
     } else {
+      message("  → Using pre-computed normalized columns ✓")
       remove_norm_cols <- FALSE
     }
 
+    group_start <- Sys.time()
     samples <- samples %>%
       mutate(
         # Reuse pre-computed normalized IDs (much faster!)
@@ -86,6 +96,8 @@ add_screening_numbers <- function(elisa_data) {
       ) %>%
       ungroup() %>%
       select(-sample_id)
+
+    message("  → Group/arrange/rank: ", round(difftime(Sys.time(), group_start, units = "secs"), 2), "s")
 
     # Clean up temporary norm columns if we created them
     if (remove_norm_cols) {
@@ -103,8 +115,13 @@ add_screening_numbers <- function(elisa_data) {
   }
 
   # Recombine
-  bind_rows(samples, controls) %>%
+  combine_start <- Sys.time()
+  result <- bind_rows(samples, controls) %>%
     arrange(plate_date, plate_id, sample)
+  message("  → Combine & final arrange: ", round(difftime(Sys.time(), combine_start, units = "secs"), 2), "s")
+  message("  → TOTAL TIME: ", round(difftime(Sys.time(), start_time, units = "secs"), 2), "s")
+
+  result
 }
 
 # ============================================================================

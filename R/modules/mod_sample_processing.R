@@ -302,6 +302,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
               has_mic = TRUE,
               n_mic_tests = n(),
               # FinalCall contains: "Positive" (TNA), "Positive_DNA", "Positive_RNA", "LatePositive", "Negative", "Invalid_NoDNA", "Indeterminate"
+              # Collect all individual results
+              mic_results = paste(FinalCall, collapse = ", "),
               mic_positive = any(FinalCall == "Positive", na.rm = TRUE),
               mic_positive_dna = any(FinalCall == "Positive_DNA", na.rm = TRUE),
               mic_positive_rna = any(FinalCall == "Positive_RNA", na.rm = TRUE),
@@ -324,6 +326,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             left_join(mic_summary, by = "sample_id") %>%
             mutate(
               has_mic = replace_na(has_mic, FALSE),
+              mic_results = replace_na(mic_results, "-"),
               mic_positive = replace_na(mic_positive, FALSE),
               mic_positive_dna = replace_na(mic_positive_dna, FALSE),
               mic_positive_rna = replace_na(mic_positive_rna, FALSE),
@@ -338,6 +341,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             mutate(
               has_mic = FALSE,
               n_mic_tests = 0,
+              mic_results = "-",
               mic_positive = FALSE,
               mic_positive_dna = FALSE,
               mic_positive_rna = FALSE,
@@ -354,6 +358,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           mutate(
             has_mic = FALSE,
             n_mic_tests = 0,
+            mic_results = "-",
             mic_positive = FALSE,
             mic_positive_dna = FALSE,
             mic_positive_rna = FALSE,
@@ -379,6 +384,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           summarise(
             has_elisa_pe = TRUE,
             n_elisa_pe_tests = n(),
+            # Collect all individual results (POS/NEG)
+            elisa_pe_results = paste(ifelse(sample_positive, "POS", "NEG"), collapse = ", "),
             elisa_pe_positive = any(sample_positive, na.rm = TRUE),
             elisa_pe_qc_pass = all(qc_overall, na.rm = TRUE),
             elisa_pe_dod = mean(DOD, na.rm = TRUE),
@@ -389,6 +396,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           left_join(elisa_pe_summary, by = "sample_id") %>%
           mutate(
             has_elisa_pe = replace_na(has_elisa_pe, FALSE),
+            elisa_pe_results = replace_na(elisa_pe_results, "-"),
             elisa_pe_positive = replace_na(elisa_pe_positive, FALSE),
             elisa_pe_qc_pass = replace_na(elisa_pe_qc_pass, TRUE)
           )
@@ -397,6 +405,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           mutate(
             has_elisa_pe = FALSE,
             n_elisa_pe_tests = 0,
+            elisa_pe_results = "-",
             elisa_pe_positive = FALSE,
             elisa_pe_qc_pass = TRUE,
             elisa_pe_dod = NA_real_
@@ -416,6 +425,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           summarise(
             has_elisa_vsg = TRUE,
             n_elisa_vsg_tests = n(),
+            # Collect all individual results (POS/NEG)
+            elisa_vsg_results = paste(ifelse(sample_positive, "POS", "NEG"), collapse = ", "),
             elisa_vsg_positive = any(sample_positive, na.rm = TRUE),
             elisa_vsg_qc_pass = all(qc_overall, na.rm = TRUE),
             elisa_vsg_dod = mean(DOD, na.rm = TRUE),
@@ -426,6 +437,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           left_join(elisa_vsg_summary, by = "sample_id") %>%
           mutate(
             has_elisa_vsg = replace_na(has_elisa_vsg, FALSE),
+            elisa_vsg_results = replace_na(elisa_vsg_results, "-"),
             elisa_vsg_positive = replace_na(elisa_vsg_positive, FALSE),
             elisa_vsg_qc_pass = replace_na(elisa_vsg_qc_pass, TRUE)
           )
@@ -434,6 +446,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           mutate(
             has_elisa_vsg = FALSE,
             n_elisa_vsg_tests = 0,
+            elisa_vsg_results = "-",
             elisa_vsg_positive = FALSE,
             elisa_vsg_qc_pass = TRUE,
             elisa_vsg_dod = NA_real_
@@ -451,6 +464,11 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           summarise(
             has_ielisa = TRUE,
             n_ielisa_tests = n(),
+            # Collect all individual results (showing L13/L15 separately)
+            ielisa_results = paste(
+              ifelse(positive_L13 | positive_L15, "POS", "NEG"),
+              collapse = ", "
+            ),
             ielisa_positive = any(positive_L13 | positive_L15, na.rm = TRUE),
             ielisa_l13_positive = any(positive_L13, na.rm = TRUE),
             ielisa_l15_positive = any(positive_L15, na.rm = TRUE),
@@ -461,6 +479,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           left_join(ielisa_summary, by = "sample_id") %>%
           mutate(
             has_ielisa = replace_na(has_ielisa, FALSE),
+            ielisa_results = replace_na(ielisa_results, "-"),
             ielisa_positive = replace_na(ielisa_positive, FALSE)
           )
       } else {
@@ -468,6 +487,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           mutate(
             has_ielisa = FALSE,
             n_ielisa_tests = 0,
+            ielisa_results = "-",
             ielisa_positive = FALSE,
             ielisa_l13_positive = FALSE,
             ielisa_l15_positive = FALSE
@@ -750,82 +770,39 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           processing_status,
           processing_stage,
           has_extraction,
-          has_mic,
-          mic_result,
-          has_elisa_pe,
-          elisa_pe_positive,
-          has_elisa_vsg,
-          elisa_vsg_positive,
-          has_ielisa,
-          ielisa_positive,
           n_mic_tests,
+          mic_results,
           n_elisa_pe_tests,
+          elisa_pe_results,
           n_elisa_vsg_tests,
+          elisa_vsg_results,
           n_ielisa_tests,
+          ielisa_results,
           any_positive,
           overall_qc_pass
         ) %>%
         mutate(
-          # Format test results with ✓/✗ (use original boolean values)
-          elisa_pe_result = case_when(
-            !has_elisa_pe ~ "-",
-            elisa_pe_positive ~ "✓",
-            TRUE ~ "✗"
-          ),
-          elisa_vsg_result = case_when(
-            !has_elisa_vsg ~ "-",
-            elisa_vsg_positive ~ "✓",
-            TRUE ~ "✗"
-          ),
-          ielisa_result = case_when(
-            !has_ielisa ~ "-",
-            ielisa_positive ~ "✓",
-            TRUE ~ "✗"
-          ),
-          # Now convert has_* columns to symbols
+          # Convert extraction to ✓/✗ (keep this one as is)
           has_extraction = ifelse(has_extraction, "✓", "✗"),
-          has_mic = ifelse(has_mic, "✓", "✗"),
-          has_elisa_pe = ifelse(has_elisa_pe, "✓", "✗"),
-          has_elisa_vsg = ifelse(has_elisa_vsg, "✓", "✗"),
-          has_ielisa = ifelse(has_ielisa, "✓", "✗"),
+          # Show test counts (number of tests performed, or "-" if none)
+          n_mic_tests = ifelse(is.na(n_mic_tests) | n_mic_tests == 0, "-", as.character(n_mic_tests)),
+          n_elisa_pe_tests = ifelse(is.na(n_elisa_pe_tests) | n_elisa_pe_tests == 0, "-", as.character(n_elisa_pe_tests)),
+          n_elisa_vsg_tests = ifelse(is.na(n_elisa_vsg_tests) | n_elisa_vsg_tests == 0, "-", as.character(n_elisa_vsg_tests)),
+          n_ielisa_tests = ifelse(is.na(n_ielisa_tests) | n_ielisa_tests == 0, "-", as.character(n_ielisa_tests)),
+          # Results are already in POS/NEG/- format from aggregation
           any_positive = ifelse(any_positive, "YES", "NO"),
           overall_qc_pass = ifelse(overall_qc_pass, "PASS", "FAIL")
-        ) %>%
-        # Create replicates count summary (separate step for clarity)
-        rowwise() %>%
-        mutate(
-          replicates = {
-            parts <- c()
-            if (!is.na(n_mic_tests) && n_mic_tests > 0) {
-              parts <- c(parts, sprintf("MIC:%d", n_mic_tests))
-            }
-            if (!is.na(n_elisa_pe_tests) && n_elisa_pe_tests > 0) {
-              parts <- c(parts, sprintf("PE:%d", n_elisa_pe_tests))
-            }
-            if (!is.na(n_elisa_vsg_tests) && n_elisa_vsg_tests > 0) {
-              parts <- c(parts, sprintf("VSG:%d", n_elisa_vsg_tests))
-            }
-            if (!is.na(n_ielisa_tests) && n_ielisa_tests > 0) {
-              parts <- c(parts, sprintf("iELISA:%d", n_ielisa_tests))
-            }
-            if (length(parts) > 0) {
-              paste(parts, collapse = " | ")
-            } else {
-              "-"
-            }
-          }
-        ) %>%
-        ungroup() %>%
-        select(-n_mic_tests, -n_elisa_pe_tests, -n_elisa_vsg_tests, -n_ielisa_tests,
-               -elisa_pe_positive, -elisa_vsg_positive, -ielisa_positive)
+        )
 
       # Rename columns
       names(display_data) <- c(
         "Barcode", "Lab ID", "Province", "Health Zone",
-        "Status", "Stage", "Extracted", "MIC", "MIC Result",
-        "ELISA PE", "ELISA VSG", "iELISA",
-        "PE Result", "VSG Result", "iELISA Result",
-        "Replicates", "Any Positive", "QC Status"
+        "Status", "Stage", "Extracted",
+        "MIC Tests", "MIC Results",
+        "ELISA PE Tests", "ELISA PE Results",
+        "ELISA VSG Tests", "ELISA VSG Results",
+        "iELISA Tests", "iELISA Results",
+        "Any Positive", "QC Status"
       )
 
       datatable(
@@ -854,28 +831,6 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         formatStyle(
           "QC Status",
           backgroundColor = styleEqual(c("PASS", "FAIL"), c('#d4edda', '#f8d7da'))
-        ) %>%
-        formatStyle(
-          "MIC Result",
-          backgroundColor = styleEqual(
-            c("Positive", "Positive_DNA", "Positive_RNA", "Negative", "LatePositive"),
-            c('#f8d7da', '#f8d7da', '#f8d7da', '#d4edda', '#f8d7da')
-          )
-        ) %>%
-        formatStyle(
-          "PE Result",
-          backgroundColor = styleEqual(c("✓", "✗", "-"), c('#f8d7da', '#d4edda', '#f8f9fa')),
-          fontWeight = "bold"
-        ) %>%
-        formatStyle(
-          "VSG Result",
-          backgroundColor = styleEqual(c("✓", "✗", "-"), c('#f8d7da', '#d4edda', '#f8f9fa')),
-          fontWeight = "bold"
-        ) %>%
-        formatStyle(
-          "iELISA Result",
-          backgroundColor = styleEqual(c("✓", "✗", "-"), c('#f8d7da', '#d4edda', '#f8f9fa')),
-          fontWeight = "bold"
         ) %>%
         formatStyle(
           "Status",

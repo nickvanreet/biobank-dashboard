@@ -267,26 +267,41 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         ) %>%
         mutate(
           # Replace NA with high Cq value to show "no detection" on plot
-          Cq_median_177T_plot = if_else(is.na(Cq_median_177T), 45.0, Cq_median_177T),
-          Cq_median_18S2_plot = if_else(is.na(Cq_median_18S2), 45.0, Cq_median_18S2)
+          Cq_median_177T_plot = if_else(is.na(Cq_median_177T), 40.0, Cq_median_177T),
+          Cq_median_18S2_plot = if_else(is.na(Cq_median_18S2), 40.0, Cq_median_18S2)
         )
 
       if (!nrow(df)) {
         return(plotly_empty() %>% layout(title = "No samples with 177T or 18S2 data"))
       }
 
-      # Prepare hover text with proper NA handling
+      # Check if TestNumber column exists to identify retested samples
+      has_test_number <- "TestNumber" %in% names(df)
+
+      # Prepare hover text with proper NA handling and test info
       df <- df %>%
         mutate(
           hover_text = paste0(
             "<b>", SampleName, "</b><br>",
             "177T Cq: ", if_else(is.na(Cq_median_177T), "No detection", sprintf("%.2f", Cq_median_177T)), "<br>",
-            "18S2 Cq: ", if_else(is.na(Cq_median_18S2), "No detection", sprintf("%.2f", Cq_median_18S2))
-          )
+            "18S2 Cq: ", if_else(is.na(Cq_median_18S2), "No detection", sprintf("%.2f", Cq_median_18S2)),
+            if (has_test_number) paste0("<br>Test #: ", TestNumber) else ""
+          ),
+          # Determine marker shape based on whether sample was retested
+          marker_symbol = if (has_test_number && "SampleID" %in% names(.)) {
+            # Count how many times each sample was tested
+            sample_key <- if ("SampleID" %in% names(.)) SampleID else SampleName
+            test_count <- ave(rep(1, n()), sample_key, FUN = length)
+            if_else(test_count > 1, "diamond", "circle")
+          } else {
+            "circle"
+          }
         )
 
       plot_ly(df, x = ~Cq_median_177T_plot, y = ~Cq_median_18S2_plot,
               color = ~FinalCall,
+              symbol = ~marker_symbol,
+              symbols = c("circle" = "circle", "diamond" = "diamond"),
               colors = c(
                 "Positive" = "#27ae60",
                 "Positive_DNA" = "#3498db",
@@ -297,8 +312,8 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
                 "Invalid_NoDNA" = "#e74c3c"
               ),
               type = 'scatter', mode = 'markers',
-              text = ~hover_text,
-              hovertemplate = "%{text}<extra></extra>",
+              hovertext = ~hover_text,
+              hoverinfo = 'text',
               marker = list(size = 10, opacity = 0.7)) %>%
         layout(
           xaxis = list(title = "177T Cq (DNA)"),

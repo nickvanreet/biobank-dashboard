@@ -8,55 +8,34 @@ source("global.R")
 # USER INTERFACE
 # ============================================================================
 
-# Build UI with dynamic MIC panels
-mic_panels <- mod_mic_qpcr_ui("mic_qpcr")  # Returns list of nav_panels
-
-# Create compact header with site information
-current_site_info <- config$sites[[config$current_site]]
-app_header <- tags$div(
-  style = "display: flex; align-items: center; gap: 8px;",
-  tags$span(
-    icon("dna"),
-    style = "font-size: 1.1rem; color: #4F46E5;"
-  ),
-  tags$span(
-    paste0(current_site_info$short_name, " - ", current_site_info$location),
-    style = "font-weight: 600; font-size: 1rem; letter-spacing: -0.01em;"
-  )
-)
-
 ui <- do.call(
   page_navbar,
   c(
     list(
-      title = app_header,
+      title = config$app$title,
       theme = app_theme,
-      sidebar = mod_data_manager_ui("data_manager"),
-      fillable = TRUE,
-      bg = "#ffffff",
-      position = "fixed-top"
+
+      # Sidebar with data loading and filters
+      sidebar = mod_data_manager_ui("data_manager")
     ),
+
     # Navigation panels
     list(
       mod_data_quality_ui("data_quality"),
       mod_overview_assays_ui("overview_assays"),
       mod_overview_demographics_ui("overview_demographics"),
       mod_transport_ui("transport"),
-      mod_extractions_ui("extractions")
-    ),
-    # Add MIC panels dynamically
-    mic_panels,
-    # Remaining panels
-    list(
+      mod_extractions_ui("extractions"),
+      mod_mic_qpcr_coordinator_ui("mic"),
+      mod_ielisa_coordinator_ui("ielisa"),
       mod_elisa_pe_ui("elisa_pe"),
       mod_elisa_vsg_ui("elisa_vsg"),
-      mod_ielisa_ui("ielisa"),
-      mod_elisa_concordance_ui("elisa_concordance"),
+      mod_elisa_concordance_ui("concordance"),
       mod_drs_rnasep_ui("drs_rnasep"),
       # New comprehensive analysis modules
       mod_sample_journey_ui("sample_journey"),
       mod_sample_processing_ui("sample_processing"),
-      mod_concordance_ui("concordance")
+      mod_concordance_ui("concordance_analysis")
     )
   )
 )
@@ -77,12 +56,6 @@ server <- function(input, output, session) {
     clean_data = data$clean_data,
     quality_report = data$quality_report
   )
-  
-  # Pass data to overview & demographics module
-  mod_overview_demographics_server(
-    "overview_demographics",
-    filtered_data = data$filtered_data
-  )
 
   mod_overview_assays_server(
     "overview_assays",
@@ -91,6 +64,12 @@ server <- function(input, output, session) {
     ielisa_df = data$ielisa_data,
     mic_df = data$mic_data,
     filters = data$filters
+  )
+
+  # Pass data to overview & demographics module
+  mod_overview_demographics_server(
+    "overview_demographics",
+    filtered_data = data$filtered_data
   )
 
   # Pass filtered data to transport module so visuals respect dashboard filters
@@ -106,47 +85,46 @@ server <- function(input, output, session) {
     biobank_data = data$clean_data
   )
 
-  # MIC qPCR module (uses coordinator pattern)
-  mic_data <- mod_mic_qpcr_server(
-    "mic_qpcr",
+  # MIC qPCR module - FIXED to use new coordinator architecture
+  mic_data <- mod_mic_qpcr_coordinator_server(
+    "mic",
+    biobank_df = data$clean_data,              # ← Biobank data from data manager
+    extractions_df = data$filtered_extractions, # ← Extractions data from data manager
+    filters = data$filters                      # ← Filters from data manager (FIXED)
+  )
+
+  # iELISA module - Inhibition ELISA for LiTat 1.3 and 1.5
+  ielisa_data <- mod_ielisa_coordinator_server(
+    "ielisa",
     biobank_df = data$clean_data,
-    extractions_df = data$filtered_extractions,
     filters = data$filters
   )
 
-  # ELISA modules (rebuilt with coordinator pattern)
+  # ELISA modules - using new coordinator architecture (capture return values for downstream modules)
   elisa_pe_data <- mod_elisa_pe_server(
     "elisa_pe",
     biobank_df = data$clean_data,
     filters = data$filters
   )
-
   elisa_vsg_data <- mod_elisa_vsg_server(
     "elisa_vsg",
     biobank_df = data$clean_data,
     filters = data$filters
   )
 
-  # iELISA module (inhibition ELISA for LiTat 1.3 and 1.5)
-  ielisa_data <- mod_ielisa_server(
-    "ielisa",
+  # ELISA Concordance module (PE vs VSG comparison)
+  mod_elisa_concordance_server(
+    "concordance",
     biobank_df = data$clean_data,
     filters = data$filters
   )
 
-  # ELISA Concordance module (compares PE and VSG results)
-  elisa_concordance_data <- mod_elisa_concordance_server(
-    "elisa_concordance",
-    biobank_df = data$clean_data,
-    filters = data$filters
-  )
-
-  # DRS volume vs RNAseP analysis module
+  # DRS vs RNAseP module
   mod_drs_rnasep_server(
     "drs_rnasep",
-    extractions_df = data$filtered_extractions,
-    qpcr_data = mic_data$qpcr_samples,  # Now linked to qPCR data from MIC module
-    filters = data$filters
+    extractions_df = data$filtered_extractions, # ← Extractions data from data manager
+    qpcr_data = mic_data$qpcr_samples,          # ← qPCR data from MIC module
+    filters = data$filters                      # ← Filters from data manager
   )
 
   # Sample Journey module (comprehensive sample tracking)
@@ -174,7 +152,7 @@ server <- function(input, output, session) {
 
   # Concordance Analysis module (comprehensive statistical analysis)
   mod_concordance_server(
-    "concordance",
+    "concordance_analysis",
     biobank_df = data$clean_data,
     mic_df = mic_data$qpcr_samples,
     elisa_pe_df = elisa_pe_data$samples,

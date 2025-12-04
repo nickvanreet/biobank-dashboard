@@ -816,7 +816,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         "ELISA PE Tests", "ELISA PE Results",
         "ELISA VSG Tests", "ELISA VSG Results",
         "iELISA Tests", "iELISA Results",
-        "Any Positive", "QC Status"
+        "Any Positive", "Overall QC"
       )
 
       datatable(
@@ -843,7 +843,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           fontWeight = "bold"
         ) %>%
         formatStyle(
-          "QC Status",
+          "Overall QC",
           backgroundColor = styleEqual(c("PASS", "FAIL"), c('#d4edda', '#f8d7da'))
         ) %>%
         formatStyle(
@@ -851,6 +851,94 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           backgroundColor = styleEqual(
             c("Positive", "Tested - Negative", "Limited Testing", "Awaiting Testing", "Not Processed"),
             c('#f8d7da', '#d4edda', '#fff3cd', '#cfe2ff', '#e9ecef')
+          )
+        ) %>%
+        # Color code MIC Results
+        formatStyle(
+          "MIC Results",
+          backgroundColor = JS(
+            "function(rowInfo, type, row) {
+              var value = rowInfo.value;
+              if (!value || value === '-' || value === '') return '';
+
+              var hasPositive = /Positive/i.test(value);
+              var hasNegative = /Negative/i.test(value);
+
+              if (hasPositive && hasNegative) {
+                return '#fff3cd'; // Yellow for conflicting results
+              } else if (hasPositive) {
+                return '#f8d7da'; // Red for positive
+              } else if (hasNegative) {
+                return '#d4edda'; // Green for negative
+              }
+              return '';
+            }"
+          )
+        ) %>%
+        # Color code ELISA PE Results
+        formatStyle(
+          "ELISA PE Results",
+          backgroundColor = JS(
+            "function(rowInfo, type, row) {
+              var value = rowInfo.value;
+              if (!value || value === '-' || value === '') return '';
+
+              var hasPos = /POS/i.test(value);
+              var hasNeg = /NEG/i.test(value);
+
+              if (hasPos && hasNeg) {
+                return '#fff3cd'; // Yellow for conflicting results
+              } else if (hasPos) {
+                return '#f8d7da'; // Red for positive
+              } else if (hasNeg) {
+                return '#d4edda'; // Green for negative
+              }
+              return '';
+            }"
+          )
+        ) %>%
+        # Color code ELISA VSG Results
+        formatStyle(
+          "ELISA VSG Results",
+          backgroundColor = JS(
+            "function(rowInfo, type, row) {
+              var value = rowInfo.value;
+              if (!value || value === '-' || value === '') return '';
+
+              var hasPos = /POS/i.test(value);
+              var hasNeg = /NEG/i.test(value);
+
+              if (hasPos && hasNeg) {
+                return '#fff3cd'; // Yellow for conflicting results
+              } else if (hasPos) {
+                return '#f8d7da'; // Red for positive
+              } else if (hasNeg) {
+                return '#d4edda'; // Green for negative
+              }
+              return '';
+            }"
+          )
+        ) %>%
+        # Color code iELISA Results
+        formatStyle(
+          "iELISA Results",
+          backgroundColor = JS(
+            "function(rowInfo, type, row) {
+              var value = rowInfo.value;
+              if (!value || value === '-' || value === '') return '';
+
+              var hasPos = /POS/i.test(value);
+              var hasNeg = /NEG/i.test(value);
+
+              if (hasPos && hasNeg) {
+                return '#fff3cd'; // Yellow for conflicting results
+              } else if (hasPos) {
+                return '#f8d7da'; // Red for positive
+              } else if (hasNeg) {
+                return '#d4edda'; // Green for negative
+              }
+              return '';
+            }"
           )
         )
     })

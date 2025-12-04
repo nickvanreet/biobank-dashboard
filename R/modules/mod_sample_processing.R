@@ -96,7 +96,9 @@ mod_sample_processing_ui <- function(id) {
                   "All Samples" = "all",
                   "Any Positive Result" = "any_positive",
                   "All Negative" = "all_negative",
-                  "MIC Positive" = "mic_positive",
+                  "MIC Positive (TNA)" = "mic_positive",
+                  "MIC Positive DNA" = "mic_positive_dna",
+                  "MIC Positive RNA" = "mic_positive_rna",
                   "ELISA Positive" = "elisa_positive",
                   "iELISA Positive" = "ielisa_positive"
                 ),
@@ -125,7 +127,9 @@ mod_sample_processing_ui <- function(id) {
                   "Extracted" = "has_extraction",
                   "Not Extracted" = "no_extraction",
                   "Has MIC Test" = "has_mic",
-                  "Has ELISA Test" = "has_elisa",
+                  "Has ELISA-PE Test" = "has_elisa_pe",
+                  "Has ELISA-VSG Test" = "has_elisa_vsg",
+                  "Has Any ELISA Test" = "has_elisa",
                   "Has iELISA Test" = "has_ielisa",
                   "Complete Testing" = "complete"
                 ),
@@ -297,11 +301,17 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             summarise(
               has_mic = TRUE,
               n_mic_tests = n(),
-              # FinalCall contains: "Positive", "LatePositive", "Negative", "Invalid_NoDNA", "Indeterminate"
-              # NOT "Positive_DNA" or "Positive_RNA" (those are in PipelineCategory)
+              # FinalCall contains: "Positive" (TNA), "Positive_DNA", "Positive_RNA", "LatePositive", "Negative", "Invalid_NoDNA", "Indeterminate"
               mic_positive = any(FinalCall == "Positive", na.rm = TRUE),
+              mic_positive_dna = any(FinalCall == "Positive_DNA", na.rm = TRUE),
+              mic_positive_rna = any(FinalCall == "Positive_RNA", na.rm = TRUE),
               mic_result = first(FinalCall),
               mic_qc_pass = all(QC_Pass_Count > 0, na.rm = TRUE),
+              # Replicate information
+              mic_wells_total = first(coalesce(ReplicatesTotal, 4)),
+              mic_wells_tna_positive = first(coalesce(Wells_TNA_Positive, 0)),
+              mic_wells_dna_positive = first(coalesce(Wells_DNA_Positive, 0)),
+              mic_wells_rna_positive = first(coalesce(Wells_RNA_Positive, 0)),
               .groups = "drop"
             )
         } else {
@@ -315,7 +325,13 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             mutate(
               has_mic = replace_na(has_mic, FALSE),
               mic_positive = replace_na(mic_positive, FALSE),
-              mic_qc_pass = replace_na(mic_qc_pass, TRUE)
+              mic_positive_dna = replace_na(mic_positive_dna, FALSE),
+              mic_positive_rna = replace_na(mic_positive_rna, FALSE),
+              mic_qc_pass = replace_na(mic_qc_pass, TRUE),
+              mic_wells_total = replace_na(mic_wells_total, 4),
+              mic_wells_tna_positive = replace_na(mic_wells_tna_positive, 0),
+              mic_wells_dna_positive = replace_na(mic_wells_dna_positive, 0),
+              mic_wells_rna_positive = replace_na(mic_wells_rna_positive, 0)
             )
         } else {
           samples <- samples %>%
@@ -323,8 +339,14 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
               has_mic = FALSE,
               n_mic_tests = 0,
               mic_positive = FALSE,
+              mic_positive_dna = FALSE,
+              mic_positive_rna = FALSE,
               mic_result = NA_character_,
-              mic_qc_pass = TRUE
+              mic_qc_pass = TRUE,
+              mic_wells_total = 4,
+              mic_wells_tna_positive = 0,
+              mic_wells_dna_positive = 0,
+              mic_wells_rna_positive = 0
             )
         }
       } else {
@@ -333,8 +355,14 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             has_mic = FALSE,
             n_mic_tests = 0,
             mic_positive = FALSE,
+            mic_positive_dna = FALSE,
+            mic_positive_rna = FALSE,
             mic_result = NA_character_,
-            mic_qc_pass = TRUE
+            mic_qc_pass = TRUE,
+            mic_wells_total = 4,
+            mic_wells_tna_positive = 0,
+            mic_wells_dna_positive = 0,
+            mic_wells_rna_positive = 0
           )
       }
 
@@ -449,8 +477,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       # Calculate composite fields
       samples <- samples %>%
         mutate(
-          # Any positive result across all tests
-          any_positive = mic_positive | elisa_pe_positive | elisa_vsg_positive | ielisa_positive,
+          # Any positive result across all tests (including DNA-only and RNA-only)
+          any_positive = mic_positive | mic_positive_dna | mic_positive_rna | elisa_pe_positive | elisa_vsg_positive | ielisa_positive,
 
           # Aggregate ELISA results
           elisa_positive = elisa_pe_positive | elisa_vsg_positive,
@@ -497,6 +525,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           "any_positive" = samples %>% filter(any_positive),
           "all_negative" = samples %>% filter(!any_positive),
           "mic_positive" = samples %>% filter(mic_positive),
+          "mic_positive_dna" = samples %>% filter(mic_positive_dna),
+          "mic_positive_rna" = samples %>% filter(mic_positive_rna),
           "elisa_positive" = samples %>% filter(elisa_positive),
           "ielisa_positive" = samples %>% filter(ielisa_positive),
           samples
@@ -520,6 +550,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           "has_extraction" = samples %>% filter(has_extraction),
           "no_extraction" = samples %>% filter(!has_extraction),
           "has_mic" = samples %>% filter(has_mic),
+          "has_elisa_pe" = samples %>% filter(has_elisa_pe),
+          "has_elisa_vsg" = samples %>% filter(has_elisa_vsg),
           "has_elisa" = samples %>% filter(has_elisa),
           "has_ielisa" = samples %>% filter(has_ielisa),
           "complete" = samples %>% filter(has_extraction & has_mic & has_elisa),
@@ -610,8 +642,36 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         ),
 
         value_box(
-          title = "Has ELISA Test",
-          value = sprintf("%d (%.1f%%)", n_elisa, 100 * n_elisa / max(n_total, 1)),
+          title = "MIC Positive (TNA)",
+          value = sprintf("%d (%.1f%%)", sum(samples$mic_positive, na.rm = TRUE), 100 * sum(samples$mic_positive, na.rm = TRUE) / max(n_total, 1)),
+          showcase = icon("check-circle"),
+          theme = if (sum(samples$mic_positive, na.rm = TRUE) > 0) "danger" else "secondary"
+        ),
+
+        value_box(
+          title = "MIC Positive DNA",
+          value = sprintf("%d (%.1f%%)", sum(samples$mic_positive_dna, na.rm = TRUE), 100 * sum(samples$mic_positive_dna, na.rm = TRUE) / max(n_total, 1)),
+          showcase = icon("dna"),
+          theme = if (sum(samples$mic_positive_dna, na.rm = TRUE) > 0) "warning" else "secondary"
+        ),
+
+        value_box(
+          title = "MIC Positive RNA",
+          value = sprintf("%d (%.1f%%)", sum(samples$mic_positive_rna, na.rm = TRUE), 100 * sum(samples$mic_positive_rna, na.rm = TRUE) / max(n_total, 1)),
+          showcase = icon("rna"),
+          theme = if (sum(samples$mic_positive_rna, na.rm = TRUE) > 0) "warning" else "secondary"
+        ),
+
+        value_box(
+          title = "Has ELISA-PE Test",
+          value = sprintf("%d (%.1f%%)", sum(samples$has_elisa_pe, na.rm = TRUE), 100 * sum(samples$has_elisa_pe, na.rm = TRUE) / max(n_total, 1)),
+          showcase = icon("vial-circle-check"),
+          theme = "info"
+        ),
+
+        value_box(
+          title = "Has ELISA-VSG Test",
+          value = sprintf("%d (%.1f%%)", sum(samples$has_elisa_vsg, na.rm = TRUE), 100 * sum(samples$has_elisa_vsg, na.rm = TRUE) / max(n_total, 1)),
           showcase = icon("vial-circle-check"),
           theme = "info"
         ),
@@ -713,6 +773,10 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           has_extraction,
           has_mic,
           mic_result,
+          mic_wells_tna_positive,
+          mic_wells_dna_positive,
+          mic_wells_rna_positive,
+          mic_wells_total,
           has_elisa_pe,
           elisa_pe_positive,
           has_elisa_vsg,
@@ -726,6 +790,15 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         mutate(
           has_extraction = ifelse(has_extraction, "✓", "✗"),
           has_mic = ifelse(has_mic, "✓", "✗"),
+          # Create replicate summary: "2/4 TNA, 3/4 DNA, 1/4 RNA"
+          mic_replicates = if_else(
+            has_mic == "✓",
+            sprintf("%d/%d TNA | %d/%d DNA | %d/%d RNA",
+                    mic_wells_tna_positive, mic_wells_total,
+                    mic_wells_dna_positive, mic_wells_total,
+                    mic_wells_rna_positive, mic_wells_total),
+            "-"
+          ),
           has_elisa_pe = ifelse(has_elisa_pe, "✓", "✗"),
           has_elisa_vsg = ifelse(has_elisa_vsg, "✓", "✗"),
           has_ielisa = ifelse(has_ielisa, "✓", "✗"),
@@ -734,12 +807,13 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           ielisa_positive = ifelse(ielisa_positive, "POS", "NEG"),
           any_positive = ifelse(any_positive, "YES", "NO"),
           overall_qc_pass = ifelse(overall_qc_pass, "PASS", "FAIL")
-        )
+        ) %>%
+        select(-mic_wells_tna_positive, -mic_wells_dna_positive, -mic_wells_rna_positive, -mic_wells_total)
 
       # Rename columns
       names(display_data) <- c(
         "Sample ID", "Barcode", "Lab ID", "Province", "Health Zone",
-        "Status", "Stage", "Extracted", "MIC", "MIC Result",
+        "Status", "Stage", "Extracted", "MIC", "MIC Result", "MIC Replicates",
         "ELISA PE", "PE Result", "ELISA VSG", "VSG Result",
         "iELISA", "iELISA Result", "Any Positive", "QC Status", "# Tests"
       )

@@ -788,12 +788,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           overall_qc_pass
         ) %>%
         mutate(
-          has_extraction = ifelse(has_extraction, "✓", "✗"),
-          has_mic = ifelse(has_mic, "✓", "✗"),
-          has_elisa_pe = ifelse(has_elisa_pe, "✓", "✗"),
-          has_elisa_vsg = ifelse(has_elisa_vsg, "✓", "✗"),
-          has_ielisa = ifelse(has_ielisa, "✓", "✗"),
-          # Format test results with ✓/✗
+          # Format test results with ✓/✗ (use original boolean values)
           elisa_pe_result = case_when(
             !has_elisa_pe ~ "-",
             elisa_pe_positive ~ "✓",
@@ -809,26 +804,40 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             ielisa_positive ~ "✓",
             TRUE ~ "✗"
           ),
-          # Create replicates count summary showing how many times each test was performed
-          replicates = case_when(
-            n_mic_tests > 0 | n_elisa_pe_tests > 0 | n_elisa_vsg_tests > 0 | n_ielisa_tests > 0 ~
-              paste0(
-                ifelse(n_mic_tests > 0, sprintf("MIC:%d", n_mic_tests), ""),
-                ifelse(n_elisa_pe_tests > 0,
-                       paste0(ifelse(n_mic_tests > 0, " | ", ""), sprintf("PE:%d", n_elisa_pe_tests)),
-                       ""),
-                ifelse(n_elisa_vsg_tests > 0,
-                       paste0(ifelse(n_mic_tests > 0 | n_elisa_pe_tests > 0, " | ", ""), sprintf("VSG:%d", n_elisa_vsg_tests)),
-                       ""),
-                ifelse(n_ielisa_tests > 0,
-                       paste0(ifelse(n_mic_tests > 0 | n_elisa_pe_tests > 0 | n_elisa_vsg_tests > 0, " | ", ""), sprintf("iELISA:%d", n_ielisa_tests)),
-                       "")
-              ),
-            TRUE ~ "-"
-          ),
+          # Now convert has_* columns to symbols
+          has_extraction = ifelse(has_extraction, "✓", "✗"),
+          has_mic = ifelse(has_mic, "✓", "✗"),
+          has_elisa_pe = ifelse(has_elisa_pe, "✓", "✗"),
+          has_elisa_vsg = ifelse(has_elisa_vsg, "✓", "✗"),
+          has_ielisa = ifelse(has_ielisa, "✓", "✗"),
           any_positive = ifelse(any_positive, "YES", "NO"),
           overall_qc_pass = ifelse(overall_qc_pass, "PASS", "FAIL")
         ) %>%
+        # Create replicates count summary (separate step for clarity)
+        rowwise() %>%
+        mutate(
+          replicates = {
+            parts <- c()
+            if (!is.na(n_mic_tests) && n_mic_tests > 0) {
+              parts <- c(parts, sprintf("MIC:%d", n_mic_tests))
+            }
+            if (!is.na(n_elisa_pe_tests) && n_elisa_pe_tests > 0) {
+              parts <- c(parts, sprintf("PE:%d", n_elisa_pe_tests))
+            }
+            if (!is.na(n_elisa_vsg_tests) && n_elisa_vsg_tests > 0) {
+              parts <- c(parts, sprintf("VSG:%d", n_elisa_vsg_tests))
+            }
+            if (!is.na(n_ielisa_tests) && n_ielisa_tests > 0) {
+              parts <- c(parts, sprintf("iELISA:%d", n_ielisa_tests))
+            }
+            if (length(parts) > 0) {
+              paste(parts, collapse = " | ")
+            } else {
+              "-"
+            }
+          }
+        ) %>%
+        ungroup() %>%
         select(-n_mic_tests, -n_elisa_pe_tests, -n_elisa_vsg_tests, -n_ielisa_tests,
                -elisa_pe_positive, -elisa_vsg_positive, -ielisa_positive)
 

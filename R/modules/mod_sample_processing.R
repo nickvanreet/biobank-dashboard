@@ -857,8 +857,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         formatStyle(
           "MIC Results",
           backgroundColor = JS(
-            "function(rowInfo, type, row) {
-              var value = rowInfo.value;
+            "function(value, type, row, meta) {
               if (!value || value === '-' || value === '') return '';
 
               var hasPositive = /Positive/i.test(value);
@@ -879,8 +878,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         formatStyle(
           "ELISA PE Results",
           backgroundColor = JS(
-            "function(rowInfo, type, row) {
-              var value = rowInfo.value;
+            "function(value, type, row, meta) {
               if (!value || value === '-' || value === '') return '';
 
               var hasPos = /POS/i.test(value);
@@ -901,8 +899,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         formatStyle(
           "ELISA VSG Results",
           backgroundColor = JS(
-            "function(rowInfo, type, row) {
-              var value = rowInfo.value;
+            "function(value, type, row, meta) {
               if (!value || value === '-' || value === '') return '';
 
               var hasPos = /POS/i.test(value);
@@ -923,8 +920,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         formatStyle(
           "iELISA Results",
           backgroundColor = JS(
-            "function(rowInfo, type, row) {
-              var value = rowInfo.value;
+            "function(value, type, row, meta) {
               if (!value || value === '-' || value === '') return '';
 
               var hasPos = /POS/i.test(value);

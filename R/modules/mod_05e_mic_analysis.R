@@ -262,16 +262,30 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
       
       df <- df %>%
         filter(
-          ControlType == "Sample", 
-          !is.na(Cq_median_177T), 
-          !is.na(Cq_median_18S2)
+          ControlType == "Sample",
+          !is.na(Cq_median_177T) | !is.na(Cq_median_18S2)
+        ) %>%
+        mutate(
+          # Replace NA with high Cq value to show "no detection" on plot
+          Cq_median_177T_plot = if_else(is.na(Cq_median_177T), 45.0, Cq_median_177T),
+          Cq_median_18S2_plot = if_else(is.na(Cq_median_18S2), 45.0, Cq_median_18S2)
         )
-      
+
       if (!nrow(df)) {
-        return(plotly_empty() %>% layout(title = "No samples with both 177T and 18S2 data"))
+        return(plotly_empty() %>% layout(title = "No samples with 177T or 18S2 data"))
       }
-      
-      plot_ly(df, x = ~Cq_median_177T, y = ~Cq_median_18S2,
+
+      # Prepare hover text with proper NA handling
+      df <- df %>%
+        mutate(
+          hover_text = paste0(
+            "<b>", SampleName, "</b><br>",
+            "177T Cq: ", if_else(is.na(Cq_median_177T), "No detection", sprintf("%.2f", Cq_median_177T)), "<br>",
+            "18S2 Cq: ", if_else(is.na(Cq_median_18S2), "No detection", sprintf("%.2f", Cq_median_18S2))
+          )
+        )
+
+      plot_ly(df, x = ~Cq_median_177T_plot, y = ~Cq_median_18S2_plot,
               color = ~FinalCall,
               colors = c(
                 "Positive" = "#27ae60",
@@ -283,13 +297,8 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
                 "Invalid_NoDNA" = "#e74c3c"
               ),
               type = 'scatter', mode = 'markers',
-              text = ~SampleName, 
-              hovertemplate = paste0(
-                "<b>%{text}</b><br>",
-                "177T Cq: %{x:.2f}<br>",
-                "18S2 Cq: %{y:.2f}<br>",
-                "<extra></extra>"
-              ),
+              text = ~hover_text,
+              hovertemplate = "%{text}<extra></extra>",
               marker = list(size = 10, opacity = 0.7)) %>%
         layout(
           xaxis = list(title = "177T Cq (DNA)"),

@@ -554,7 +554,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
     # ========================================================================
 
     output$summary_kpis <- renderUI({
-      samples <- filtered_samples()
+      samples <- comprehensive_samples()
 
       # Safety check
       if (is.null(samples) || nrow(samples) == 0) {

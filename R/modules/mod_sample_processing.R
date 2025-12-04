@@ -244,31 +244,89 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
 
       # Add MIC test info
       if (nrow(mic_data) > 0) {
-        mic_summary <- mic_data %>%
+        # MIC uses lab numbers (SampleID = "1", "2", "3"), not barcodes
+        # We need to create a lookup from biobank data to match lab numbers to barcodes
+        biobank_lookup <- NULL
+        if (nrow(biobank) > 0) {
+          # Extract lab numbers from biobank
+          biobank_lab_numbers_raw <- coalesce(
+            biobank$numero_labo,
+            biobank$lab_id,
+            biobank$numero
+          )
+          # Normalize lab numbers (just trim and lowercase: "1" → "1")
+          biobank_lab_numbers_norm <- sapply(biobank_lab_numbers_raw, function(x) {
+            if (is.na(x) || x == "") return(NA_character_)
+            trimws(tolower(as.character(x)))
+          })
+
+          biobank_lookup <- tibble(
+            lab_number_norm = biobank_lab_numbers_norm,
+            sample_id = samples$sample_id
+          ) %>%
+            filter(!is.na(lab_number_norm) & lab_number_norm != "" &
+                   !is.na(sample_id) & sample_id != "") %>%
+            distinct(lab_number_norm, .keep_all = TRUE)
+        }
+
+        # Extract lab numbers from MIC data
+        mic_lab_numbers_raw <- coalesce(
+          mic_data$SampleID,
+          mic_data$SampleName,
+          mic_data$Name
+        )
+        mic_lab_numbers_norm <- sapply(mic_lab_numbers_raw, function(x) {
+          if (is.na(x) || x == "") return(NA_character_)
+          trimws(tolower(as.character(x)))
+        })
+
+        # Create MIC data frame with lab numbers
+        mic_with_lab_numbers <- mic_data %>%
           mutate(
-            # MIC uses SampleID column
-            sample_id = normalize_sample_id(barcode = SampleID),
+            lab_number_norm = mic_lab_numbers_norm,
             # Calculate QC_Pass_Count from available columns
             QC_Pass_Count = coalesce(ReplicatesTotal, 4) - coalesce(Replicates_Failed, 0)
-          ) %>%
-          filter(!is.na(sample_id) & sample_id != "") %>%
-          group_by(sample_id) %>%
-          summarise(
-            has_mic = TRUE,
-            n_mic_tests = n(),
-            mic_positive = any(FinalCall %in% c("Positive", "Positive_DNA", "Positive_RNA"), na.rm = TRUE),
-            mic_result = first(FinalCall),
-            mic_qc_pass = all(QC_Pass_Count > 0, na.rm = TRUE),
-            .groups = "drop"
           )
 
-        samples <- samples %>%
-          left_join(mic_summary, by = "sample_id") %>%
-          mutate(
-            has_mic = replace_na(has_mic, FALSE),
-            mic_positive = replace_na(mic_positive, FALSE),
-            mic_qc_pass = replace_na(mic_qc_pass, TRUE)
-          )
+        # Join with biobank lookup to convert lab numbers → barcodes
+        if (!is.null(biobank_lookup) && nrow(biobank_lookup) > 0) {
+          mic_summary <- mic_with_lab_numbers %>%
+            left_join(biobank_lookup, by = "lab_number_norm") %>%
+            filter(!is.na(sample_id) & sample_id != "") %>%
+            group_by(sample_id) %>%
+            summarise(
+              has_mic = TRUE,
+              n_mic_tests = n(),
+              # FinalCall contains: "Positive", "LatePositive", "Negative", "Invalid_NoDNA", "Indeterminate"
+              # NOT "Positive_DNA" or "Positive_RNA" (those are in PipelineCategory)
+              mic_positive = any(FinalCall == "Positive", na.rm = TRUE),
+              mic_result = first(FinalCall),
+              mic_qc_pass = all(QC_Pass_Count > 0, na.rm = TRUE),
+              .groups = "drop"
+            )
+        } else {
+          # No biobank lookup available - can't match MIC samples
+          mic_summary <- tibble()
+        }
+
+        if (nrow(mic_summary) > 0) {
+          samples <- samples %>%
+            left_join(mic_summary, by = "sample_id") %>%
+            mutate(
+              has_mic = replace_na(has_mic, FALSE),
+              mic_positive = replace_na(mic_positive, FALSE),
+              mic_qc_pass = replace_na(mic_qc_pass, TRUE)
+            )
+        } else {
+          samples <- samples %>%
+            mutate(
+              has_mic = FALSE,
+              n_mic_tests = 0,
+              mic_positive = FALSE,
+              mic_result = NA_character_,
+              mic_qc_pass = TRUE
+            )
+        }
       } else {
         samples <- samples %>%
           mutate(

@@ -302,8 +302,16 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
               has_mic = TRUE,
               n_mic_tests = n(),
               # FinalCall contains: "Positive" (TNA), "Positive_DNA", "Positive_RNA", "LatePositive", "Negative", "Invalid_NoDNA", "Indeterminate"
-              # Collect all individual results
-              mic_results = paste(FinalCall, collapse = ", "),
+              # Convert to simplified symbols: + for positive, - for negative, ? for indeterminate
+              mic_results = paste(
+                case_when(
+                  FinalCall %in% c("Positive", "Positive_DNA", "Positive_RNA", "LatePositive") ~ "+",
+                  FinalCall == "Negative" ~ "-",
+                  FinalCall %in% c("Indeterminate", "Invalid_NoDNA") ~ "?",
+                  TRUE ~ FinalCall
+                ),
+                collapse = ", "
+              ),
               mic_positive = any(FinalCall == "Positive", na.rm = TRUE),
               mic_positive_dna = any(FinalCall == "Positive_DNA", na.rm = TRUE),
               mic_positive_rna = any(FinalCall == "Positive_RNA", na.rm = TRUE),
@@ -384,8 +392,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           summarise(
             has_elisa_pe = TRUE,
             n_elisa_pe_tests = n(),
-            # Collect all individual results (POS/NEG)
-            elisa_pe_results = paste(ifelse(sample_positive, "POS", "NEG"), collapse = ", "),
+            # Convert to simplified symbols: + for positive, - for negative
+            elisa_pe_results = paste(ifelse(sample_positive, "+", "-"), collapse = ", "),
             elisa_pe_positive = any(sample_positive, na.rm = TRUE),
             elisa_pe_qc_pass = all(qc_overall, na.rm = TRUE),
             elisa_pe_dod = mean(DOD, na.rm = TRUE),
@@ -425,8 +433,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           summarise(
             has_elisa_vsg = TRUE,
             n_elisa_vsg_tests = n(),
-            # Collect all individual results (POS/NEG)
-            elisa_vsg_results = paste(ifelse(sample_positive, "POS", "NEG"), collapse = ", "),
+            # Convert to simplified symbols: + for positive, - for negative
+            elisa_vsg_results = paste(ifelse(sample_positive, "+", "-"), collapse = ", "),
             elisa_vsg_positive = any(sample_positive, na.rm = TRUE),
             elisa_vsg_qc_pass = all(qc_overall, na.rm = TRUE),
             elisa_vsg_dod = mean(DOD, na.rm = TRUE),
@@ -464,9 +472,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           summarise(
             has_ielisa = TRUE,
             n_ielisa_tests = n(),
-            # Collect all individual results (showing L13/L15 separately)
+            # Convert to simplified symbols: + for positive, - for negative
             ielisa_results = paste(
-              ifelse(positive_L13 | positive_L15, "POS", "NEG"),
+              ifelse(positive_L13 | positive_L15, "+", "-"),
               collapse = ", "
             ),
             ielisa_positive = any(positive_L13 | positive_L15, na.rm = TRUE),
@@ -803,7 +811,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           n_elisa_pe_tests = ifelse(is.na(n_elisa_pe_tests) | n_elisa_pe_tests == 0, "-", as.character(n_elisa_pe_tests)),
           n_elisa_vsg_tests = ifelse(is.na(n_elisa_vsg_tests) | n_elisa_vsg_tests == 0, "-", as.character(n_elisa_vsg_tests)),
           n_ielisa_tests = ifelse(is.na(n_ielisa_tests) | n_ielisa_tests == 0, "-", as.character(n_ielisa_tests)),
-          # Results are already in POS/NEG/- format from aggregation
+          # Results show all test outcomes using simplified symbols (+/-/?)
+          # Multiple results per sample are comma-separated (e.g., "+, -, +" for 3 tests)
           any_positive = ifelse(any_positive, "YES", "NO"),
           overall_qc_pass = ifelse(overall_qc_pass, "PASS", "FAIL")
         )
@@ -858,12 +867,15 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           "MIC Results",
           backgroundColor = JS(
             "function(value, type, row, meta) {
-              if (!value || value === '-' || value === '') return '';
+              if (!value || value === '') return '';
 
-              var hasPositive = /Positive/i.test(value);
-              var hasNegative = /Negative/i.test(value);
+              var hasPositive = value.includes('+');
+              var hasNegative = value.includes('-');
+              var hasIndeterminate = value.includes('?');
 
-              if (hasPositive && hasNegative) {
+              if (hasIndeterminate) {
+                return '#fff3cd'; // Yellow for indeterminate
+              } else if (hasPositive && hasNegative) {
                 return '#fff3cd'; // Yellow for conflicting results
               } else if (hasPositive) {
                 return '#f8d7da'; // Red for positive
@@ -879,10 +891,10 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           "ELISA PE Results",
           backgroundColor = JS(
             "function(value, type, row, meta) {
-              if (!value || value === '-' || value === '') return '';
+              if (!value || value === '') return '';
 
-              var hasPos = /POS/i.test(value);
-              var hasNeg = /NEG/i.test(value);
+              var hasPos = value.includes('+');
+              var hasNeg = value.includes('-');
 
               if (hasPos && hasNeg) {
                 return '#fff3cd'; // Yellow for conflicting results
@@ -900,10 +912,10 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           "ELISA VSG Results",
           backgroundColor = JS(
             "function(value, type, row, meta) {
-              if (!value || value === '-' || value === '') return '';
+              if (!value || value === '') return '';
 
-              var hasPos = /POS/i.test(value);
-              var hasNeg = /NEG/i.test(value);
+              var hasPos = value.includes('+');
+              var hasNeg = value.includes('-');
 
               if (hasPos && hasNeg) {
                 return '#fff3cd'; // Yellow for conflicting results
@@ -921,10 +933,10 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           "iELISA Results",
           backgroundColor = JS(
             "function(value, type, row, meta) {
-              if (!value || value === '-' || value === '') return '';
+              if (!value || value === '') return '';
 
-              var hasPos = /POS/i.test(value);
-              var hasNeg = /NEG/i.test(value);
+              var hasPos = value.includes('+');
+              var hasNeg = value.includes('-');
 
               if (hasPos && hasNeg) {
                 return '#fff3cd'; // Yellow for conflicting results

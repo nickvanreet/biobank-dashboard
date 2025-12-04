@@ -606,13 +606,15 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
     # ========================================================================
 
     output$summary_kpis <- renderUI({
+      all_samples <- comprehensive_samples()
       samples <- filtered_samples()
 
       # Safety check
-      if (is.null(samples) || nrow(samples) == 0) {
+      if (is.null(all_samples) || nrow(all_samples) == 0) {
         return(div(class = "alert alert-info", "No samples available"))
       }
 
+      n_total_all <- nrow(all_samples)
       n_total <- nrow(samples)
       n_extracted <- sum(samples$has_extraction, na.rm = TRUE)
       n_mic <- sum(samples$has_mic, na.rm = TRUE)
@@ -628,9 +630,16 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
 
         value_box(
           title = "Total Samples",
-          value = scales::comma(n_total),
+          value = scales::comma(n_total_all),
           showcase = icon("vial"),
           theme = "primary"
+        ),
+
+        value_box(
+          title = "Samples Shown",
+          value = sprintf("%d (%.1f%%)", n_total, 100 * n_total / max(n_total_all, 1)),
+          showcase = icon("filter"),
+          theme = if (n_total < n_total_all) "warning" else "info"
         ),
 
         value_box(
@@ -696,6 +705,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
     # ========================================================================
 
     output$processing_flow <- renderPlotly({
+      # Explicitly depend on filtered_samples to ensure reactivity
       samples <- filtered_samples()
 
       # Safety check
@@ -704,20 +714,24 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           layout(title = list(text = "No sample data available")))
       }
 
-      # Calculate numbers for each stage
-      n_biobank <- nrow(samples)
-      n_extracted <- sum(samples$has_extraction, na.rm = TRUE)
-      n_mic <- sum(samples$has_mic, na.rm = TRUE)
-      n_elisa_pe <- sum(samples$has_elisa_pe, na.rm = TRUE)
-      n_elisa_vsg <- sum(samples$has_elisa_vsg, na.rm = TRUE)
-      n_ielisa <- sum(samples$has_ielisa, na.rm = TRUE)
-      n_fully_tested <- sum(samples$n_test_types == 3, na.rm = TRUE)
+      # Calculate numbers for each stage from filtered samples
+      # All counts are based on the filtered dataset
+      n_biobank <- as.integer(nrow(samples))
+      n_extracted <- as.integer(sum(samples$has_extraction, na.rm = TRUE))
+      n_mic <- as.integer(sum(samples$has_mic, na.rm = TRUE))
+      n_elisa_pe <- as.integer(sum(samples$has_elisa_pe, na.rm = TRUE))
+      n_elisa_vsg <- as.integer(sum(samples$has_elisa_vsg, na.rm = TRUE))
+      n_ielisa <- as.integer(sum(samples$has_ielisa, na.rm = TRUE))
+      n_fully_tested <- as.integer(sum(samples$n_test_types == 3, na.rm = TRUE))
 
       # Create a Sankey-style funnel plot
+      # Explicitly create count vector to ensure proper evaluation
+      count_vector <- c(n_biobank, n_extracted, n_mic, n_elisa_pe, n_elisa_vsg, n_ielisa, n_fully_tested)
+
       flow_data <- tibble(
         stage = c("Biobank", "Extracted", "MIC Tested", "ELISA-PE", "ELISA-VSG", "iELISA Tested", "Fully Tested"),
-        count = c(n_biobank, n_extracted, n_mic, n_elisa_pe, n_elisa_vsg, n_ielisa, n_fully_tested),
-        percentage = round(100 * count / n_biobank, 1)
+        count = count_vector,
+        percentage = round(100 * count_vector / max(n_biobank, 1), 1)
       ) %>%
         mutate(
           stage = factor(stage, levels = stage),

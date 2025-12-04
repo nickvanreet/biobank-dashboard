@@ -275,33 +275,31 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         return(plotly_empty() %>% layout(title = "No samples with 177T or 18S2 data"))
       }
 
-      # Check if TestNumber column exists to identify retested samples
-      has_test_number <- "TestNumber" %in% names(df)
+      # Identify samples that were tested multiple times
+      sample_id_col <- if ("SampleID" %in% names(df)) "SampleID" else "SampleName"
 
-      # Prepare hover text with proper NA handling and test info
       df <- df %>%
+        group_by(across(all_of(sample_id_col))) %>%
         mutate(
+          test_count = n(),
+          is_retested = test_count > 1
+        ) %>%
+        ungroup() %>%
+        mutate(
+          # Prepare hover text with proper NA handling and test info
           hover_text = paste0(
             "<b>", SampleName, "</b><br>",
             "177T Cq: ", if_else(is.na(Cq_median_177T), "No detection", sprintf("%.2f", Cq_median_177T)), "<br>",
             "18S2 Cq: ", if_else(is.na(Cq_median_18S2), "No detection", sprintf("%.2f", Cq_median_18S2)),
-            if (has_test_number) paste0("<br>Test #: ", TestNumber) else ""
-          ),
-          # Determine marker shape based on whether sample was retested
-          marker_symbol = if (has_test_number && "SampleID" %in% names(.)) {
-            # Count how many times each sample was tested
-            sample_key <- if ("SampleID" %in% names(.)) SampleID else SampleName
-            test_count <- ave(rep(1, n()), sample_key, FUN = length)
-            if_else(test_count > 1, "diamond", "circle")
-          } else {
-            "circle"
-          }
+            if ("TestNumber" %in% names(.)) paste0("<br>Test #: ", TestNumber) else "",
+            if (is_retested) paste0("<br>(Tested ", test_count, " times)") else ""
+          )
         )
 
       plot_ly(df, x = ~Cq_median_177T_plot, y = ~Cq_median_18S2_plot,
               color = ~FinalCall,
-              symbol = ~marker_symbol,
-              symbols = c("circle" = "circle", "diamond" = "diamond"),
+              symbol = ~is_retested,
+              symbols = c("0", "5"),  # 0 = circle, 5 = diamond
               colors = c(
                 "Positive" = "#27ae60",
                 "Positive_DNA" = "#3498db",

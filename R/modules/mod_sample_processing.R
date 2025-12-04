@@ -869,20 +869,33 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             "function(value, type, row, meta) {
               if (!value || value === '') return '';
 
-              var hasPositive = value.includes('+');
-              var hasNegative = value.includes('-');
-              var hasIndeterminate = value.includes('?');
+              // Count each symbol
+              var positiveCount = (value.match(/\\+/g) || []).length;
+              var negativeCount = (value.match(/\\-/g) || []).length;
+              var indeterminateCount = (value.match(/\\?/g) || []).length;
+              var total = positiveCount + negativeCount + indeterminateCount;
 
-              if (hasIndeterminate) {
+              if (total === 0) return '';
+
+              // If any indeterminate, use yellow
+              if (indeterminateCount > 0) {
                 return '#fff3cd'; // Yellow for indeterminate
-              } else if (hasPositive && hasNegative) {
-                return '#fff3cd'; // Yellow for conflicting results
-              } else if (hasPositive) {
-                return '#f8d7da'; // Red for positive
-              } else if (hasNegative) {
-                return '#d4edda'; // Green for negative
               }
-              return '';
+
+              // Single result - use its color
+              if (total === 1) {
+                if (positiveCount === 1) return '#f8d7da'; // Red for positive
+                if (negativeCount === 1) return '#d4edda'; // Green for negative
+              }
+
+              // Multiple results - check for majority
+              if (positiveCount > negativeCount) {
+                return '#f8d7da'; // Red for positive majority
+              } else if (negativeCount > positiveCount) {
+                return '#d4edda'; // Green for negative majority
+              } else {
+                return '#fff3cd'; // Yellow for tie/discordance
+              }
             }"
           )
         ) %>%
@@ -893,17 +906,27 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             "function(value, type, row, meta) {
               if (!value || value === '') return '';
 
-              var hasPos = value.includes('+');
-              var hasNeg = value.includes('-');
+              // Count each symbol
+              var positiveCount = (value.match(/\\+/g) || []).length;
+              var negativeCount = (value.match(/\\-/g) || []).length;
+              var total = positiveCount + negativeCount;
 
-              if (hasPos && hasNeg) {
-                return '#fff3cd'; // Yellow for conflicting results
-              } else if (hasPos) {
-                return '#f8d7da'; // Red for positive
-              } else if (hasNeg) {
-                return '#d4edda'; // Green for negative
+              if (total === 0) return '';
+
+              // Single result - use its color
+              if (total === 1) {
+                if (positiveCount === 1) return '#f8d7da'; // Red for positive
+                if (negativeCount === 1) return '#d4edda'; // Green for negative
               }
-              return '';
+
+              // Multiple results - check for majority
+              if (positiveCount > negativeCount) {
+                return '#f8d7da'; // Red for positive majority
+              } else if (negativeCount > positiveCount) {
+                return '#d4edda'; // Green for negative majority
+              } else {
+                return '#fff3cd'; // Yellow for tie/discordance
+              }
             }"
           )
         ) %>%
@@ -914,17 +937,27 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             "function(value, type, row, meta) {
               if (!value || value === '') return '';
 
-              var hasPos = value.includes('+');
-              var hasNeg = value.includes('-');
+              // Count each symbol
+              var positiveCount = (value.match(/\\+/g) || []).length;
+              var negativeCount = (value.match(/\\-/g) || []).length;
+              var total = positiveCount + negativeCount;
 
-              if (hasPos && hasNeg) {
-                return '#fff3cd'; // Yellow for conflicting results
-              } else if (hasPos) {
-                return '#f8d7da'; // Red for positive
-              } else if (hasNeg) {
-                return '#d4edda'; // Green for negative
+              if (total === 0) return '';
+
+              // Single result - use its color
+              if (total === 1) {
+                if (positiveCount === 1) return '#f8d7da'; // Red for positive
+                if (negativeCount === 1) return '#d4edda'; // Green for negative
               }
-              return '';
+
+              // Multiple results - check for majority
+              if (positiveCount > negativeCount) {
+                return '#f8d7da'; // Red for positive majority
+              } else if (negativeCount > positiveCount) {
+                return '#d4edda'; // Green for negative majority
+              } else {
+                return '#fff3cd'; // Yellow for tie/discordance
+              }
             }"
           )
         ) %>%
@@ -935,17 +968,27 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             "function(value, type, row, meta) {
               if (!value || value === '') return '';
 
-              var hasPos = value.includes('+');
-              var hasNeg = value.includes('-');
+              // Count each symbol
+              var positiveCount = (value.match(/\\+/g) || []).length;
+              var negativeCount = (value.match(/\\-/g) || []).length;
+              var total = positiveCount + negativeCount;
 
-              if (hasPos && hasNeg) {
-                return '#fff3cd'; // Yellow for conflicting results
-              } else if (hasPos) {
-                return '#f8d7da'; // Red for positive
-              } else if (hasNeg) {
-                return '#d4edda'; // Green for negative
+              if (total === 0) return '';
+
+              // Single result - use its color
+              if (total === 1) {
+                if (positiveCount === 1) return '#f8d7da'; // Red for positive
+                if (negativeCount === 1) return '#d4edda'; // Green for negative
               }
-              return '';
+
+              // Multiple results - check for majority
+              if (positiveCount > negativeCount) {
+                return '#f8d7da'; // Red for positive majority
+              } else if (negativeCount > positiveCount) {
+                return '#d4edda'; // Green for negative majority
+              } else {
+                return '#fff3cd'; // Yellow for tie/discordance
+              }
             }"
           )
         )

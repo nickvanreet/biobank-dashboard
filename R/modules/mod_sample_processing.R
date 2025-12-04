@@ -642,27 +642,6 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         ),
 
         value_box(
-          title = "MIC Positive (TNA)",
-          value = sprintf("%d (%.1f%%)", sum(samples$mic_positive, na.rm = TRUE), 100 * sum(samples$mic_positive, na.rm = TRUE) / max(n_total, 1)),
-          showcase = icon("check-circle"),
-          theme = if (sum(samples$mic_positive, na.rm = TRUE) > 0) "danger" else "secondary"
-        ),
-
-        value_box(
-          title = "MIC Positive DNA",
-          value = sprintf("%d (%.1f%%)", sum(samples$mic_positive_dna, na.rm = TRUE), 100 * sum(samples$mic_positive_dna, na.rm = TRUE) / max(n_total, 1)),
-          showcase = icon("dna"),
-          theme = if (sum(samples$mic_positive_dna, na.rm = TRUE) > 0) "warning" else "secondary"
-        ),
-
-        value_box(
-          title = "MIC Positive RNA",
-          value = sprintf("%d (%.1f%%)", sum(samples$mic_positive_rna, na.rm = TRUE), 100 * sum(samples$mic_positive_rna, na.rm = TRUE) / max(n_total, 1)),
-          showcase = icon("rna"),
-          theme = if (sum(samples$mic_positive_rna, na.rm = TRUE) > 0) "warning" else "secondary"
-        ),
-
-        value_box(
           title = "Has ELISA-PE Test",
           value = sprintf("%d (%.1f%%)", sum(samples$has_elisa_pe, na.rm = TRUE), 100 * sum(samples$has_elisa_pe, na.rm = TRUE) / max(n_total, 1)),
           showcase = icon("vial-circle-check"),
@@ -697,7 +676,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
     # ========================================================================
 
     output$processing_flow <- renderPlotly({
-      samples <- comprehensive_samples()
+      samples <- filtered_samples()
 
       # Safety check
       if (is.null(samples) || nrow(samples) == 0) {
@@ -764,7 +743,6 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       # Select and format columns for display
       display_data <- samples %>%
         select(
-          sample_id,
           barcode,
           lab_id,
           province,
@@ -843,7 +821,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
 
       # Rename columns
       names(display_data) <- c(
-        "Sample ID", "Barcode", "Lab ID", "Province", "Health Zone",
+        "Barcode", "Lab ID", "Province", "Health Zone",
         "Status", "Stage", "Extracted", "MIC", "MIC Result",
         "ELISA PE", "ELISA VSG", "iELISA",
         "PE Result", "VSG Result", "iELISA Result",

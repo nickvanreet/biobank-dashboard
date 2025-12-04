@@ -203,7 +203,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       # Start with biobank data (already cleaned with standardized column names)
       samples <- biobank %>%
         mutate(
-          sample_id = normalize_sample_id(barcode = barcode)
+          sample_id = map_chr(barcode, ~normalize_sample_id(barcode = .x))
         ) %>%
         filter(!is.na(sample_id) & sample_id != "") %>%
         select(
@@ -217,7 +217,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       if (nrow(extractions) > 0) {
         extraction_summary <- extractions %>%
           mutate(
-            sample_id = normalize_sample_id(barcode = barcode)
+            sample_id = map_chr(barcode, ~normalize_sample_id(barcode = .x))
           ) %>%
           filter(!is.na(sample_id) & sample_id != "") %>%
           group_by(sample_id) %>%
@@ -344,7 +344,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           filter(sample_type == "sample") %>%
           mutate(
             # ELISA uses code_barres_kps
-            sample_id = normalize_sample_id(barcode = code_barres_kps)
+            sample_id = map_chr(code_barres_kps, ~normalize_sample_id(barcode = .x))
           ) %>%
           filter(!is.na(sample_id) & sample_id != "") %>%
           group_by(sample_id) %>%
@@ -381,7 +381,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           filter(sample_type == "sample") %>%
           mutate(
             # ELISA uses code_barres_kps
-            sample_id = normalize_sample_id(barcode = code_barres_kps)
+            sample_id = map_chr(code_barres_kps, ~normalize_sample_id(barcode = .x))
           ) %>%
           filter(!is.na(sample_id) & sample_id != "") %>%
           group_by(sample_id) %>%
@@ -416,7 +416,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       if (nrow(ielisa_data) > 0) {
         ielisa_summary <- ielisa_data %>%
           mutate(
-            sample_id = normalize_sample_id(barcode = Barcode)
+            sample_id = map_chr(Barcode, ~normalize_sample_id(barcode = .x))
           ) %>%
           filter(!is.na(sample_id) & sample_id != "") %>%
           group_by(sample_id) %>%
@@ -554,7 +554,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
     # ========================================================================
 
     output$summary_kpis <- renderUI({
-      samples <- filtered_samples()
+      samples <- comprehensive_samples()
 
       # Safety check
       if (is.null(samples) || nrow(samples) == 0) {

@@ -8,8 +8,6 @@ source("global.R")
 # USER INTERFACE
 # ============================================================================
 
-mic_panels <- mod_mic_qpcr_coordinator_ui("mic")
-
 ui <- do.call(
   page_navbar,
   c(
@@ -27,14 +25,8 @@ ui <- do.call(
       mod_overview_assays_ui("overview_assays"),
       mod_overview_demographics_ui("overview_demographics"),
       mod_transport_ui("transport"),
-      mod_extractions_ui("extractions")
-    ),
-
-    # Add MIC panels dynamically
-    mic_panels,
-
-    # Remaining panels
-    list(
+      mod_extractions_ui("extractions"),
+      mod_mic_qpcr_coordinator_ui("mic"),
       mod_ielisa_coordinator_ui("ielisa"),
       mod_elisa_pe_ui("elisa_pe"),
       mod_elisa_vsg_ui("elisa_vsg"),

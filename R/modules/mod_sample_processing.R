@@ -586,7 +586,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
     # ========================================================================
 
     output$summary_kpis <- renderUI({
-      samples <- comprehensive_samples()
+      samples <- filtered_samples()
 
       # Safety check
       if (is.null(samples) || nrow(samples) == 0) {
@@ -709,14 +709,15 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       n_biobank <- nrow(samples)
       n_extracted <- sum(samples$has_extraction, na.rm = TRUE)
       n_mic <- sum(samples$has_mic, na.rm = TRUE)
-      n_elisa <- sum(samples$has_elisa, na.rm = TRUE)
+      n_elisa_pe <- sum(samples$has_elisa_pe, na.rm = TRUE)
+      n_elisa_vsg <- sum(samples$has_elisa_vsg, na.rm = TRUE)
       n_ielisa <- sum(samples$has_ielisa, na.rm = TRUE)
       n_fully_tested <- sum(samples$n_test_types == 3, na.rm = TRUE)
 
       # Create a Sankey-style funnel plot
       flow_data <- tibble(
-        stage = c("Biobank", "Extracted", "MIC Tested", "ELISA Tested", "iELISA Tested", "Fully Tested"),
-        count = c(n_biobank, n_extracted, n_mic, n_elisa, n_ielisa, n_fully_tested),
+        stage = c("Biobank", "Extracted", "MIC Tested", "ELISA-PE", "ELISA-VSG", "iELISA Tested", "Fully Tested"),
+        count = c(n_biobank, n_extracted, n_mic, n_elisa_pe, n_elisa_vsg, n_ielisa, n_fully_tested),
         percentage = round(100 * count / n_biobank, 1)
       ) %>%
         mutate(
@@ -732,7 +733,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         text = ~label,
         textposition = "auto",
         marker = list(
-          color = c("#4F46E5", "#10B981", "#F59E0B", "#06B6D4", "#8B5CF6", "#14B8A6"),
+          color = c("#4F46E5", "#10B981", "#F59E0B", "#06B6D4", "#EC4899", "#8B5CF6", "#14B8A6"),
           line = list(color = "white", width = 2)
         ),
         hovertemplate = "%{text}<extra></extra>"
@@ -773,49 +774,71 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           has_extraction,
           has_mic,
           mic_result,
-          mic_wells_tna_positive,
-          mic_wells_dna_positive,
-          mic_wells_rna_positive,
-          mic_wells_total,
           has_elisa_pe,
           elisa_pe_positive,
           has_elisa_vsg,
           elisa_vsg_positive,
           has_ielisa,
           ielisa_positive,
+          n_mic_tests,
+          n_elisa_pe_tests,
+          n_elisa_vsg_tests,
+          n_ielisa_tests,
           any_positive,
-          overall_qc_pass,
-          n_test_types
+          overall_qc_pass
         ) %>%
         mutate(
           has_extraction = ifelse(has_extraction, "✓", "✗"),
           has_mic = ifelse(has_mic, "✓", "✗"),
-          # Create replicate summary: "2/4 TNA, 3/4 DNA, 1/4 RNA"
-          mic_replicates = if_else(
-            has_mic == "✓",
-            sprintf("%d/%d TNA | %d/%d DNA | %d/%d RNA",
-                    mic_wells_tna_positive, mic_wells_total,
-                    mic_wells_dna_positive, mic_wells_total,
-                    mic_wells_rna_positive, mic_wells_total),
-            "-"
-          ),
           has_elisa_pe = ifelse(has_elisa_pe, "✓", "✗"),
           has_elisa_vsg = ifelse(has_elisa_vsg, "✓", "✗"),
           has_ielisa = ifelse(has_ielisa, "✓", "✗"),
-          elisa_pe_positive = ifelse(elisa_pe_positive, "POS", "NEG"),
-          elisa_vsg_positive = ifelse(elisa_vsg_positive, "POS", "NEG"),
-          ielisa_positive = ifelse(ielisa_positive, "POS", "NEG"),
+          # Format test results with ✓/✗
+          elisa_pe_result = case_when(
+            !has_elisa_pe ~ "-",
+            elisa_pe_positive ~ "✓",
+            TRUE ~ "✗"
+          ),
+          elisa_vsg_result = case_when(
+            !has_elisa_vsg ~ "-",
+            elisa_vsg_positive ~ "✓",
+            TRUE ~ "✗"
+          ),
+          ielisa_result = case_when(
+            !has_ielisa ~ "-",
+            ielisa_positive ~ "✓",
+            TRUE ~ "✗"
+          ),
+          # Create replicates count summary showing how many times each test was performed
+          replicates = case_when(
+            n_mic_tests > 0 | n_elisa_pe_tests > 0 | n_elisa_vsg_tests > 0 | n_ielisa_tests > 0 ~
+              paste0(
+                ifelse(n_mic_tests > 0, sprintf("MIC:%d", n_mic_tests), ""),
+                ifelse(n_elisa_pe_tests > 0,
+                       paste0(ifelse(n_mic_tests > 0, " | ", ""), sprintf("PE:%d", n_elisa_pe_tests)),
+                       ""),
+                ifelse(n_elisa_vsg_tests > 0,
+                       paste0(ifelse(n_mic_tests > 0 | n_elisa_pe_tests > 0, " | ", ""), sprintf("VSG:%d", n_elisa_vsg_tests)),
+                       ""),
+                ifelse(n_ielisa_tests > 0,
+                       paste0(ifelse(n_mic_tests > 0 | n_elisa_pe_tests > 0 | n_elisa_vsg_tests > 0, " | ", ""), sprintf("iELISA:%d", n_ielisa_tests)),
+                       "")
+              ),
+            TRUE ~ "-"
+          ),
           any_positive = ifelse(any_positive, "YES", "NO"),
           overall_qc_pass = ifelse(overall_qc_pass, "PASS", "FAIL")
         ) %>%
-        select(-mic_wells_tna_positive, -mic_wells_dna_positive, -mic_wells_rna_positive, -mic_wells_total)
+        select(-n_mic_tests, -n_elisa_pe_tests, -n_elisa_vsg_tests, -n_ielisa_tests,
+               -elisa_pe_positive, -elisa_vsg_positive, -ielisa_positive)
 
       # Rename columns
       names(display_data) <- c(
         "Sample ID", "Barcode", "Lab ID", "Province", "Health Zone",
-        "Status", "Stage", "Extracted", "MIC", "MIC Result", "MIC Replicates",
-        "ELISA PE", "PE Result", "ELISA VSG", "VSG Result",
-        "iELISA", "iELISA Result", "Any Positive", "QC Status", "# Tests"
+        "Status", "Stage", "Extracted", "MIC", "MIC Result",
+        "ELISA PE", "ELISA VSG", "iELISA",
+        "PE Result", "VSG Result", "iELISA Result",
+        "Replicates", "Any Positive", "QC Status"
       )
 
       datatable(
@@ -846,16 +869,26 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           backgroundColor = styleEqual(c("PASS", "FAIL"), c('#d4edda', '#f8d7da'))
         ) %>%
         formatStyle(
+          "MIC Result",
+          backgroundColor = styleEqual(
+            c("Positive", "Positive_DNA", "Positive_RNA", "Negative", "LatePositive"),
+            c('#f8d7da', '#f8d7da', '#f8d7da', '#d4edda', '#f8d7da')
+          )
+        ) %>%
+        formatStyle(
           "PE Result",
-          backgroundColor = styleEqual(c("POS", "NEG"), c('#cfe2ff', '#f8f9fa'))
+          backgroundColor = styleEqual(c("✓", "✗", "-"), c('#f8d7da', '#d4edda', '#f8f9fa')),
+          fontWeight = "bold"
         ) %>%
         formatStyle(
           "VSG Result",
-          backgroundColor = styleEqual(c("POS", "NEG"), c('#cfe2ff', '#f8f9fa'))
+          backgroundColor = styleEqual(c("✓", "✗", "-"), c('#f8d7da', '#d4edda', '#f8f9fa')),
+          fontWeight = "bold"
         ) %>%
         formatStyle(
           "iELISA Result",
-          backgroundColor = styleEqual(c("POS", "NEG"), c('#cfe2ff', '#f8f9fa'))
+          backgroundColor = styleEqual(c("✓", "✗", "-"), c('#f8d7da', '#d4edda', '#f8f9fa')),
+          fontWeight = "bold"
         ) %>%
         formatStyle(
           "Status",

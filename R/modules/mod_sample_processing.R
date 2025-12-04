@@ -247,7 +247,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         mic_summary <- mic_data %>%
           mutate(
             # MIC uses SampleID column
-            sample_id = normalize_sample_id(barcode = SampleID)
+            sample_id = normalize_sample_id(barcode = SampleID),
+            # Calculate QC_Pass_Count from available columns
+            QC_Pass_Count = coalesce(ReplicatesTotal, 4) - coalesce(Replicates_Failed, 0)
           ) %>%
           filter(!is.na(sample_id) & sample_id != "") %>%
           group_by(sample_id) %>%

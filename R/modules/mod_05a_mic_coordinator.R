@@ -7,38 +7,81 @@
 mod_mic_qpcr_coordinator_ui <- function(id) {
   ns <- NS(id)
 
-  # Return a list of nav_panels for top-level navigation
-  list(
-    # Module 1: Run Overview
-    nav_panel(
-      title = "MIC - Run",
-      icon = icon("microscope"),
-      value = "mic_overview",
-      mod_mic_overview_ui(ns("overview"))
+  # Return single navigation panel with three sub-tabs (like ELISA)
+  nav_panel(
+    title = "MIC",
+    icon = icon("microscope"),
+    # Add controls above the tabs
+    card(
+      card_body(
+        class = "p-2",
+        div(
+          class = "d-flex justify-content-between align-items-center",
+          div(
+            class = "d-flex flex-column justify-content-start gap-2",
+            div(
+              class = "d-flex align-items-center",
+              checkboxInput(
+                ns("exclude_invalid_runs"),
+                "Exclude invalid runs",
+                value = TRUE
+              ),
+              tags$small(
+                class = "text-muted ms-2",
+                "Removes runs with failed control QC"
+              )
+            ),
+            div(
+              class = "d-flex align-items-center",
+              checkboxInput(
+                ns("show_retests_only"),
+                "Show retested samples only",
+                value = FALSE
+              ),
+              tags$small(
+                class = "text-muted ms-2",
+                "Filter samples with multiple test dates"
+              )
+            )
+          ),
+          div(
+            class = "d-flex align-items-center gap-2",
+            actionButton(
+              ns("refresh"),
+              "Refresh Data",
+              icon = icon("sync"),
+              class = "btn-sm btn-outline-secondary"
+            ),
+            actionButton(
+              ns("settings"),
+              "QC Settings",
+              icon = icon("sliders"),
+              class = "btn-sm btn-outline-secondary"
+            )
+          )
+        )
+      )
     ),
-
-    # Module 2: Sample Results
-    nav_panel(
-      title = "MIC - Samples",
-      icon = icon("vials"),
-      value = "mic_samples",
-      mod_mic_samples_ui(ns("samples"))
-    ),
-
-    # Module 3: Analysis & QC
-    nav_panel(
-      title = "MIC - Analysis",
-      icon = icon("chart-line"),
-      value = "mic_analysis",
-      mod_mic_analysis_ui(ns("analysis"))
-    ),
-
-    # Module 4: Export & Reports
-    nav_panel(
-      title = "MIC - Export",
-      icon = icon("file-export"),
-      value = "mic_export",
-      mod_mic_export_ui(ns("export"))
+    navset_card_tab(
+      id = ns("mic_tabs"),
+      # Tab 1: Runs (overview)
+      nav_panel(
+        title = "MIC - Runs",
+        value = "runs",
+        mod_mic_overview_ui(ns("overview"))
+      ),
+      # Tab 2: Samples
+      nav_panel(
+        title = "MIC - Samples",
+        value = "samples",
+        mod_mic_samples_ui(ns("samples"))
+      ),
+      # Tab 3: Analysis
+      nav_panel(
+        title = "MIC - Analysis",
+        value = "analysis",
+        mod_mic_analysis_ui(ns("analysis"))
+      )
     )
   )
 }
@@ -77,15 +120,24 @@ mod_mic_qpcr_coordinator_server <- function(id, biobank_df, extractions_df, filt
     })
     
     # Core data loading - shared by all modules
+    # Use default path from config
+    mic_dir <- reactive({
+      if (!is.null(config$site_paths) && !is.null(config$site_paths$mic_dir)) {
+        config$site_paths$mic_dir
+      } else {
+        "data/MIC"
+      }
+    })
+
     raw_data <- reactive({
-      req(input$mic_dir)
-      
+      dir_path <- mic_dir()
+
       withProgress(message = "Loading MIC files...", value = 0.3, {
-        parsed <- parse_mic_directory(input$mic_dir, settings(), cache_state())
+        parsed <- parse_mic_directory(dir_path, settings(), cache_state())
         cache_state(parsed$cache)
         parsed
       })
-    }) %>% bindCache(input$mic_dir, settings())
+    }) %>% bindCache(mic_dir(), settings())
     
     # Force refresh
     observeEvent(input$refresh, {
@@ -247,15 +299,12 @@ mod_mic_qpcr_coordinator_server <- function(id, biobank_df, extractions_df, filt
     
     # Overview module - KPIs and summary
     mod_mic_overview_server("overview", processed_data, filtered_base)
-    
+
     # Samples module - Main results table
     mod_mic_samples_server("samples", filtered_base, processed_data)
-    
+
     # Analysis module - Scatter plots
     mod_mic_analysis_server("analysis", filtered_base, filtered_replicates)
-    
-    # Export module - All downloads
-    mod_mic_export_server("export", processed_data, filtered_base, settings)
 
     # =========================================================================
     # RETURN DATA - For downstream modules (e.g., DRS/RNAseP)

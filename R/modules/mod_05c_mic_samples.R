@@ -41,6 +41,8 @@ mod_mic_samples_ui <- function(id) {
           )
         ),
         card_body(
+          # Section 1: Testing Volume
+          tags$h5("Testing Volume", class = "mt-2 mb-3 text-muted"),
           layout_column_wrap(
             width = 1/4,
             heights_equal = "row",
@@ -75,6 +77,8 @@ mod_mic_samples_ui <- function(id) {
             )
           ),
 
+          # Section 2: Data Linkage
+          tags$h5("Data Linkage", class = "mt-4 mb-3 text-muted"),
           layout_column_wrap(
             width = 1/3,
             heights_equal = "row",
@@ -102,6 +106,8 @@ mod_mic_samples_ui <- function(id) {
             )
           ),
 
+          # Section 3: Detection Results
+          tags$h5("Detection Results", class = "mt-4 mb-3 text-muted"),
           layout_column_wrap(
             width = 1/4,
             heights_equal = "row",
@@ -164,6 +170,8 @@ mod_mic_samples_ui <- function(id) {
             )
           ),
 
+          # Section 4: Decision Confidence
+          tags$h5("Decision Confidence", class = "mt-4 mb-3 text-muted"),
           layout_column_wrap(
             width = 1/4,
             heights_equal = "row",

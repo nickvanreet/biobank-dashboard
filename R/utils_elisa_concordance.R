@@ -413,19 +413,34 @@ match_ielisa_elisa <- function(ielisa_data, elisa_data, ielisa_antigen, elisa_ty
 
   # Prepare iELISA data
   # Note: iELISA data typically doesn't include controls, but filter just in case
-  ielisa_samples <- ielisa_data %>%
-    filter(if ("is_control" %in% names(.)) !is_control else TRUE) %>%
-    filter(if ("sample_type" %in% names(.)) sample_type == "sample" else TRUE) %>%
+  ielisa_cols <- names(ielisa_data)
+  has_is_control <- "is_control" %in% ielisa_cols
+  has_sample_type <- "sample_type" %in% ielisa_cols
+  has_labid <- "LabID" %in% ielisa_cols
+  has_barcode <- "Barcode" %in% ielisa_cols
+  has_code_barres <- "code_barres_kps" %in% ielisa_cols
+  has_numero_labo <- "numero_labo" %in% ielisa_cols
+
+  # Filter to samples
+  ielisa_samples <- ielisa_data
+  if (has_is_control) {
+    ielisa_samples <- ielisa_samples %>% filter(!is_control)
+  }
+  if (has_sample_type) {
+    ielisa_samples <- ielisa_samples %>% filter(sample_type == "sample")
+  }
+
+  # Normalize identifiers and select columns
+  ielisa_samples <- ielisa_samples %>%
     mutate(
-      barcode_norm = normalize_elisa_id(coalesce(code_barres_kps, Barcode)),
-      numero_norm = normalize_elisa_id(coalesce(numero_labo, LabID))
+      barcode_norm = normalize_elisa_id(if (has_code_barres) code_barres_kps else if (has_barcode) Barcode else NA_character_),
+      numero_norm = normalize_elisa_id(if (has_numero_labo) numero_labo else if (has_labid) LabID else NA_character_),
+      ielisa_labid = if (has_labid) LabID else if (has_numero_labo) numero_labo else NA_character_,
+      ielisa_barcode = if (has_barcode) Barcode else if (has_code_barres) code_barres_kps else NA_character_
     ) %>%
     select(
-      # Identifiers
-      ielisa_labid = if ("LabID" %in% names(.)) LabID else numero_labo,
-      ielisa_barcode = if ("Barcode" %in% names(.)) Barcode else code_barres_kps,
-      barcode_norm,
-      numero_norm,
+      ielisa_labid, ielisa_barcode,
+      barcode_norm, numero_norm,
       # iELISA Results
       ielisa_plate_date = plate_date,
       ielisa_file = file,
@@ -576,39 +591,60 @@ match_mic_elisa <- function(mic_data, elisa_data, elisa_type) {
   }
 
   # Prepare MIC data
-  # Note: MIC data has SampleName (barcode), SampleID (normalized), ControlType
-  mic_samples <- mic_data %>%
-    filter(
-      if ("ControlType" %in% names(.)) {
-        ControlType == "Sample"
-      } else if ("is_control" %in% names(.)) {
-        !is_control
-      } else {
-        TRUE
-      }
-    ) %>%
+  # Note: MIC data may have different column names depending on version
+  # Try multiple possible column names for each field
+
+  # Determine which columns exist
+  mic_cols <- names(mic_data)
+  has_control_type <- "ControlType" %in% mic_cols
+  has_is_control <- "is_control" %in% mic_cols
+  has_sample_name <- "SampleName" %in% mic_cols
+  has_name <- "Name" %in% mic_cols
+  has_sample_id <- "SampleID" %in% mic_cols
+  has_final_call <- "FinalCall" %in% mic_cols
+  has_confidence <- "ConfidenceScore" %in% mic_cols
+  has_run_id <- "RunID" %in% mic_cols
+  has_run_date <- "RunDate" %in% mic_cols
+  has_plate_date <- "PlateDate" %in% mic_cols
+  has_date <- "Date" %in% mic_cols
+
+  # Filter to samples only
+  if (has_control_type) {
+    mic_samples <- mic_data %>% filter(ControlType == "Sample")
+  } else if (has_is_control) {
+    mic_samples <- mic_data %>% filter(!is_control)
+  } else {
+    mic_samples <- mic_data
+  }
+
+  # Normalize identifiers
+  mic_samples <- mic_samples %>%
     mutate(
-      barcode_norm = normalize_elisa_id(SampleName),
-      numero_norm = normalize_elisa_id(SampleID)
+      barcode_norm = normalize_elisa_id(if (has_sample_name) SampleName else if (has_name) Name else NA_character_),
+      numero_norm = normalize_elisa_id(if (has_sample_id) SampleID else NA_character_)
+    )
+
+  # Select and rename columns
+  mic_samples <- mic_samples %>%
+    mutate(
+      mic_sample_name = if (has_sample_name) SampleName else if (has_name) Name else NA_character_,
+      mic_barcode = if (has_sample_name) SampleName else if (has_name) Name else NA_character_,
+      mic_test_number = if (has_sample_id) SampleID else NA_character_,
+      mic_final_call = if (has_final_call) FinalCall else NA_character_,
+      mic_confidence = if (has_confidence) ConfidenceScore else NA_character_,
+      mic_run_id = if (has_run_id) RunID else NA_character_,
+      mic_date = if (has_run_date) RunDate else if (has_plate_date) PlateDate else if (has_date) Date else NA,
+      Province = if ("Province" %in% mic_cols) Province else NA_character_,
+      HealthZone = if ("HealthZone" %in% mic_cols) HealthZone else NA_character_,
+      Structure = if ("Structure" %in% mic_cols) Structure else NA_character_,
+      Sex = if ("Sex" %in% mic_cols) Sex else NA_character_,
+      Age = if ("Age" %in% mic_cols) Age else NA_real_
     ) %>%
     select(
-      # Identifiers
-      mic_sample_name = SampleName,
-      mic_barcode = SampleName,
-      mic_test_number = SampleID,
-      barcode_norm,
-      numero_norm,
-      # MIC Results
-      mic_final_call = FinalCall,
-      mic_confidence = ConfidenceScore,
-      mic_run_id = RunID,
-      mic_date = if ("RunDate" %in% names(.)) RunDate else if ("PlateDate" %in% names(.)) PlateDate else if ("Date" %in% names(.)) Date else NA,
-      # Biobank data (if available)
-      Province = if ("Province" %in% names(.)) Province else NA_character_,
-      HealthZone = if ("HealthZone" %in% names(.)) HealthZone else NA_character_,
-      Structure = if ("Structure" %in% names(.)) Structure else NA_character_,
-      Sex = if ("Sex" %in% names(.)) Sex else NA_character_,
-      Age = if ("Age" %in% names(.)) Age else NA_real_
+      mic_sample_name, mic_barcode, mic_test_number,
+      barcode_norm, numero_norm,
+      mic_final_call, mic_confidence, mic_run_id, mic_date,
+      Province, HealthZone, Structure, Sex, Age
     )
 
   # Prepare ELISA data

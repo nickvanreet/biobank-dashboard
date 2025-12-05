@@ -19,6 +19,7 @@ normalize_id <- function(x) {
 }
 
 #' Normalize key for barcode or lab ID matching
+#' Preserves dashes, underscores, and dots to prevent sample ID collisions
 #' @param x Character vector
 #' @param kind Type of key ("barcode" or "labid")
 #' @return Normalized key
@@ -26,10 +27,11 @@ normalize_id <- function(x) {
   kind <- match.arg(kind)
   x <- tolower(trimws(as.character(x)))
   x[x %in% c("", "na", "n/a", "null")] <- NA_character_
-  x <- gsub("[^a-z0-9]", "", x)
+  # Only remove spaces and special punctuation, but keep dashes, underscores, dots
+  # This prevents "001-A" and "001-B" from collapsing to the same ID
+  x <- gsub("[^a-z0-9._-]", "", x)
   if (kind == "barcode") {
-    x <- sub("^kps", "", x)
-    x <- sub("^0+", "", x)
+    x <- sub("^kps[-_]?", "", x)
   }
   x
 }

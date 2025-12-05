@@ -4,15 +4,16 @@
 
 #' Normalize identifier for ELISA sample matching
 #' More comprehensive than the global normalize_id function
+#' Preserves dashes, underscores, and dots to prevent sample ID collisions
 #' @param x Character vector of identifiers
 #' @return Normalized character vector
 normalize_elisa_id <- function(x) {
   x <- tolower(trimws(as.character(x)))
-  # Remove KPS prefix and leading zeros from barcodes
-  x <- gsub("^kps", "", x)
-  x <- gsub("^0+", "", x)
-  # Remove non-alphanumeric characters
-  x <- gsub("[^a-z0-9]", "", x)
+  # Remove KPS prefix (case-insensitive)
+  x <- gsub("^kps[-_]?", "", x)
+  # Only remove spaces and special punctuation, but keep dashes, underscores, dots
+  # This prevents "001-A" and "001-B" from collapsing to the same ID
+  x <- gsub("[^a-z0-9._-]", "", x)
   # Treat various forms of NA as missing
   x[x %in% c("", "na", "n/a", "null")] <- NA_character_
   x

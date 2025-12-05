@@ -430,13 +430,20 @@ match_ielisa_elisa <- function(ielisa_data, elisa_data, ielisa_antigen, elisa_ty
     ielisa_samples <- ielisa_samples %>% filter(sample_type == "sample")
   }
 
+  # Add missing columns with NA to avoid evaluation errors
+  if (!has_code_barres) ielisa_samples$code_barres_kps <- NA_character_
+  if (!has_barcode) ielisa_samples$Barcode <- NA_character_
+  if (!has_numero_labo) ielisa_samples$numero_labo <- NA_character_
+  if (!has_labid) ielisa_samples$LabID <- NA_character_
+
   # Normalize identifiers and select columns
   ielisa_samples <- ielisa_samples %>%
     mutate(
-      barcode_norm = normalize_elisa_id(if (has_code_barres) code_barres_kps else if (has_barcode) Barcode else NA_character_),
-      numero_norm = normalize_elisa_id(if (has_numero_labo) numero_labo else if (has_labid) LabID else NA_character_),
-      ielisa_labid = if (has_labid) LabID else if (has_numero_labo) numero_labo else NA_character_,
-      ielisa_barcode = if (has_barcode) Barcode else if (has_code_barres) code_barres_kps else NA_character_
+      # Use coalesce to pick first non-NA value
+      barcode_norm = normalize_elisa_id(coalesce(code_barres_kps, Barcode)),
+      numero_norm = normalize_elisa_id(coalesce(numero_labo, LabID)),
+      ielisa_labid = coalesce(LabID, numero_labo),
+      ielisa_barcode = coalesce(Barcode, code_barres_kps)
     ) %>%
     select(
       ielisa_labid, ielisa_barcode,
@@ -617,28 +624,39 @@ match_mic_elisa <- function(mic_data, elisa_data, elisa_type) {
     mic_samples <- mic_data
   }
 
+  # Add missing columns with NA to avoid evaluation errors
+  if (!has_sample_name) mic_samples$SampleName <- NA_character_
+  if (!has_name) mic_samples$Name <- NA_character_
+  if (!has_sample_id) mic_samples$SampleID <- NA_character_
+  if (!has_final_call) mic_samples$FinalCall <- NA_character_
+  if (!has_confidence) mic_samples$ConfidenceScore <- NA_character_
+  if (!has_run_id) mic_samples$RunID <- NA_character_
+  if (!has_run_date) mic_samples$RunDate <- NA
+  if (!has_plate_date) mic_samples$PlateDate <- NA
+  if (!has_date) mic_samples$Date <- NA
+  if (!"Province" %in% mic_cols) mic_samples$Province <- NA_character_
+  if (!"HealthZone" %in% mic_cols) mic_samples$HealthZone <- NA_character_
+  if (!"Structure" %in% mic_cols) mic_samples$Structure <- NA_character_
+  if (!"Sex" %in% mic_cols) mic_samples$Sex <- NA_character_
+  if (!"Age" %in% mic_cols) mic_samples$Age <- NA_real_
+
   # Normalize identifiers
   mic_samples <- mic_samples %>%
     mutate(
-      barcode_norm = normalize_elisa_id(if (has_sample_name) SampleName else if (has_name) Name else NA_character_),
-      numero_norm = normalize_elisa_id(if (has_sample_id) SampleID else NA_character_)
+      barcode_norm = normalize_elisa_id(coalesce(SampleName, Name)),
+      numero_norm = normalize_elisa_id(SampleID)
     )
 
   # Select and rename columns
   mic_samples <- mic_samples %>%
     mutate(
-      mic_sample_name = if (has_sample_name) SampleName else if (has_name) Name else NA_character_,
-      mic_barcode = if (has_sample_name) SampleName else if (has_name) Name else NA_character_,
-      mic_test_number = if (has_sample_id) SampleID else NA_character_,
-      mic_final_call = if (has_final_call) FinalCall else NA_character_,
-      mic_confidence = if (has_confidence) ConfidenceScore else NA_character_,
-      mic_run_id = if (has_run_id) RunID else NA_character_,
-      mic_date = if (has_run_date) RunDate else if (has_plate_date) PlateDate else if (has_date) Date else NA,
-      Province = if ("Province" %in% mic_cols) Province else NA_character_,
-      HealthZone = if ("HealthZone" %in% mic_cols) HealthZone else NA_character_,
-      Structure = if ("Structure" %in% mic_cols) Structure else NA_character_,
-      Sex = if ("Sex" %in% mic_cols) Sex else NA_character_,
-      Age = if ("Age" %in% mic_cols) Age else NA_real_
+      mic_sample_name = coalesce(SampleName, Name),
+      mic_barcode = coalesce(SampleName, Name),
+      mic_test_number = SampleID,
+      mic_final_call = FinalCall,
+      mic_confidence = ConfidenceScore,
+      mic_run_id = RunID,
+      mic_date = coalesce(RunDate, PlateDate, Date)
     ) %>%
     select(
       mic_sample_name, mic_barcode, mic_test_number,

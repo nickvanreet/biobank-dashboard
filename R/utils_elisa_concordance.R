@@ -737,13 +737,16 @@ match_mic_elisa <- function(mic_data, elisa_data, elisa_type) {
   }
 
   # Create concordance data format
-  # MIC uses FinalCall: "Positive", "Negative", "Indeterminate", etc.
+  # MIC uses FinalCall: "Positive", "Positive_DNA", "Positive_RNA", "LatePositive",
+  # "Negative", "Invalid_NoDNA", "Indeterminate", etc.
   # Convert confidence score to a numeric value (0-100)
   result <- all_matches %>%
     mutate(
       # MIC test1: Use confidence score as continuous value, FinalCall for binary
-      test1_value = as.numeric(gsub("%", "", mic_confidence)),
-      test1_binary = mic_final_call == "Positive",
+      # Handle confidence score (may be NA or may have % sign)
+      test1_value = suppressWarnings(as.numeric(gsub("%", "", as.character(mic_confidence)))),
+      # Consider any result starting with "Positive" as positive (including Positive_DNA, Positive_RNA, LatePositive)
+      test1_binary = grepl("^Positive", mic_final_call, ignore.case = TRUE),
       test1_name = "MIC",
       # ELISA test2
       test2_value = elisa_PP_percent,
@@ -754,8 +757,11 @@ match_mic_elisa <- function(mic_data, elisa_data, elisa_type) {
       province = coalesce(elisa_Province, Province),
       date = coalesce(as.Date(mic_date), elisa_plate_date)
     ) %>%
-    # Filter to valid MIC calls only
-    filter(mic_final_call %in% c("Positive", "Negative")) %>%
+    # Filter to valid MIC calls only (exclude Invalid, Indeterminate, NA)
+    filter(
+      !is.na(mic_final_call),
+      !mic_final_call %in% c("Invalid_NoDNA", "Indeterminate", "")
+    ) %>%
     select(
       test1_value, test2_value,
       test1_binary, test2_binary,

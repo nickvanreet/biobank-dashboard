@@ -263,10 +263,10 @@ plot_geographic_concordance <- function(data, map_data = NULL) {
 
 #' Plot dashboard of metric gauges
 #'
-#' @param metrics Data frame with metrics
+#' @param metrics_obj Full metrics object with metrics, test1_name, test2_name
 #' @return Plotly subplot with gauges
 #' @export
-plot_agreement_gauges <- function(metrics) {
+plot_agreement_gauges <- function(metrics_obj) {
 
   tryCatch({
     # Extract key metrics (only symmetric metrics - no gold standard assumed)
@@ -295,7 +295,8 @@ plot_agreement_gauges <- function(metrics) {
           thickness = 0.75,
           value = 90
         )
-      )
+      ),
+      domain = list(row = 0, column = 0)
     )
 
     gauge_kappa <- plotly::plot_ly(
@@ -305,14 +306,15 @@ plot_agreement_gauges <- function(metrics) {
       number = list(suffix = "", valueformat = ".0f"),
       title = list(text = sprintf("Cohen's Kappa<br>(κ = %.3f)", kappa)),
       gauge = list(
-        axis = list(range = list(0, 100)),
+        axis = list(range = list(-1, 1)),
         bar = list(color = "#6610f2"),
         steps = list(
           list(range = c(0, 30), color = "#dc3545"),    # Poor (<0.2)
           list(range = c(30, 60), color = "#ffc107"),   # Fair-Moderate (0.2-0.6)
           list(range = c(60, 100), color = "#28a745")   # Good-Excellent (>0.6)
         )
-      )
+      ),
+      domain = list(row = 0, column = 1)
     )
 
     # Combine into subplot (1 row, 2 columns for symmetric metrics)

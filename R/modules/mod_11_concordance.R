@@ -1015,7 +1015,7 @@ mod_concordance_server <- function(id,
       }
 
       tryCatch({
-        plot_agreement_gauges(metrics$metrics)
+        plot_agreement_gauges(metrics)
       }, error = function(e) {
         plotly::plot_ly() %>%
           plotly::layout(title = paste("Error:", e$message))

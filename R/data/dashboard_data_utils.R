@@ -109,7 +109,7 @@ classify_ielisa <- function(inhibition, cutoffs) {
   )
 }
 
-#' Classify MIC qPCR calls
+#' Classify MIC qPCR calls (from combined PipelineCategory)
 classify_mic <- function(call, cutoffs) {
   if (is.null(call) || is.na(call) || call == "") return("Missing")
   call_norm <- tolower(call)
@@ -117,6 +117,20 @@ classify_mic <- function(call, cutoffs) {
   if (call_norm %in% cutoffs$mic_borderline_calls) return("Borderline")
   if (call_norm %in% c("runinvalid", "invalid")) return("Invalid")
   "Negative"
+}
+
+#' Classify individual MIC target markers (177T or 18S2)
+classify_mic_target <- function(marker_status) {
+  if (is.null(marker_status) || is.na(marker_status) || marker_status == "") return("Missing")
+  marker_norm <- tolower(as.character(marker_status))
+
+  if (marker_norm == "positive") return("Positive")
+  if (marker_norm == "latepositive") return("Borderline")
+  if (marker_norm == "indeterminate") return("Borderline")
+  if (marker_norm == "negative") return("Negative")
+
+  # Default to Missing for any unexpected values
+  "Missing"
 }
 
 #' Prepare a tidy assay-level table for dashboard consumption
@@ -329,8 +343,9 @@ prepare_assay_dashboard_data <- function(
   }
 
   # MIC qPCR - Uses LAB NUMBERS, needs lookup to convert to barcodes
+  # SPLIT INTO TWO SEPARATE TARGETS: MIC-177T and MIC-18S2
   if (!is.null(mic_data) && !is.null(mic_data$samples) && nrow(mic_data$samples)) {
-    message(sprintf("Processing %d MIC samples...", nrow(mic_data$samples)))
+    message(sprintf("Processing %d MIC samples (splitting into 177T and 18S2 targets)...", nrow(mic_data$samples)))
 
     # MIC uses lab numbers (SampleID = "1", "2", "3", etc.)
     # Extract lab numbers from MIC data
@@ -342,18 +357,52 @@ prepare_assay_dashboard_data <- function(
       trimws(tolower(as.character(x)))
     })
 
-    # Create MIC data frame with lab numbers
-    mic_with_lab_numbers <- mic_data$samples %>%
+    # Extract assay date once
+    mic_assay_date <- suppressWarnings(lubridate::as_date(
+      coalesce_any_column(mic_data$samples, c("CollectionDate", "SampleDate", "RunDate", "RunDateTime", "plate_date"))
+    ))
+
+    # Create TWO rows per sample: one for 177T, one for 18S2
+    # Extract marker statuses (if they exist, otherwise fall back to PipelineCategory)
+    has_marker_177t <- "marker_177T" %in% names(mic_data$samples) || "Call_177T" %in% names(mic_data$samples)
+    has_marker_18s2 <- "marker_18S2" %in% names(mic_data$samples) || "Call_18S2" %in% names(mic_data$samples)
+
+    # MIC-177T (DNA target)
+    mic_177t <- mic_data$samples %>%
       mutate(
         lab_number_norm = mic_lab_numbers_norm,
-        assay = "MIC qPCR",
-        status = vapply(PipelineCategory, classify_mic, character(1), cutoffs = cutoffs),
-        quantitative = coalesce(Avg_177T_Positive_Cq, Avg_18S2_Positive_Cq),
+        assay = "MIC-177T",
+        status = if (has_marker_177t) {
+          vapply(coalesce(marker_177T, Call_177T), classify_mic_target, character(1))
+        } else {
+          # Fallback: use PipelineCategory if markers not available
+          vapply(PipelineCategory, classify_mic, character(1), cutoffs = cutoffs)
+        },
+        quantitative = Avg_177T_Positive_Cq,
         metric = "Cq",
-        assay_date = suppressWarnings(lubridate::as_date(
-          coalesce_any_column(., c("CollectionDate", "SampleDate", "RunDate", "RunDateTime", "plate_date"))
-        ))
-      )
+        assay_date = mic_assay_date
+      ) %>%
+      select(lab_number_norm, assay, status, quantitative, metric, assay_date)
+
+    # MIC-18S2 (RNA target)
+    mic_18s2 <- mic_data$samples %>%
+      mutate(
+        lab_number_norm = mic_lab_numbers_norm,
+        assay = "MIC-18S2",
+        status = if (has_marker_18s2) {
+          vapply(coalesce(marker_18S2, Call_18S2), classify_mic_target, character(1))
+        } else {
+          # Fallback: use PipelineCategory if markers not available
+          vapply(PipelineCategory, classify_mic, character(1), cutoffs = cutoffs)
+        },
+        quantitative = Avg_18S2_Positive_Cq,
+        metric = "Cq",
+        assay_date = mic_assay_date
+      ) %>%
+      select(lab_number_norm, assay, status, quantitative, metric, assay_date)
+
+    # Combine both targets
+    mic_with_lab_numbers <- bind_rows(mic_177t, mic_18s2)
 
     # JOIN with biobank lookup to convert lab numbers → barcodes
     if (!is.null(biobank_lookup)) {
@@ -363,8 +412,7 @@ prepare_assay_dashboard_data <- function(
           by = "lab_number_norm"
         ) %>%
         mutate(is_from_invalid_plate = FALSE) %>%  # MIC doesn't use plate validation like ELISA
-        select(sample_id, assay, status, is_from_invalid_plate, quantitative, metric, assay_date, PipelineCategory,
-               Avg_177T_Positive_Cq, Avg_18S2_Positive_Cq, lab_number_norm)
+        select(sample_id, assay, status, is_from_invalid_plate, quantitative, metric, assay_date, lab_number_norm)
 
       # Debug: Check matching
       n_total <- nrow(tibs$mic)
@@ -372,6 +420,7 @@ prepare_assay_dashboard_data <- function(
       n_unmatched <- n_total - n_matched
 
       message(sprintf("  MIC lab numbers → barcode matching:"))
+      message(sprintf("    Total target-sample combinations: %d (2 targets × %d samples)", n_total, nrow(mic_data$samples)))
       message(sprintf("    Matched: %d (%.1f%%)", n_matched, (n_matched/n_total)*100))
       message(sprintf("    Unmatched: %d (%.1f%%)", n_unmatched, (n_unmatched/n_total)*100))
 
@@ -391,8 +440,7 @@ prepare_assay_dashboard_data <- function(
           sample_id = NA_character_,
           is_from_invalid_plate = FALSE  # MIC doesn't use plate validation like ELISA
         ) %>%
-        select(sample_id, assay, status, is_from_invalid_plate, quantitative, metric, assay_date, PipelineCategory,
-               Avg_177T_Positive_Cq, Avg_18S2_Positive_Cq)
+        select(sample_id, assay, status, is_from_invalid_plate, quantitative, metric, assay_date)
     }
   }
 
@@ -615,7 +663,7 @@ prepare_assay_dashboard_data <- function(
   molecular_serology_concordance <- tidy %>%
     mutate(
       test_category = case_when(
-        assay == "MIC qPCR" ~ "Molecular",
+        assay %in% c("MIC qPCR", "MIC-177T", "MIC-18S2") ~ "Molecular",
         grepl("ELISA", assay) ~ "Serology",
         grepl("iELISA", assay) ~ "Serology",
         TRUE ~ "Other"
@@ -741,7 +789,7 @@ prepare_assay_dashboard_data <- function(
   # 3. MIC positive + any serology positive
   mic_plus_serology <- tidy %>%
     mutate(
-      is_mic = assay == "MIC qPCR",
+      is_mic = assay %in% c("MIC qPCR", "MIC-177T", "MIC-18S2"),
       is_serology = assay %in% serology_tests,
       is_positive = status == "Positive"
     ) %>%
@@ -823,7 +871,7 @@ prepare_assay_dashboard_data <- function(
         filter(sample_id %in% test_positive_samples) %>%
         summarise(
           n_exclusive = sum(n_positive_assays == 1),
-          n_with_mic = sum(map_lgl(positive_assays, ~"MIC qPCR" %in% .x)),
+          n_with_mic = sum(map_lgl(positive_assays, ~any(c("MIC qPCR", "MIC-177T", "MIC-18S2") %in% .x))),
           n_with_elisa_pe = sum(map_lgl(positive_assays, ~"ELISA PE" %in% .x)),
           n_with_elisa_vsg = sum(map_lgl(positive_assays, ~"ELISA VSG" %in% .x)),
           n_with_ielisa_l13 = sum(map_lgl(positive_assays, ~"iELISA LiTat 1.3" %in% .x)),

@@ -74,32 +74,52 @@ mod_overview_assays_ui <- function(id) {
             card_body(
               h5("MIC qPCR"),
               layout_column_wrap(
-                width = 1/4,
+                width = 1/3,
+                # MIC-177T (DNA target)
                 value_box(
-                  title = "MIC Positive",
-                  value = uiOutput(ns("kpi_mic_positive")),
+                  title = "MIC-177T Positive",
+                  value = uiOutput(ns("kpi_mic_177t_positive")),
                   showcase = icon("dna"),
                   theme = "primary",
                   showcase_layout = "left center"
                 ),
                 value_box(
-                  title = "Exclusive (MIC only)",
-                  value = uiOutput(ns("kpi_mic_exclusive")),
+                  title = "177T Exclusive",
+                  value = uiOutput(ns("kpi_mic_177t_exclusive")),
                   showcase = icon("circle"),
                   theme = "secondary",
                   showcase_layout = "left center"
                 ),
                 value_box(
-                  title = "Shared with Serology",
-                  value = uiOutput(ns("kpi_mic_with_serology")),
+                  title = "177T Shared",
+                  value = uiOutput(ns("kpi_mic_177t_shared")),
                   showcase = icon("share-nodes"),
+                  theme = "dark",
+                  showcase_layout = "left center"
+                )
+              ),
+
+              layout_column_wrap(
+                width = 1/3,
+                # MIC-18S2 (RNA target)
+                value_box(
+                  title = "MIC-18S2 Positive",
+                  value = uiOutput(ns("kpi_mic_18s2_positive")),
+                  showcase = icon("dna"),
                   theme = "info",
                   showcase_layout = "left center"
                 ),
                 value_box(
-                  title = "MIC Tested",
-                  value = uiOutput(ns("kpi_mic_tested")),
-                  showcase = icon("flask"),
+                  title = "18S2 Exclusive",
+                  value = uiOutput(ns("kpi_mic_18s2_exclusive")),
+                  showcase = icon("circle"),
+                  theme = "secondary",
+                  showcase_layout = "left center"
+                ),
+                value_box(
+                  title = "18S2 Shared",
+                  value = uiOutput(ns("kpi_mic_18s2_shared")),
+                  showcase = icon("share-nodes"),
                   theme = "dark",
                   showcase_layout = "left center"
                 )
@@ -457,18 +477,18 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       )
     })
 
-    # MIC KPIs
-    output$kpi_mic_positive <- renderUI({
-      stats <- get_test_stats("MIC qPCR")
+    # MIC-177T KPIs
+    output$kpi_mic_177t_positive <- renderUI({
+      stats <- get_test_stats("MIC-177T")
       tags$div(
         tags$strong(style = "font-size: 1.5em;", stats$n_positive),
         tags$br(),
-        tags$span(class = "text-muted", sprintf("%.1f%% of %d MIC tests", stats$pct_positive, stats$total_tests))
+        tags$span(class = "text-muted", sprintf("%.1f%% of %d tests", stats$pct_positive, stats$total_tests))
       )
     })
 
-    output$kpi_mic_exclusive <- renderUI({
-      stats <- get_test_stats("MIC qPCR")
+    output$kpi_mic_177t_exclusive <- renderUI({
+      stats <- get_test_stats("MIC-177T")
       pct <- if (stats$n_positive > 0) {
         (stats$n_exclusive / stats$n_positive) * 100
       } else {
@@ -477,30 +497,59 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       tags$div(
         tags$strong(style = "font-size: 1.5em;", stats$n_exclusive),
         tags$br(),
-        tags$span(class = "text-muted", sprintf("%.1f%% of MIC positives", pct))
+        tags$span(class = "text-muted", sprintf("%.1f%% of positives", pct))
       )
     })
 
-    output$kpi_mic_with_serology <- renderUI({
-      stats <- get_test_stats("MIC qPCR")
+    output$kpi_mic_177t_shared <- renderUI({
+      stats <- get_test_stats("MIC-177T")
       pct <- if (stats$n_positive > 0) {
-        (stats$n_with_serology / stats$n_positive) * 100
+        (stats$n_shared / stats$n_positive) * 100
       } else {
         0
       }
       tags$div(
-        tags$strong(style = "font-size: 1.5em;", stats$n_with_serology),
+        tags$strong(style = "font-size: 1.5em;", stats$n_shared),
         tags$br(),
-        tags$span(class = "text-muted", sprintf("%.1f%% of MIC positives", pct))
+        tags$span(class = "text-muted", sprintf("%.1f%% of positives", pct))
       )
     })
 
-    output$kpi_mic_tested <- renderUI({
-      stats <- get_test_stats("MIC qPCR")
+    # MIC-18S2 KPIs
+    output$kpi_mic_18s2_positive <- renderUI({
+      stats <- get_test_stats("MIC-18S2")
       tags$div(
-        tags$strong(style = "font-size: 1.5em;", stats$total_tests),
+        tags$strong(style = "font-size: 1.5em;", stats$n_positive),
         tags$br(),
-        tags$span(class = "text-muted", "Total MIC tests")
+        tags$span(class = "text-muted", sprintf("%.1f%% of %d tests", stats$pct_positive, stats$total_tests))
+      )
+    })
+
+    output$kpi_mic_18s2_exclusive <- renderUI({
+      stats <- get_test_stats("MIC-18S2")
+      pct <- if (stats$n_positive > 0) {
+        (stats$n_exclusive / stats$n_positive) * 100
+      } else {
+        0
+      }
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_exclusive),
+        tags$br(),
+        tags$span(class = "text-muted", sprintf("%.1f%% of positives", pct))
+      )
+    })
+
+    output$kpi_mic_18s2_shared <- renderUI({
+      stats <- get_test_stats("MIC-18S2")
+      pct <- if (stats$n_positive > 0) {
+        (stats$n_shared / stats$n_positive) * 100
+      } else {
+        0
+      }
+      tags$div(
+        tags$strong(style = "font-size: 1.5em;", stats$n_shared),
+        tags$br(),
+        tags$span(class = "text-muted", sprintf("%.1f%% of positives", pct))
       )
     })
 

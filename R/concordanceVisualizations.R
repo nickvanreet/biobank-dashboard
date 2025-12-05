@@ -263,12 +263,23 @@ plot_geographic_concordance <- function(data, map_data = NULL) {
 
 #' Plot dashboard of metric gauges
 #'
-#' @param metrics Data frame with metrics
+#' @param metrics_obj Full metrics object with metrics, test1_name, test2_name
 #' @return Plotly subplot with gauges
 #' @export
-plot_agreement_gauges <- function(metrics) {
+plot_agreement_gauges <- function(metrics_obj) {
 
   tryCatch({
+    # Handle both old format (data frame) and new format (list with metrics)
+    if (is.data.frame(metrics_obj)) {
+      metrics <- metrics_obj
+      test1_name <- "Test1"
+      test2_name <- "Test2"
+    } else {
+      metrics <- metrics_obj$metrics
+      test1_name <- metrics_obj$test1_name %||% "Test1"
+      test2_name <- metrics_obj$test2_name %||% "Test2"
+    }
+
     # Extract key metrics
     agreement <- metrics$value[metrics$metric == "Percent Agreement"]
     kappa <- metrics$value[metrics$metric == "Cohen's Kappa"]
@@ -283,7 +294,8 @@ plot_agreement_gauges <- function(metrics) {
       type = "indicator",
       mode = "gauge+number",
       value = agreement,
-      title = list(text = "Agreement %"),
+      title = list(text = "Agreement"),
+      number = list(suffix = "%"),
       gauge = list(
         axis = list(range = list(0, 100)),
         bar = list(color = "#0d6efd"),
@@ -297,31 +309,36 @@ plot_agreement_gauges <- function(metrics) {
           thickness = 0.75,
           value = 90
         )
-      )
+      ),
+      domain = list(row = 0, column = 0)
     )
 
     gauge_kappa <- plotly::plot_ly(
       type = "indicator",
-      mode = "gauge+number",
-      value = kappa_pct,
-      number = list(suffix = "", valueformat = ".0f"),
-      title = list(text = sprintf("Kappa (%.3f)", kappa)),
+      mode = "number+gauge",
+      value = kappa,
+      number = list(valueformat = ".3f"),
+      title = list(text = "Cohen's Kappa"),
       gauge = list(
-        axis = list(range = list(0, 100)),
+        axis = list(range = list(-1, 1)),
         bar = list(color = "#6610f2"),
         steps = list(
-          list(range = c(0, 30), color = "#dc3545"),
-          list(range = c(30, 60), color = "#ffc107"),
-          list(range = c(60, 100), color = "#28a745")
+          list(range = c(-1, 0), color = "#dc3545"),
+          list(range = c(0, 0.4), color = "#ffc107"),
+          list(range = c(0.4, 0.6), color = "#20c997"),
+          list(range = c(0.6, 0.8), color = "#198754"),
+          list(range = c(0.8, 1), color = "#0f5132")
         )
-      )
+      ),
+      domain = list(row = 0, column = 1)
     )
 
     gauge_sensitivity <- plotly::plot_ly(
       type = "indicator",
       mode = "gauge+number",
       value = sensitivity * 100,
-      title = list(text = "Sensitivity %"),
+      title = list(text = "Sensitivity"),
+      number = list(suffix = "%"),
       gauge = list(
         axis = list(range = list(0, 100)),
         bar = list(color = "#20c997"),
@@ -330,14 +347,16 @@ plot_agreement_gauges <- function(metrics) {
           list(range = c(70, 90), color = "#ffc107"),
           list(range = c(90, 100), color = "#28a745")
         )
-      )
+      ),
+      domain = list(row = 1, column = 0)
     )
 
     gauge_specificity <- plotly::plot_ly(
       type = "indicator",
       mode = "gauge+number",
       value = specificity * 100,
-      title = list(text = "Specificity %"),
+      title = list(text = "Specificity"),
+      number = list(suffix = "%"),
       gauge = list(
         axis = list(range = list(0, 100)),
         bar = list(color = "#fd7e14"),
@@ -346,18 +365,37 @@ plot_agreement_gauges <- function(metrics) {
           list(range = c(70, 90), color = "#ffc107"),
           list(range = c(90, 100), color = "#28a745")
         )
-      )
+      ),
+      domain = list(row = 1, column = 1)
     )
+
+    # Create comparison label
+    comparison_label <- sprintf("%s vs %s", test1_name, test2_name)
 
     # Combine into subplot
     plotly::subplot(
       gauge_agreement, gauge_kappa, gauge_sensitivity, gauge_specificity,
       nrows = 2,
-      margin = 0.15
+      margin = 0.1,
+      shareX = FALSE,
+      shareY = FALSE
     ) %>%
       plotly::layout(
-        title = "Concordance Metrics Dashboard",
-        height = 500
+        height = 500,
+        margin = list(t = 60, b = 20, l = 20, r = 20),
+        annotations = list(
+          list(
+            text = comparison_label,
+            xref = "paper",
+            yref = "paper",
+            x = 0.5,
+            y = 1.0,
+            xanchor = "center",
+            yanchor = "top",
+            showarrow = FALSE,
+            font = list(size = 14, color = "#495057")
+          )
+        )
       )
 
   }, error = function(e) {

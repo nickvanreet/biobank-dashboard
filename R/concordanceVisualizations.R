@@ -353,10 +353,11 @@ plot_agreement_gauges <- function(metrics) {
     plotly::subplot(
       gauge_agreement, gauge_kappa, gauge_sensitivity, gauge_specificity,
       nrows = 2,
-      margin = 0.1
+      margin = 0.15
     ) %>%
       plotly::layout(
-        title = "Concordance Metrics Dashboard"
+        title = "Concordance Metrics Dashboard",
+        height = 500
       )
 
   }, error = function(e) {

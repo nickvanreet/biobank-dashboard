@@ -773,7 +773,11 @@ match_mic_elisa <- function(mic_data, elisa_data, elisa_type) {
       # Geographic data (prefer ELISA biobank match, fall back to MIC)
       health_zone = coalesce(elisa_HealthZone, HealthZone),
       province = coalesce(elisa_Province, Province),
-      date = coalesce(as.Date(mic_date), elisa_plate_date)
+      date = coalesce(as.Date(mic_date), elisa_plate_date),
+      # Demographic data (prefer ELISA biobank match, fall back to MIC)
+      Sex = coalesce(elisa_Sex, Sex),
+      Age = coalesce(elisa_Age, Age),
+      Structure = coalesce(elisa_Structure, Structure)
     ) %>%
     # Filter to valid MIC calls only (exclude Invalid, Indeterminate, NA)
     filter(
@@ -788,9 +792,7 @@ match_mic_elisa <- function(mic_data, elisa_data, elisa_type) {
       match_method,
       mic_sample_name, mic_barcode, mic_test_number,
       elisa_sample, elisa_barcode, elisa_numero,
-      Sex = coalesce(elisa_Sex, Sex),
-      Age = coalesce(elisa_Age, Age),
-      Structure = coalesce(elisa_Structure, Structure)
+      Sex, Age, Structure
     )
 
   return(result)

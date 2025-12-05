@@ -269,11 +269,9 @@ plot_geographic_concordance <- function(data, map_data = NULL) {
 plot_agreement_gauges <- function(metrics) {
 
   tryCatch({
-    # Extract key metrics
+    # Extract key metrics (only symmetric metrics - no gold standard assumed)
     agreement <- metrics$value[metrics$metric == "Percent Agreement"]
     kappa <- metrics$value[metrics$metric == "Cohen's Kappa"]
-    sensitivity <- metrics$value[metrics$metric == "Sensitivity"]
-    specificity <- metrics$value[metrics$metric == "Specificity"]
 
     # Convert kappa to percentage for gauge
     kappa_pct <- if (!is.na(kappa)) (kappa + 1) * 50 else 50  # Scale -1 to 1 -> 0 to 100
@@ -283,7 +281,7 @@ plot_agreement_gauges <- function(metrics) {
       type = "indicator",
       mode = "gauge+number",
       value = agreement,
-      title = list(text = "Agreement %"),
+      title = list(text = "Overall Agreement %"),
       gauge = list(
         axis = list(range = list(0, 100)),
         bar = list(color = "#0d6efd"),
@@ -305,59 +303,27 @@ plot_agreement_gauges <- function(metrics) {
       mode = "gauge+number",
       value = kappa_pct,
       number = list(suffix = "", valueformat = ".0f"),
-      title = list(text = sprintf("Kappa (%.3f)", kappa)),
+      title = list(text = sprintf("Cohen's Kappa<br>(κ = %.3f)", kappa)),
       gauge = list(
         axis = list(range = list(0, 100)),
         bar = list(color = "#6610f2"),
         steps = list(
-          list(range = c(0, 30), color = "#dc3545"),
-          list(range = c(30, 60), color = "#ffc107"),
-          list(range = c(60, 100), color = "#28a745")
+          list(range = c(0, 30), color = "#dc3545"),    # Poor (<0.2)
+          list(range = c(30, 60), color = "#ffc107"),   # Fair-Moderate (0.2-0.6)
+          list(range = c(60, 100), color = "#28a745")   # Good-Excellent (>0.6)
         )
       )
     )
 
-    gauge_sensitivity <- plotly::plot_ly(
-      type = "indicator",
-      mode = "gauge+number",
-      value = sensitivity * 100,
-      title = list(text = "Sensitivity %"),
-      gauge = list(
-        axis = list(range = list(0, 100)),
-        bar = list(color = "#20c997"),
-        steps = list(
-          list(range = c(0, 70), color = "#dc3545"),
-          list(range = c(70, 90), color = "#ffc107"),
-          list(range = c(90, 100), color = "#28a745")
-        )
-      )
-    )
-
-    gauge_specificity <- plotly::plot_ly(
-      type = "indicator",
-      mode = "gauge+number",
-      value = specificity * 100,
-      title = list(text = "Specificity %"),
-      gauge = list(
-        axis = list(range = list(0, 100)),
-        bar = list(color = "#fd7e14"),
-        steps = list(
-          list(range = c(0, 70), color = "#dc3545"),
-          list(range = c(70, 90), color = "#ffc107"),
-          list(range = c(90, 100), color = "#28a745")
-        )
-      )
-    )
-
-    # Combine into subplot
+    # Combine into subplot (1 row, 2 columns for symmetric metrics)
     plotly::subplot(
-      gauge_agreement, gauge_kappa, gauge_sensitivity, gauge_specificity,
-      nrows = 2,
-      margin = 0.15
+      gauge_agreement, gauge_kappa,
+      nrows = 1,
+      margin = 0.1
     ) %>%
       plotly::layout(
-        title = "Concordance Metrics Dashboard",
-        height = 500
+        title = "Concordance Metrics (No Gold Standard)",
+        height = 400
       )
 
   }, error = function(e) {
@@ -691,6 +657,102 @@ plot_quality_trends <- function(data, date_col = "date", group_by = "week") {
 
   }, error = function(e) {
     warning(paste("Error in plot_quality_trends:", e$message))
+    return(plotly::plot_ly() %>%
+             plotly::layout(
+               title = list(text = paste("Error:", e$message), font = list(color = "red"))
+             ))
+  })
+}
+
+
+#' Plot Latent Class Analysis Results
+#'
+#' Visualizes estimated test characteristics from LCA
+#'
+#' @param lca_result List output from latent_class_analysis()
+#' @return Plotly bar chart with estimated parameters
+#' @export
+plot_lca_results <- function(lca_result) {
+
+  tryCatch({
+    # Check if LCA converged
+    if (!lca_result$converged) {
+      return(plotly::plot_ly() %>%
+               plotly::layout(
+                 title = list(text = paste("LCA did not converge:", lca_result$error),
+                              font = list(color = "red"))
+               ))
+    }
+
+    # Prepare data for plotting
+    estimates <- lca_result$estimates
+
+    # Create bar chart with error bars
+    colors <- c(
+      "#6c757d",  # Prevalence (gray)
+      "#0d6efd",  # Test1 Sensitivity (blue)
+      "#0dcaf0",  # Test1 Specificity (cyan)
+      "#6610f2",  # Test2 Sensitivity (purple)
+      "#d63384"   # Test2 Specificity (pink)
+    )
+
+    p <- plotly::plot_ly(
+      data = estimates,
+      x = ~parameter,
+      y = ~estimate,
+      type = "bar",
+      marker = list(color = colors),
+      error_y = list(
+        type = "data",
+        symmetric = FALSE,
+        array = ~(ci_upper - estimate),
+        arrayminus = ~(estimate - ci_lower),
+        color = "#000000",
+        thickness = 1.5,
+        width = 10
+      ),
+      hovertemplate = paste0(
+        "%{x}<br>",
+        "Estimate: %{y:.1f}%<br>",
+        "95% CI: [%{customdata[0]:.1f}%, %{customdata[1]:.1f}%]<br>",
+        "<extra></extra>"
+      ),
+      customdata = ~cbind(ci_lower, ci_upper)
+    ) %>%
+      plotly::layout(
+        title = list(
+          text = sprintf("Latent Class Analysis: Estimated Test Characteristics<br><sub>Model fit: χ² = %.2f, p = %.3f | AIC = %.1f</sub>",
+                         lca_result$chi_square, lca_result$p_value_gof, lca_result$aic),
+          font = list(size = 14)
+        ),
+        xaxis = list(
+          title = "",
+          tickangle = -45
+        ),
+        yaxis = list(
+          title = "Estimated Value (%)",
+          range = c(0, 100)
+        ),
+        showlegend = FALSE,
+        margin = list(b = 120, t = 80),
+        annotations = list(
+          list(
+            x = 0.5,
+            y = -0.25,
+            xref = "paper",
+            yref = "paper",
+            text = "<i>Note: Assumes conditional independence of tests given true status</i>",
+            showarrow = FALSE,
+            font = list(size = 10, color = "#6c757d"),
+            xanchor = "center"
+          )
+        )
+      )
+
+    return(p)
+
+  }, error = function(e) {
+    warning(paste("Error in plot_lca_results:", e$message))
     return(plotly::plot_ly() %>%
              plotly::layout(
                title = list(text = paste("Error:", e$message), font = list(color = "red"))

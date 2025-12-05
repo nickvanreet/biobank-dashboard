@@ -341,7 +341,38 @@ mod_concordance_ui <- function(id) {
           )
         ),
 
-        # Tab 6: Data Table
+        # Tab 6: Latent Class Analysis
+        nav_panel(
+          title = "LCA",
+          icon = icon("microscope"),
+
+          card(
+            card_header("Latent Class Analysis (No Gold Standard)"),
+            card_body(
+              p("Estimates test sensitivities, specificities, and disease prevalence without requiring a gold standard."),
+              p(class = "text-muted small",
+                "Assumes: (1) conditional independence of tests given true status, (2) all samples from same population.")
+            )
+          ),
+
+          layout_columns(
+            col_widths = c(7, 5),
+            card(
+              card_header("Estimated Test Characteristics"),
+              card_body_fill(
+                plotly::plotlyOutput(ns("lca_plot"), height = "450px")
+              )
+            ),
+            card(
+              card_header("LCA Results"),
+              card_body(
+                DT::DTOutput(ns("lca_table"))
+              )
+            )
+          )
+        ),
+
+        # Tab 7: Data Table
         nav_panel(
           title = "Data",
           icon = icon("table"),
@@ -745,6 +776,30 @@ mod_concordance_server <- function(id,
           test2_name = "Test2",
           metrics = data.frame(),
           confusion_matrix = cm_empty
+        )
+      })
+    })
+
+    # Latent Class Analysis
+    lca_results <- reactive({
+      req(stratified_data())
+      data <- stratified_data()
+
+      if (nrow(data) == 0) return(NULL)
+
+      tryCatch({
+        latent_class_analysis(
+          test1 = data$test1_binary,
+          test2 = data$test2_binary,
+          test1_name = data$test1_name[1],
+          test2_name = data$test2_name[1],
+          n_iterations = 1000
+        )
+      }, error = function(e) {
+        warning(paste("Error in LCA:", e$message))
+        list(
+          converged = FALSE,
+          error = e$message
         )
       })
     })
@@ -1369,6 +1424,53 @@ mod_concordance_server <- function(id,
           backgroundRepeat = "no-repeat",
           backgroundPosition = "center"
         )
+    })
+
+    # ========================================================================
+    # Latent Class Analysis Outputs
+    # ========================================================================
+
+    output$lca_plot <- plotly::renderPlotly({
+      req(lca_results())
+      lca <- lca_results()
+
+      tryCatch({
+        plot_lca_results(lca)
+      }, error = function(e) {
+        plotly::plot_ly() %>%
+          plotly::layout(title = paste("Error:", e$message))
+      })
+    })
+
+    output$lca_table <- DT::renderDT({
+      req(lca_results())
+      lca <- lca_results()
+
+      if (!lca$converged) {
+        return(DT::datatable(
+          data.frame(Message = paste("LCA did not converge:", lca$error)),
+          rownames = FALSE
+        ))
+      }
+
+      # Format results table
+      results_table <- lca$estimates %>%
+        dplyr::mutate(
+          `Estimate (%)` = sprintf("%.2f", estimate),
+          `95% CI` = sprintf("[%.2f, %.2f]", ci_lower, ci_upper)
+        ) %>%
+        dplyr::select(Parameter = parameter, `Estimate (%)`, `95% CI`)
+
+      DT::datatable(
+        results_table,
+        rownames = FALSE,
+        options = list(
+          pageLength = 10,
+          dom = 't',
+          ordering = FALSE
+        ),
+        class = "table-sm table-striped"
+      )
     })
 
     output$data_count <- renderText({

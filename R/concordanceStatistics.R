@@ -92,17 +92,19 @@ calculate_concordance_metrics <- function(test1, test2,
       list(kappa = kappa, z = NA_real_, p_value = NA_real_)
     })
 
-    # Sensitivity (Test2 positive | Test1 positive)
-    sensitivity <- if ((a + b) > 0) a / (a + b) else NA_real_
+    # Positive Percent Agreement (PPA) - Agreement when Test1 is positive
+    # Note: This is NOT sensitivity (no gold standard assumed)
+    ppa <- if ((a + b) > 0) (a / (a + b)) * 100 else NA_real_
 
-    # Specificity (Test2 negative | Test1 negative)
-    specificity <- if ((c + d) > 0) d / (c + d) else NA_real_
+    # Negative Percent Agreement (NPA) - Agreement when Test1 is negative
+    # Note: This is NOT specificity (no gold standard assumed)
+    npa <- if ((c + d) > 0) (d / (c + d)) * 100 else NA_real_
 
-    # Positive Predictive Value (Test1 positive | Test2 positive)
-    ppv <- if ((a + c) > 0) a / (a + c) else NA_real_
+    # Positive Predictive Agreement (Agreement when Test2 is positive)
+    ppa_test2 <- if ((a + c) > 0) (a / (a + c)) * 100 else NA_real_
 
-    # Negative Predictive Value (Test1 negative | Test2 negative)
-    npv <- if ((b + d) > 0) d / (b + d) else NA_real_
+    # Negative Predictive Agreement (Agreement when Test2 is negative)
+    npa_test2 <- if ((b + d) > 0) (d / (b + d)) * 100 else NA_real_
 
     # McNemar's test for discordance
     mcnemar_result <- tryCatch({
@@ -119,8 +121,8 @@ calculate_concordance_metrics <- function(test1, test2,
       list(statistic = NA_real_, p_value = NA_real_)
     })
 
-    # Youden's J statistic
-    youden_j <- sensitivity + specificity - 1
+    # Youden's J-like statistic (using PPA/NPA, not true sensitivity/specificity)
+    youden_j <- (ppa/100) + (npa/100) - 1
 
     # Matthews Correlation Coefficient
     mcc_numerator <- (a * d) - (b * c)
@@ -134,10 +136,11 @@ calculate_concordance_metrics <- function(test1, test2,
     # Compile metrics
     metrics <- data.frame(
       metric = c("N", "Percent Agreement", "Cohen's Kappa", "Kappa Z-score",
-                 "Kappa P-value", "Sensitivity", "Specificity", "PPV", "NPV",
+                 "Kappa P-value", "PPA (Test1+)", "NPA (Test1-)",
+                 "PPA (Test2+)", "NPA (Test2-)",
                  "Youden's J", "MCC", "McNemar Chi-sq", "McNemar P-value"),
       value = c(n, percent_agreement, kappa_irr$kappa, kappa_irr$z,
-                kappa_irr$p_value, sensitivity, specificity, ppv, npv,
+                kappa_irr$p_value, ppa, npa, ppa_test2, npa_test2,
                 youden_j, mcc, mcnemar_result$statistic, mcnemar_result$p_value),
       stringsAsFactors = FALSE
     )
@@ -187,6 +190,178 @@ calculate_concordance_metrics <- function(test1, test2,
       confusion_matrix = cm_empty,
       error = e$message
     )
+  })
+}
+
+
+#' Latent Class Analysis for Two Diagnostic Tests (No Gold Standard)
+#'
+#' Estimates test sensitivities, specificities, and disease prevalence
+#' without requiring a gold standard using maximum likelihood estimation.
+#' Assumes conditional independence of tests given true disease status.
+#'
+#' @param test1 Logical vector for test 1 results
+#' @param test2 Logical vector for test 2 results
+#' @param test1_name Character name for test 1
+#' @param test2_name Character name for test 2
+#' @param n_iterations Maximum iterations for optimization (default: 1000)
+#' @return List with estimated parameters and confidence intervals
+#' @export
+latent_class_analysis <- function(test1, test2,
+                                   test1_name = "Test1",
+                                   test2_name = "Test2",
+                                   n_iterations = 1000) {
+
+  tryCatch({
+    # Remove missing values
+    valid_idx <- !is.na(test1) & !is.na(test2)
+    test1 <- test1[valid_idx]
+    test2 <- test2[valid_idx]
+
+    n <- length(test1)
+
+    if (n < 10) {
+      return(list(
+        converged = FALSE,
+        error = "Insufficient data for LCA (n < 10)"
+      ))
+    }
+
+    # Create 2x2 contingency table
+    # Rows: Test1, Cols: Test2
+    cm <- table(
+      factor(test1, levels = c(TRUE, FALSE)),
+      factor(test2, levels = c(TRUE, FALSE))
+    )
+
+    # Extract observed cell counts
+    n_pp <- cm[1, 1]  # Both positive
+    n_pn <- cm[1, 2]  # Test1+, Test2-
+    n_np <- cm[2, 1]  # Test1-, Test2+
+    n_nn <- cm[2, 2]  # Both negative
+
+    # Log-likelihood function for LCA model
+    # Parameters: c(prevalence, Se1, Sp1, Se2, Sp2)
+    log_likelihood <- function(params) {
+      prev <- params[1]
+      se1 <- params[2]
+      sp1 <- params[3]
+      se2 <- params[4]
+      sp2 <- params[5]
+
+      # Expected probabilities for each cell
+      p_pp <- prev * se1 * se2 + (1 - prev) * (1 - sp1) * (1 - sp2)
+      p_pn <- prev * se1 * (1 - se2) + (1 - prev) * (1 - sp1) * sp2
+      p_np <- prev * (1 - se1) * se2 + (1 - prev) * sp1 * (1 - sp2)
+      p_nn <- prev * (1 - se1) * (1 - se2) + (1 - prev) * sp1 * sp2
+
+      # Avoid log(0)
+      p_pp <- max(p_pp, 1e-10)
+      p_pn <- max(p_pn, 1e-10)
+      p_np <- max(p_np, 1e-10)
+      p_nn <- max(p_nn, 1e-10)
+
+      # Log-likelihood
+      ll <- n_pp * log(p_pp) + n_pn * log(p_pn) + n_np * log(p_np) + n_nn * log(p_nn)
+
+      return(-ll)  # Return negative for minimization
+    }
+
+    # Starting values based on observed data
+    # Use naive estimates assuming tests are independent
+    prev_init <- (n_pp + n_pn) / n  # Prevalence by Test1
+    se1_init <- 0.85  # Moderate starting value
+    sp1_init <- 0.85
+    se2_init <- 0.85
+    sp2_init <- 0.85
+
+    # Optimization with constraints (all parameters between 0 and 1)
+    result <- optim(
+      par = c(prev_init, se1_init, sp1_init, se2_init, sp2_init),
+      fn = log_likelihood,
+      method = "L-BFGS-B",
+      lower = c(0.001, 0.001, 0.001, 0.001, 0.001),
+      upper = c(0.999, 0.999, 0.999, 0.999, 0.999),
+      control = list(maxit = n_iterations)
+    )
+
+    # Extract estimates
+    prevalence <- result$par[1]
+    se1 <- result$par[2]
+    sp1 <- result$par[3]
+    se2 <- result$par[4]
+    sp2 <- result$par[5]
+
+    # Calculate standard errors using Hessian
+    # (approximate confidence intervals)
+    hessian_result <- tryCatch({
+      optimHess(result$par, log_likelihood)
+    }, error = function(e) {
+      matrix(NA, 5, 5)
+    })
+
+    # Standard errors from inverse Hessian
+    se_params <- tryCatch({
+      sqrt(diag(solve(hessian_result)))
+    }, error = function(e) {
+      rep(NA, 5)
+    })
+
+    # 95% confidence intervals
+    ci_lower <- pmax(0, result$par - 1.96 * se_params)
+    ci_upper <- pmin(1, result$par + 1.96 * se_params)
+
+    # Compile results
+    estimates <- data.frame(
+      parameter = c(
+        "Prevalence",
+        paste0(test1_name, " Sensitivity"),
+        paste0(test1_name, " Specificity"),
+        paste0(test2_name, " Sensitivity"),
+        paste0(test2_name, " Specificity")
+      ),
+      estimate = c(prevalence, se1, sp1, se2, sp2) * 100,  # Convert to percentage
+      ci_lower = ci_lower * 100,
+      ci_upper = ci_upper * 100,
+      stringsAsFactors = FALSE
+    )
+
+    # Model diagnostics
+    # Calculate expected vs observed counts
+    p_pp_fit <- prevalence * se1 * se2 + (1 - prevalence) * (1 - sp1) * (1 - sp2)
+    p_pn_fit <- prevalence * se1 * (1 - se2) + (1 - prevalence) * (1 - sp1) * sp2
+    p_np_fit <- prevalence * (1 - se1) * se2 + (1 - prevalence) * sp1 * (1 - sp2)
+    p_nn_fit <- prevalence * (1 - se1) * (1 - se2) + (1 - prevalence) * sp1 * sp2
+
+    expected_counts <- c(p_pp_fit, p_pn_fit, p_np_fit, p_nn_fit) * n
+    observed_counts <- c(n_pp, n_pn, n_np, n_nn)
+
+    # Chi-square goodness of fit (with 1 df since 5 params - 4 cells = 1)
+    chi_sq <- sum((observed_counts - expected_counts)^2 / expected_counts)
+    p_value <- pchisq(chi_sq, df = 1, lower.tail = FALSE)
+
+    return(list(
+      converged = result$convergence == 0,
+      n = n,
+      test1_name = test1_name,
+      test2_name = test2_name,
+      estimates = estimates,
+      log_likelihood = -result$value,
+      aic = 2 * 5 - 2 * (-result$value),  # AIC = 2k - 2ln(L)
+      bic = 5 * log(n) - 2 * (-result$value),  # BIC = k*ln(n) - 2ln(L)
+      chi_square = chi_sq,
+      p_value_gof = p_value,
+      observed_counts = observed_counts,
+      expected_counts = expected_counts,
+      confusion_matrix = cm
+    ))
+
+  }, error = function(e) {
+    warning(paste("Error in latent_class_analysis:", e$message))
+    return(list(
+      converged = FALSE,
+      error = e$message
+    ))
   })
 }
 

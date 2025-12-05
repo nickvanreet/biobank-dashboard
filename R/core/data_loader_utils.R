@@ -18,11 +18,11 @@
 .norm_key <- function(x, kind = c("barcode","labid")) {
   kind <- match.arg(kind)
   x <- .norm_txt(x)
-  # remove punctuation / spaces
-  x <- gsub("[^a-z0-9]", "", x)
+  # Only remove spaces and special punctuation, but keep dashes, underscores, dots
+  # This prevents "001-A" and "001-B" from collapsing to the same ID
+  x <- gsub("[^a-z0-9._-]", "", x)
   if (kind == "barcode") {
-    x <- sub("^kps", "", x)     # drop leading 'kps'
-    x <- sub("^0+", "", x)      # drop leading zeros
+    x <- sub("^kps[-_]?", "", x)     # drop leading 'kps' with optional separator
   }
   x
 }

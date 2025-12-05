@@ -797,3 +797,264 @@ match_mic_elisa <- function(mic_data, elisa_data, elisa_type) {
 
   return(result)
 }
+
+
+#' Match MIC qPCR samples with iELISA samples
+#' @param mic_data Data frame with MIC qPCR results
+#' @param ielisa_data Data frame with iELISA results
+#' @param ielisa_antigen Antigen type ("L13" or "L15")
+#' @return Data frame with matched samples in concordance format
+match_mic_ielisa <- function(mic_data, ielisa_data, ielisa_antigen) {
+
+  # Check if mic_data is null or empty
+  if (is.null(mic_data) || nrow(mic_data) == 0) {
+    return(tibble::tibble(
+      test1_value = numeric(),
+      test2_value = numeric(),
+      test1_binary = logical(),
+      test2_binary = logical(),
+      test1_name = character(),
+      test2_name = character()
+    ))
+  }
+
+  # Prepare MIC data (same as in match_mic_elisa)
+  mic_cols <- names(mic_data)
+  has_control_type <- "ControlType" %in% mic_cols
+  has_is_control <- "is_control" %in% mic_cols
+  has_sample_name <- "SampleName" %in% mic_cols
+  has_name <- "Name" %in% mic_cols
+  has_sample_id <- "SampleID" %in% mic_cols
+  has_final_call <- "FinalCall" %in% mic_cols
+  has_confidence <- "ConfidenceScore" %in% mic_cols
+  has_run_id <- "RunID" %in% mic_cols
+  has_run_date <- "RunDate" %in% mic_cols
+  has_plate_date <- "PlateDate" %in% mic_cols
+  has_date <- "Date" %in% mic_cols
+
+  # Filter to samples only
+  if (has_control_type) {
+    mic_samples <- mic_data %>% filter(ControlType == "Sample")
+  } else if (has_is_control) {
+    mic_samples <- mic_data %>% filter(!is_control)
+  } else {
+    mic_samples <- mic_data
+  }
+
+  # Add missing columns with NA to avoid evaluation errors
+  if (!has_sample_name) mic_samples$SampleName <- NA_character_
+  if (!has_name) mic_samples$Name <- NA_character_
+  if (!has_sample_id) mic_samples$SampleID <- NA_character_
+  if (!has_final_call) mic_samples$FinalCall <- NA_character_
+  if (!has_confidence) mic_samples$ConfidenceScore <- NA_character_
+  if (!has_run_id) mic_samples$RunID <- NA_character_
+  if (!has_run_date) mic_samples$RunDate <- NA
+  if (!has_plate_date) mic_samples$PlateDate <- NA
+  if (!has_date) mic_samples$Date <- NA
+  if (!"Province" %in% mic_cols) mic_samples$Province <- NA_character_
+  if (!"HealthZone" %in% mic_cols) mic_samples$HealthZone <- NA_character_
+  if (!"Structure" %in% mic_cols) mic_samples$Structure <- NA_character_
+  if (!"Sex" %in% mic_cols) mic_samples$Sex <- NA_character_
+  if (!"Age" %in% mic_cols) mic_samples$Age <- NA_real_
+
+  # Normalize identifiers
+  mic_samples <- mic_samples %>%
+    mutate(
+      barcode_norm = normalize_elisa_id(coalesce(SampleName, Name)),
+      numero_norm = normalize_elisa_id(SampleID)
+    )
+
+  # Select and rename columns
+  mic_samples <- mic_samples %>%
+    mutate(
+      mic_sample_name = coalesce(SampleName, Name),
+      mic_barcode = coalesce(SampleName, Name),
+      mic_test_number = SampleID,
+      mic_final_call = FinalCall,
+      mic_confidence = ConfidenceScore,
+      mic_run_id = RunID,
+      mic_date = coalesce(RunDate, PlateDate, Date)
+    ) %>%
+    select(
+      mic_sample_name, mic_barcode, mic_test_number,
+      barcode_norm, numero_norm,
+      mic_final_call, mic_confidence, mic_run_id, mic_date,
+      Province, HealthZone, Structure, Sex, Age
+    )
+
+  # Prepare iELISA data (same as in match_ielisa_elisa)
+  ielisa_cols <- names(ielisa_data)
+  has_is_control <- "is_control" %in% ielisa_cols
+  has_sample_type <- "sample_type" %in% ielisa_cols
+  has_labid <- "LabID" %in% ielisa_cols
+  has_barcode <- "Barcode" %in% ielisa_cols
+  has_code_barres <- "code_barres_kps" %in% ielisa_cols
+  has_numero_labo <- "numero_labo" %in% ielisa_cols
+
+  # Filter to samples
+  ielisa_samples <- ielisa_data
+  if (has_is_control) {
+    ielisa_samples <- ielisa_samples %>% filter(!is_control)
+  }
+  if (has_sample_type) {
+    ielisa_samples <- ielisa_samples %>% filter(sample_type == "sample")
+  }
+
+  # Add missing columns with NA to avoid evaluation errors
+  if (!has_code_barres) ielisa_samples$code_barres_kps <- NA_character_
+  if (!has_barcode) ielisa_samples$Barcode <- NA_character_
+  if (!has_numero_labo) ielisa_samples$numero_labo <- NA_character_
+  if (!has_labid) ielisa_samples$LabID <- NA_character_
+  if (!"Province" %in% ielisa_cols) ielisa_samples$Province <- NA_character_
+  if (!"HealthZone" %in% ielisa_cols) ielisa_samples$HealthZone <- NA_character_
+  if (!"Structure" %in% ielisa_cols) ielisa_samples$Structure <- NA_character_
+  if (!"Sex" %in% ielisa_cols) ielisa_samples$Sex <- NA_character_
+  if (!"Age" %in% ielisa_cols) ielisa_samples$Age <- NA_real_
+
+  # Normalize identifiers and select columns
+  ielisa_samples <- ielisa_samples %>%
+    mutate(
+      barcode_norm = normalize_elisa_id(coalesce(code_barres_kps, Barcode)),
+      numero_norm = normalize_elisa_id(coalesce(numero_labo, LabID)),
+      ielisa_labid = coalesce(LabID, numero_labo),
+      ielisa_barcode = coalesce(Barcode, code_barres_kps)
+    ) %>%
+    select(
+      ielisa_labid, ielisa_barcode,
+      barcode_norm, numero_norm,
+      # iELISA Results
+      ielisa_plate_date = plate_date,
+      ielisa_file = file,
+      ielisa_pct_inh_13 = pct_inh_f2_13,
+      ielisa_pct_inh_15 = pct_inh_f2_15,
+      ielisa_positive_13 = positive_L13,
+      ielisa_positive_15 = positive_L15,
+      ielisa_plate_valid_13 = plate_valid_L13,
+      ielisa_plate_valid_15 = plate_valid_L15,
+      # Biobank data (if available)
+      ielisa_Province = Province,
+      ielisa_HealthZone = HealthZone,
+      ielisa_Structure = Structure,
+      ielisa_Sex = Sex,
+      ielisa_Age = Age
+    )
+
+  # Debug: Log sample preparation
+  message(sprintf("MIC samples prepared: %s rows", nrow(mic_samples)))
+  message(sprintf("iELISA samples prepared: %s rows", nrow(ielisa_samples)))
+  message(sprintf("MIC with valid barcode: %s", sum(!is.na(mic_samples$barcode_norm))))
+  message(sprintf("iELISA with valid barcode: %s", sum(!is.na(ielisa_samples$barcode_norm))))
+  message(sprintf("MIC with valid numero: %s", sum(!is.na(mic_samples$numero_norm))))
+  message(sprintf("iELISA with valid numero: %s", sum(!is.na(ielisa_samples$numero_norm))))
+
+  # Match by barcode
+  matched_by_barcode <- mic_samples %>%
+    filter(!is.na(barcode_norm)) %>%
+    inner_join(
+      ielisa_samples %>% filter(!is.na(barcode_norm)),
+      by = "barcode_norm",
+      suffix = c("_mic", "_ielisa"),
+      relationship = "many-to-many"
+    ) %>%
+    mutate(match_method = "barcode")
+
+  message(sprintf("Matches by barcode: %s", nrow(matched_by_barcode)))
+
+  # Match remaining by numero
+  unmatched_mic <- mic_samples %>%
+    filter(!barcode_norm %in% matched_by_barcode$barcode_norm | is.na(barcode_norm)) %>%
+    filter(!is.na(numero_norm))
+
+  unmatched_ielisa <- ielisa_samples %>%
+    filter(!barcode_norm %in% matched_by_barcode$barcode_norm | is.na(barcode_norm)) %>%
+    filter(!is.na(numero_norm))
+
+  matched_by_numero <- unmatched_mic %>%
+    inner_join(
+      unmatched_ielisa,
+      by = "numero_norm",
+      suffix = c("_mic", "_ielisa"),
+      relationship = "many-to-many"
+    ) %>%
+    mutate(match_method = "numero_labo")
+
+  message(sprintf("Matches by numero: %s", nrow(matched_by_numero)))
+
+  # Combine matches
+  all_matches <- bind_rows(
+    matched_by_barcode,
+    matched_by_numero
+  )
+
+  message(sprintf("Total matches before filtering: %s", nrow(all_matches)))
+
+  if (nrow(all_matches) == 0) {
+    return(tibble::tibble(
+      test1_value = numeric(),
+      test2_value = numeric(),
+      test1_binary = logical(),
+      test2_binary = logical(),
+      test1_name = character(),
+      test2_name = character()
+    ))
+  }
+
+  # Create concordance data format
+  # MIC test1: Use confidence score as continuous value, FinalCall for binary
+  # iELISA test2: Use pct_inh for continuous value, positive flag for binary
+  if (ielisa_antigen == "L13") {
+    result <- all_matches %>%
+      mutate(
+        # MIC results
+        test1_value = suppressWarnings(as.numeric(gsub("%", "", as.character(mic_confidence)))),
+        test1_binary = grepl("^Positive", mic_final_call, ignore.case = TRUE),
+        test1_name = "MIC",
+        # iELISA-L13 results
+        test2_value = ielisa_pct_inh_13,
+        test2_binary = ielisa_positive_13,
+        test2_name = "iELISA-L13"
+      )
+  } else {  # L15
+    result <- all_matches %>%
+      mutate(
+        # MIC results
+        test1_value = suppressWarnings(as.numeric(gsub("%", "", as.character(mic_confidence)))),
+        test1_binary = grepl("^Positive", mic_final_call, ignore.case = TRUE),
+        test1_name = "MIC",
+        # iELISA-L15 results
+        test2_value = ielisa_pct_inh_15,
+        test2_binary = ielisa_positive_15,
+        test2_name = "iELISA-L15"
+      )
+  }
+
+  # Add geographic and demographic data
+  result <- result %>%
+    mutate(
+      # Geographic data (prefer iELISA biobank match, fall back to MIC)
+      health_zone = coalesce(ielisa_HealthZone, HealthZone),
+      province = coalesce(ielisa_Province, Province),
+      date = coalesce(as.Date(mic_date), ielisa_plate_date),
+      # Demographic data (prefer iELISA biobank match, fall back to MIC)
+      Sex = coalesce(ielisa_Sex, Sex),
+      Age = coalesce(ielisa_Age, Age),
+      Structure = coalesce(ielisa_Structure, Structure)
+    ) %>%
+    # Filter to valid MIC calls only (exclude Invalid, Indeterminate, NA)
+    filter(
+      !is.na(mic_final_call),
+      !mic_final_call %in% c("Invalid_NoDNA", "Indeterminate", "")
+    ) %>%
+    select(
+      test1_value, test2_value,
+      test1_binary, test2_binary,
+      test1_name, test2_name,
+      health_zone, province, date,
+      match_method,
+      mic_sample_name, mic_barcode, mic_test_number,
+      ielisa_labid, ielisa_barcode,
+      Sex, Age, Structure
+    )
+
+  return(result)
+}

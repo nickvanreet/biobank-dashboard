@@ -44,6 +44,8 @@ mod_concordance_ui <- function(id) {
               choices = c(
                 "MIC vs ELISA-PE" = "mic_pe",
                 "MIC vs ELISA-VSG" = "mic_vsg",
+                "MIC vs iELISA-L13" = "mic_l13",
+                "MIC vs iELISA-L15" = "mic_l15",
                 "ELISA-PE vs ELISA-VSG" = "pe_vsg",
                 "iELISA-L13 vs ELISA-PE" = "ielisa_l13_pe",
                 "iELISA-L13 vs ELISA-VSG" = "ielisa_l13_vsg",
@@ -172,7 +174,7 @@ mod_concordance_ui <- function(id) {
             card(
               card_header("Agreement Metrics Dashboard"),
               card_body_fill(
-                plotly::plotlyOutput(ns("gauges_plot"), height = "400px")
+                plotly::plotlyOutput(ns("gauges_plot"), height = "500px")
               )
             ),
             card(
@@ -595,6 +597,64 @@ mod_concordance_server <- function(id,
 
           # Match and create concordance data
           match_mic_elisa(mic_data_raw, vsg_data, "VSG")
+
+        } else if (comparison == "mic_l13") {
+          # MIC vs iELISA-L13
+          mic_data_raw <- mic_df()
+          ielisa_data <- ielisa_df()
+
+          # Debug: Log data availability
+          message("=== MIC vs iELISA-L13 Concordance Debug ===")
+          message(sprintf("MIC data: %s rows", if (is.null(mic_data_raw)) "NULL" else nrow(mic_data_raw)))
+          message(sprintf("iELISA data: %s rows", if (is.null(ielisa_data)) "NULL" else nrow(ielisa_data)))
+
+          # Check if data is available
+          if (is.null(mic_data_raw) || is.null(ielisa_data) ||
+              nrow(mic_data_raw) == 0 || nrow(ielisa_data) == 0) {
+            message("Returning empty tibble - no data available")
+            return(tibble::tibble())
+          }
+
+          # Apply QC filters
+          if (input$exclude_qc_fail) {
+            ielisa_before <- nrow(ielisa_data)
+            ielisa_data <- ielisa_data %>% dplyr::filter(plate_valid_L13 == TRUE)
+            message(sprintf("iELISA data after L13 QC filter: %s rows (removed %s)", nrow(ielisa_data), ielisa_before - nrow(ielisa_data)))
+          }
+
+          # Match and create concordance data
+          matched <- match_mic_ielisa(mic_data_raw, ielisa_data, "L13")
+          message(sprintf("Matched samples: %s rows", nrow(matched)))
+          matched
+
+        } else if (comparison == "mic_l15") {
+          # MIC vs iELISA-L15
+          mic_data_raw <- mic_df()
+          ielisa_data <- ielisa_df()
+
+          # Debug: Log data availability
+          message("=== MIC vs iELISA-L15 Concordance Debug ===")
+          message(sprintf("MIC data: %s rows", if (is.null(mic_data_raw)) "NULL" else nrow(mic_data_raw)))
+          message(sprintf("iELISA data: %s rows", if (is.null(ielisa_data)) "NULL" else nrow(ielisa_data)))
+
+          # Check if data is available
+          if (is.null(mic_data_raw) || is.null(ielisa_data) ||
+              nrow(mic_data_raw) == 0 || nrow(ielisa_data) == 0) {
+            message("Returning empty tibble - no data available")
+            return(tibble::tibble())
+          }
+
+          # Apply QC filters
+          if (input$exclude_qc_fail) {
+            ielisa_before <- nrow(ielisa_data)
+            ielisa_data <- ielisa_data %>% dplyr::filter(plate_valid_L15 == TRUE)
+            message(sprintf("iELISA data after L15 QC filter: %s rows (removed %s)", nrow(ielisa_data), ielisa_before - nrow(ielisa_data)))
+          }
+
+          # Match and create concordance data
+          matched <- match_mic_ielisa(mic_data_raw, ielisa_data, "L15")
+          message(sprintf("Matched samples: %s rows", nrow(matched)))
+          matched
 
         } else {
           # Multi-way comparison

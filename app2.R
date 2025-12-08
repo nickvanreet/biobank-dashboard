@@ -140,7 +140,7 @@ server <- function(input, output, session) {
   # Sample Processing module (comprehensive sample processing overview)
   mod_sample_processing_server(
     "sample_processing",
-    biobank_df = data$clean_data,
+    biobank_df = data$filtered_data,  # Use filtered_data to respect global filters
     extraction_df = data$filtered_extractions,
     mic_df = mic_data$qpcr_samples,
     elisa_pe_df = elisa_pe_data$samples,

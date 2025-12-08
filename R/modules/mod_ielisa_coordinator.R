@@ -299,7 +299,7 @@ mod_ielisa_coordinator_server <- function(id, biobank_df = reactive(NULL), filte
       })
     })
 
-    # Filtered data (apply plate validity filter and custom QC settings)
+    # Filtered data (apply plate validity filter, custom QC settings, and global filters)
     filtered_ielisa_data <- reactive({
       data <- raw_ielisa_data()
 
@@ -335,6 +335,49 @@ mod_ielisa_coordinator_server <- function(id, biobank_df = reactive(NULL), filte
         threshold = input$positivity_threshold,
         formula = input$formula_choice
       )
+
+      # Apply global filters (Study, Province, Health Zone, Structure)
+      # Join with biobank to get demographic info, then filter
+      if (!is.null(biobank_df) && !is.null(filters)) {
+        biobank_data <- tryCatch(biobank_df(), error = function(e) NULL)
+        filter_list <- tryCatch(filters(), error = function(e) NULL)
+
+        if (!is.null(biobank_data) && nrow(biobank_data) > 0 &&
+            !is.null(filter_list) && is.list(filter_list)) {
+
+          # Create a filtered barcode list from biobank
+          filtered_barcodes <- biobank_data %>%
+            select(barcode, any_of(c("study", "province", "health_zone",
+                                     "health_structure", "health_facility",
+                                     "structure_sanitaire")))
+
+          # Apply filters to biobank to get valid barcodes
+          if (!is.null(filter_list$cohort) && !identical(filter_list$cohort, "all") &&
+              "study" %in% names(filtered_barcodes)) {
+            filtered_barcodes <- filtered_barcodes %>%
+              filter(is.na(study) | study %in% filter_list$cohort)
+          }
+
+          if (!is.null(filter_list$province) && !identical(filter_list$province, "all") &&
+              "province" %in% names(filtered_barcodes)) {
+            filtered_barcodes <- filtered_barcodes %>%
+              filter(is.na(province) | province %in% filter_list$province)
+          }
+
+          if (!is.null(filter_list$zone) && !identical(filter_list$zone, "all") &&
+              "health_zone" %in% names(filtered_barcodes)) {
+            filtered_barcodes <- filtered_barcodes %>%
+              filter(is.na(health_zone) | health_zone %in% filter_list$zone)
+          }
+
+          # Filter iELISA data to only include samples from filtered biobank
+          if ("code_barres_kps" %in% names(data) && "barcode" %in% names(filtered_barcodes)) {
+            valid_barcodes <- filtered_barcodes$barcode
+            data <- data %>%
+              filter(code_barres_kps %in% valid_barcodes)
+          }
+        }
+      }
 
       data
     })

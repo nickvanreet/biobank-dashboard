@@ -86,11 +86,26 @@ mod_mic_analysis_ui <- function(id) {
 
         card(
           class = "mic-plot-card",
-          card_header("Replicate Concordance: Proportion of Positive Replicates per Sample"),
+          card_header("Replicate Concordance Heatmap"),
           card_body(
             div(
-              class = "mb-2 text-muted small",
-              "Shows what percentage of technical replicates were positive for each marker across top samples"
+              class = "mb-3",
+              div(
+                class = "fw-bold mb-1",
+                "Purpose: Quality control for replicate testing"
+              ),
+              div(
+                class = "text-muted small",
+                "This heatmap shows the proportion of technical replicates that tested positive for each sample and marker. ",
+                "It helps identify:",
+                tags$ul(
+                  class = "mb-0 mt-1",
+                  tags$li("Samples with inconsistent replication (e.g., 1/3 or 2/4 positive)"),
+                  tags$li("Markers with poor reproducibility"),
+                  tags$li("Samples that may need retesting for confirmation")
+                ),
+                div(class = "mt-1", "Green = all replicates positive, White = all replicates negative, Intermediate colors = partial positivity")
+              )
             ),
             plotlyOutput(ns("heatmap_replicates"), height = "500px"),
             class = "p-3"
@@ -374,12 +389,22 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
             !is.na(Cq_median_RNAseP_RNA)
           ) %>%
           mutate(
+            # Primary quality assessment: samples with Cq > 35 are poor quality
             Quality = case_when(
+              Cq_median_RNAseP_DNA > 35 | Cq_median_RNAseP_RNA > 35 ~ "Poor Quality (Cq > 35)",
               is.na(Delta_RP) ~ "Unknown",
-              Delta_RP <= 5 ~ "Good",
-              Delta_RP <= 8 ~ "Moderate",
-              TRUE ~ "Poor"
-            )
+              Delta_RP <= 5 ~ "Good (ΔCq ≤ 5)",
+              Delta_RP <= 8 ~ "Moderate (ΔCq ≤ 8)",
+              TRUE ~ "Poor (ΔCq > 8)"
+            ),
+            # Reorder factor levels to prioritize poor quality
+            Quality = factor(Quality, levels = c(
+              "Good (ΔCq ≤ 5)",
+              "Moderate (ΔCq ≤ 8)",
+              "Poor (ΔCq > 8)",
+              "Poor Quality (Cq > 35)",
+              "Unknown"
+            ))
           )
 
         if (!nrow(df)) {
@@ -388,22 +413,60 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
 
         plot_ly(df, x = ~Cq_median_RNAseP_DNA, y = ~Cq_median_RNAseP_RNA,
                 color = ~Quality,
-                colors = c("Good" = "#27ae60", "Moderate" = "#f39c12",
-                           "Poor" = "#e74c3c", "Unknown" = "#95a5a6"),
-                type = 'scatter', mode = 'markers',
-                text = ~paste0(SampleName, "<br>ΔCq: ", round(Delta_RP, 2)),
-                hovertemplate = paste0(
-                  "<b>%{text}</b><br>",
-                  "DNA Cq: %{x:.2f}<br>",
-                  "RNA Cq: %{y:.2f}<br>",
-                  "<extra></extra>"
+                colors = c(
+                  "Good (ΔCq ≤ 5)" = "#27ae60",
+                  "Moderate (ΔCq ≤ 8)" = "#f39c12",
+                  "Poor (ΔCq > 8)" = "#e67e22",
+                  "Poor Quality (Cq > 35)" = "#e74c3c",
+                  "Unknown" = "#95a5a6"
                 ),
+                type = 'scatter', mode = 'markers',
+                text = ~paste0(
+                  SampleName,
+                  "<br>DNA Cq: ", round(Cq_median_RNAseP_DNA, 2),
+                  "<br>RNA Cq: ", round(Cq_median_RNAseP_RNA, 2),
+                  "<br>ΔCq: ", if_else(is.na(Delta_RP), "N/A", as.character(round(Delta_RP, 2)))
+                ),
+                hovertemplate = "<b>%{text}</b><extra></extra>",
                 marker = list(size = 10, opacity = 0.7)) %>%
           layout(
-            xaxis = list(title = "RNAseP-DNA Cq"),
-            yaxis = list(title = "RNAseP-RNA Cq"),
-            legend = list(title = list(text = "RNA Quality")),
-            hovermode = 'closest'
+            xaxis = list(
+              title = "RNAseP-DNA Cq",
+              range = c(15, 40),
+              zeroline = FALSE
+            ),
+            yaxis = list(
+              title = "RNAseP-RNA Cq",
+              range = c(15, 40),
+              zeroline = FALSE
+            ),
+            legend = list(title = list(text = "Quality")),
+            hovermode = 'closest',
+            shapes = list(
+              # Vertical line at Cq = 35 for DNA
+              list(
+                type = "line",
+                x0 = 35, x1 = 35,
+                y0 = 15, y1 = 40,
+                line = list(color = "red", dash = "dash", width = 2)
+              ),
+              # Horizontal line at Cq = 35 for RNA
+              list(
+                type = "line",
+                x0 = 15, x1 = 40,
+                y0 = 35, y1 = 35,
+                line = list(color = "red", dash = "dash", width = 2)
+              )
+            ),
+            annotations = list(
+              list(
+                x = 35, y = 39,
+                text = "Poor Quality Threshold (Cq = 35)",
+                showarrow = FALSE,
+                xanchor = "left",
+                font = list(color = "red", size = 10)
+              )
+            )
           )
       }, error = function(e) {
         plotly_empty() %>%
@@ -552,50 +615,59 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         "Invalid_NoDNA" = "#e74c3c"
       )
 
-      # Create faceted box plot
-      fig <- plot_ly()
+      # Create separate subplots for each marker in a 2x2 grid
+      markers <- c("177T", "18S2", "RNAseP-DNA", "RNAseP-RNA")
 
-      markers <- unique(df_long$Marker)
-      for (i in seq_along(markers)) {
-        marker_data <- df_long %>% filter(Marker == markers[i])
+      # Create list to store individual plots
+      plot_list <- list()
 
-        for (call in unique(marker_data$FinalCall)) {
-          call_data <- marker_data %>% filter(FinalCall == call)
+      for (marker in markers) {
+        marker_data <- df_long %>% filter(Marker == marker)
 
-          fig <- fig %>%
-            add_trace(
-              data = call_data,
-              x = ~FinalCall,
-              y = ~Cq,
-              type = "box",
-              name = call,
-              legendgroup = call,
-              showlegend = (i == 1),
-              marker = list(color = call_colors[[call]]),
-              xaxis = paste0("x", if (i > 1) i else "")
+        if (nrow(marker_data) > 0) {
+          # Get unique calls and their colors
+          unique_calls <- unique(marker_data$FinalCall)
+
+          p <- plot_ly()
+
+          for (call in unique_calls) {
+            call_data <- marker_data %>% filter(FinalCall == call)
+            # Use default color if call not in palette
+            color <- if (call %in% names(call_colors)) call_colors[[call]] else "#95a5a6"
+
+            p <- p %>%
+              add_trace(
+                data = call_data,
+                x = ~FinalCall,
+                y = ~Cq,
+                type = "box",
+                name = call,
+                marker = list(color = color),
+                showlegend = FALSE
+              )
+          }
+
+          p <- p %>%
+            layout(
+              title = list(text = marker, font = list(size = 14)),
+              xaxis = list(title = "", tickangle = -45),
+              yaxis = list(title = if (marker %in% c("177T", "RNAseP-DNA")) "Cq Value" else ""),
+              margin = list(l = 50, r = 20, t = 40, b = 80)
             )
+
+          plot_list[[marker]] <- p
         }
       }
 
-      # Create subplot layout
-      fig %>%
-        subplot(nrows = 1, shareY = TRUE) %>%
+      # Combine into 2x2 subplot
+      subplot(plot_list, nrows = 2, shareY = TRUE, titleX = TRUE, titleY = TRUE) %>%
         layout(
-          title = paste0("Cq Distribution by Final Call Category (n = ", length(unique(df_long$SampleName)), " samples)"),
-          yaxis = list(title = "Cq Value"),
-          annotations = lapply(seq_along(markers), function(i) {
-            list(
-              x = (i - 0.5) / length(markers),
-              y = -0.15,
-              text = markers[i],
-              xref = "paper",
-              yref = "paper",
-              xanchor = "center",
-              yanchor = "top",
-              showarrow = FALSE,
-              font = list(size = 12)
-            )
-          })
+          title = list(
+            text = paste0("Cq Distribution by Final Call - All Markers (n = ",
+                         length(unique(df_long$SampleName)), " samples)"),
+            y = 0.98
+          ),
+          showlegend = FALSE
         )
     })
 

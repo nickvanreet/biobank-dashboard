@@ -34,22 +34,27 @@ source(file.path("R", "modules", "ielisa", "output_ielisa.R"), local = TRUE)
 detect_elisa_type <- function(file_path) {
   # First try path-based detection (most reliable)
   if (grepl("ielisa|/ielisa/|iELISA", file_path, ignore.case = TRUE)) {
+    message("  ➜ Path-based detection: iELISA (path contains 'ielisa')")
     return("iELISA")
   }
 
   if (grepl("elisa_vsg|/vsg/", file_path, ignore.case = TRUE)) {
+    message("  ➜ Path-based detection: VSG (path contains 'elisa_vsg' or '/vsg/')")
     return("VSG")
   }
 
   if (grepl("elisa_pe|/pe/", file_path, ignore.case = TRUE)) {
+    message("  ➜ Path-based detection: PE (path contains 'elisa_pe' or '/pe/')")
     return("PE")
   }
 
   # Fall back to checking file structure
+  message("  ➜ Path-based detection failed, using content-based detection...")
   tryCatch({
     # Check for iELISA-specific sheets (450-600 nm and ECHANTILLONS)
     sheets <- readxl::excel_sheets(file_path)
     if ("ECHANTILLONS" %in% sheets && "450-600 nm" %in% sheets) {
+      message("  ➜ Content-based detection: iELISA (has ECHANTILLONS sheet)")
       return("iELISA")
     }
 
@@ -60,8 +65,10 @@ detect_elisa_type <- function(file_path) {
       has_plaque_markers <- any(grepl("Plaque \\d+:", raw[[1]], ignore.case = TRUE))
 
       if (has_plaque_markers) {
+        message("  ➜ Content-based detection: VSG (found 'Plaque' markers)")
         return("VSG")
       } else {
+        message("  ➜ Content-based detection: PE (no 'Plaque' markers)")
         return("PE")
       }
     }

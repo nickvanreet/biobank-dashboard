@@ -17,12 +17,82 @@ suppressPackageStartupMessages({
 # STEP 1: INGESTION
 # =============================================================================
 
-#' Read ELISA-PE OD grid (single-plate format)
+#' Read ELISA-PE OD grid (supports both 1-plate and 4-plate formats)
 #' @param path Path to Excel file
 #' @param sheet Sheet name containing OD data
 #' @return Tibble with columns: plate_num, well_id, row, col, ag_state, od
 ingest_pe_od_grid <- function(path, sheet = "450 nm - 600 nm") {
   raw <- read_excel(path, sheet = sheet, col_names = FALSE)
+
+  # Check for "Plaque" markers (4-plate format indicator)
+  plate_markers <- which(grepl("Plaque \\d+:", raw[[1]], ignore.case = TRUE))
+
+  # ========== 4-PLATE FORMAT ==========
+  if (length(plate_markers) > 0) {
+    cat("  Detected 4-plate PE format\n")
+
+    all_plates_od <- list()
+
+    for (i in seq_along(plate_markers)) {
+      plate_num <- i
+      start_row <- plate_markers[i]
+
+      # Skip 3 rows (marker, empty, header)
+      data_start <- start_row + 3
+
+      # Read 8 rows (A-H)
+      plate_data <- raw[data_start:(data_start + 7), 1:13]
+      names(plate_data) <- c("row_label", as.character(1:12))
+
+      od_long <- plate_data %>%
+        filter(row_label %in% LETTERS[1:8]) %>%
+        mutate(across(`1`:`12`, as.numeric)) %>%
+        pivot_longer(
+          cols = `1`:`12`,
+          names_to = "col",
+          values_to = "od"
+        ) %>%
+        mutate(
+          col = as.integer(col),
+          plate_num = plate_num
+        ) %>%
+        select(plate_num, row_label, col, od)
+
+      all_plates_od[[paste0("plate_", plate_num)]] <- od_long
+    }
+
+    # Combine all plates
+    od_all <- bind_rows(all_plates_od)
+
+    # Map to deepwell positions
+    # Deepwell cols 1-3 → ELISA plate 1, cols 4-6 → plate 2, etc.
+    od_all <- od_all %>%
+      mutate(
+        # Get position within set of 3
+        pos_in_set = ((col - 1) %% 3) + 1,
+
+        # Determine Ag+/Ag0 based on column
+        ag_state = if_else(col <= 6, "Ag_plus", "Ag0"),
+
+        # Map to deepwell column
+        deepwell_col = case_when(
+          plate_num == 1 ~ pos_in_set,
+          plate_num == 2 ~ pos_in_set + 3,
+          plate_num == 3 ~ pos_in_set + 6,
+          plate_num == 4 ~ pos_in_set + 9
+        ),
+
+        # Create well_id using deepwell coordinates
+        well_id = paste0(row_label, deepwell_col)
+      ) %>%
+      rename(row = row_label) %>%
+      select(plate_num, well_id, row, col, ag_state, od)
+
+    return(od_all)
+  }
+
+  # ========== 1-PLATE FORMAT (ORIGINAL LOGIC) ==========
+  cat("  Detected 1-plate PE format\n")
 
   names(raw)[1] <- "row_label"
 
@@ -57,7 +127,7 @@ ingest_pe_od_grid <- function(path, sheet = "450 nm - 600 nm") {
   return(od_long)
 }
 
-#' Read ELISA-PE sample layout (from Results sheet)
+#' Read ELISA-PE sample layout (supports both 1-plate and 4-plate formats)
 #' @param path Path to Excel file
 #' @param plate_id Plate identifier
 #' @return Tibble with sample→well mapping
@@ -72,24 +142,45 @@ ingest_pe_sample_layout <- function(path, plate_id) {
   }
   dw_col <- dw_col[1]
 
-  samples_layout <- df_samples %>%
-    filter(!is.na(.data[[dw_col]])) %>%
-    mutate(
-      plate_id = plate_id,
-      plate_num = 1,
-      sample_type = "sample",
-      sample_code = NA_character_,  # Will be filled for controls only
-      wells_raw = .data[[dw_col]],
-      wells = map(wells_raw, parse_deepwell_pattern)
-    ) %>%
-    select(plate_id, plate_num, sample_type, sample, sample_code,
-           numero_labo, code_barres_kps, wells, everything()) %>%
-    unnest_longer(wells, values_to = "well_id")
+  # Check if ELISA column exists (indicates 4-plate format)
+  has_elisa_col <- "elisa" %in% names(df_samples)
+
+  if (has_elisa_col) {
+    # ========== 4-PLATE FORMAT ==========
+    # Direct mapping: use well_id from deepwell column and plate_num from elisa column
+    samples_layout <- df_samples %>%
+      filter(!is.na(.data[[dw_col]])) %>%
+      mutate(
+        plate_id = plate_id,
+        plate_num = as.integer(elisa),
+        sample_type = "sample",
+        sample_code = NA_character_,
+        well_id = .data[[dw_col]]  # Direct mapping in 4-plate
+      ) %>%
+      select(plate_id, plate_num, sample_type, sample, sample_code,
+             numero_labo, code_barres_kps, well_id, everything())
+  } else {
+    # ========== 1-PLATE FORMAT (ORIGINAL LOGIC) ==========
+    # Pattern parsing: expand deepwell patterns like "A1/A2" or "A1 ou A2"
+    samples_layout <- df_samples %>%
+      filter(!is.na(.data[[dw_col]])) %>%
+      mutate(
+        plate_id = plate_id,
+        plate_num = 1,
+        sample_type = "sample",
+        sample_code = NA_character_,  # Will be filled for controls only
+        wells_raw = .data[[dw_col]],
+        wells = map(wells_raw, parse_deepwell_pattern)
+      ) %>%
+      select(plate_id, plate_num, sample_type, sample, sample_code,
+             numero_labo, code_barres_kps, wells, everything()) %>%
+      unnest_longer(wells, values_to = "well_id")
+  }
 
   return(samples_layout)
 }
 
-#' Read ELISA-PE control layout (from Controls sheet)
+#' Read ELISA-PE control layout (supports both 1-plate and 4-plate formats)
 #' @param path Path to Excel file
 #' @param plate_id Plate identifier
 #' @return Tibble with control→well mapping
@@ -104,20 +195,42 @@ ingest_pe_control_layout <- function(path, plate_id) {
   }
   dw_col <- dw_col[1]
 
-  controls_layout <- df_controls %>%
-    filter(!is.na(.data[[dw_col]])) %>%
-    mutate(
-      plate_id = plate_id,
-      plate_num = 1,
-      sample_type = "control",
-      numero_labo = NA_character_,
-      code_barres_kps = NA_character_,
-      wells_raw = .data[[dw_col]],
-      wells = map(wells_raw, parse_deepwell_pattern)
-    ) %>%
-    select(plate_id, plate_num, sample_type, sample, sample_code,
-           numero_labo, code_barres_kps, wells, everything()) %>%
-    unnest_longer(wells, values_to = "well_id")
+  # Check if ELISA column exists (indicates 4-plate format)
+  has_elisa_col <- "elisa" %in% names(df_controls)
+
+  if (has_elisa_col) {
+    # ========== 4-PLATE FORMAT ==========
+    # Direct mapping: use well_id from deepwell column and plate_num from elisa column
+    controls_layout <- df_controls %>%
+      filter(!is.na(.data[[dw_col]])) %>%
+      mutate(
+        plate_id = plate_id,
+        plate_num = as.integer(elisa),
+        sample_type = "control",
+        numero_labo = NA_character_,
+        code_barres_kps = NA_character_,
+        well_id = .data[[dw_col]]  # Direct mapping in 4-plate
+      ) %>%
+      select(plate_id, plate_num, sample_type, sample, sample_code,
+             numero_labo, code_barres_kps, well_id, everything())
+  } else {
+    # ========== 1-PLATE FORMAT (ORIGINAL LOGIC) ==========
+    # Pattern parsing: expand deepwell patterns like "A1/A2" or "A1 ou A2"
+    controls_layout <- df_controls %>%
+      filter(!is.na(.data[[dw_col]])) %>%
+      mutate(
+        plate_id = plate_id,
+        plate_num = 1,
+        sample_type = "control",
+        numero_labo = NA_character_,
+        code_barres_kps = NA_character_,
+        wells_raw = .data[[dw_col]],
+        wells = map(wells_raw, parse_deepwell_pattern)
+      ) %>%
+      select(plate_id, plate_num, sample_type, sample, sample_code,
+             numero_labo, code_barres_kps, wells, everything()) %>%
+      unnest_longer(wells, values_to = "well_id")
+  }
 
   return(controls_layout)
 }

@@ -160,7 +160,17 @@ mod_sample_processing_ui <- function(id) {
 
         # Samples table
         card(
-          card_header("Sample Details"),
+          card_header(
+            div(
+              class = "d-flex justify-content-between align-items-center",
+              span("Sample Details"),
+              div(
+                class = "btn-group btn-group-sm",
+                downloadButton(ns("download_csv"), "CSV", class = "btn-sm"),
+                downloadButton(ns("download_excel"), "Excel", class = "btn-sm")
+              )
+            )
+          ),
           card_body(
             DTOutput(ns("samples_table"))
           )
@@ -835,17 +845,11 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           scrollX = TRUE,
           scrollY = "600px",
           scrollCollapse = TRUE,
-          dom = 'Bfrtip',
-          buttons = list(
-            list(extend = 'copy', exportOptions = list(modifier = list(page = 'all'))),
-            list(extend = 'csv', exportOptions = list(modifier = list(page = 'all'))),
-            list(extend = 'excel', exportOptions = list(modifier = list(page = 'all')))
-          ),
+          dom = 'frtip',
           columnDefs = list(
             list(className = 'dt-center', targets = "_all")
           )
         ),
-        extensions = 'Buttons',
         rownames = FALSE,
         filter = 'top',
         class = "table table-striped table-hover table-sm"
@@ -954,5 +958,119 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           )
         )
     })
+
+    # ========================================================================
+    # DOWNLOAD HANDLERS
+    # ========================================================================
+
+    # Download CSV
+    output$download_csv <- downloadHandler(
+      filename = function() {
+        paste0("sample_processing_", format(Sys.Date(), "%Y%m%d"), ".csv")
+      },
+      content = function(file) {
+        # Get the filtered samples data
+        samples <- filtered_samples()
+
+        # Format for export (same as display)
+        export_data <- samples %>%
+          select(
+            barcode,
+            lab_id,
+            province,
+            health_zone,
+            processing_status,
+            processing_stage,
+            has_extraction,
+            n_mic_tests,
+            mic_results,
+            n_elisa_pe_tests,
+            elisa_pe_results,
+            n_elisa_vsg_tests,
+            elisa_vsg_results,
+            n_ielisa_tests,
+            ielisa_results,
+            any_positive,
+            overall_qc_pass
+          ) %>%
+          mutate(
+            has_extraction = ifelse(has_extraction, "Yes", "No"),
+            n_mic_tests = ifelse(is.na(n_mic_tests) | n_mic_tests == 0, "-", as.character(n_mic_tests)),
+            n_elisa_pe_tests = ifelse(is.na(n_elisa_pe_tests) | n_elisa_pe_tests == 0, "-", as.character(n_elisa_pe_tests)),
+            n_elisa_vsg_tests = ifelse(is.na(n_elisa_vsg_tests) | n_elisa_vsg_tests == 0, "-", as.character(n_elisa_vsg_tests)),
+            n_ielisa_tests = ifelse(is.na(n_ielisa_tests) | n_ielisa_tests == 0, "-", as.character(n_ielisa_tests)),
+            any_positive = ifelse(any_positive, "YES", "NO"),
+            overall_qc_pass = ifelse(overall_qc_pass, "PASS", "FAIL")
+          )
+
+        # Rename columns for export
+        names(export_data) <- c(
+          "Barcode", "Lab ID", "Province", "Health Zone",
+          "Status", "Stage", "Extracted",
+          "MIC Tests", "MIC Results",
+          "ELISA PE Tests", "ELISA PE Results",
+          "ELISA VSG Tests", "ELISA VSG Results",
+          "iELISA Tests", "iELISA Results",
+          "Any Positive", "Overall QC"
+        )
+
+        write_csv(export_data, file)
+      }
+    )
+
+    # Download Excel
+    output$download_excel <- downloadHandler(
+      filename = function() {
+        paste0("sample_processing_", format(Sys.Date(), "%Y%m%d"), ".xlsx")
+      },
+      content = function(file) {
+        # Get the filtered samples data
+        samples <- filtered_samples()
+
+        # Format for export (same as display)
+        export_data <- samples %>%
+          select(
+            barcode,
+            lab_id,
+            province,
+            health_zone,
+            processing_status,
+            processing_stage,
+            has_extraction,
+            n_mic_tests,
+            mic_results,
+            n_elisa_pe_tests,
+            elisa_pe_results,
+            n_elisa_vsg_tests,
+            elisa_vsg_results,
+            n_ielisa_tests,
+            ielisa_results,
+            any_positive,
+            overall_qc_pass
+          ) %>%
+          mutate(
+            has_extraction = ifelse(has_extraction, "Yes", "No"),
+            n_mic_tests = ifelse(is.na(n_mic_tests) | n_mic_tests == 0, "-", as.character(n_mic_tests)),
+            n_elisa_pe_tests = ifelse(is.na(n_elisa_pe_tests) | n_elisa_pe_tests == 0, "-", as.character(n_elisa_pe_tests)),
+            n_elisa_vsg_tests = ifelse(is.na(n_elisa_vsg_tests) | n_elisa_vsg_tests == 0, "-", as.character(n_elisa_vsg_tests)),
+            n_ielisa_tests = ifelse(is.na(n_ielisa_tests) | n_ielisa_tests == 0, "-", as.character(n_ielisa_tests)),
+            any_positive = ifelse(any_positive, "YES", "NO"),
+            overall_qc_pass = ifelse(overall_qc_pass, "PASS", "FAIL")
+          )
+
+        # Rename columns for export
+        names(export_data) <- c(
+          "Barcode", "Lab ID", "Province", "Health Zone",
+          "Status", "Stage", "Extracted",
+          "MIC Tests", "MIC Results",
+          "ELISA PE Tests", "ELISA PE Results",
+          "ELISA VSG Tests", "ELISA VSG Results",
+          "iELISA Tests", "iELISA Results",
+          "Any Positive", "Overall QC"
+        )
+
+        writexl::write_xlsx(export_data, file)
+      }
+    )
   })
 }

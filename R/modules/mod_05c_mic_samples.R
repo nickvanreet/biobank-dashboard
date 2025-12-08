@@ -386,8 +386,26 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         df <- df %>% filter(TestNumber == 1L)
       }
 
-      df %>%
-        mutate(QualityMetric = quality_metric_label(WellAggregateConflict, FinalCall))
+      # Split each sample into TWO rows: one for 177T target, one for 18S2 target
+      df_177t <- df %>%
+        mutate(
+          Target = "177T",
+          TargetCall = dplyr::coalesce(Call_177T, marker_177T),
+          TargetCq = Cq_median_177T,
+          QualityMetric = quality_metric_label(WellAggregateConflict, FinalCall)
+        )
+
+      df_18s2 <- df %>%
+        mutate(
+          Target = "18S2",
+          TargetCall = dplyr::coalesce(Call_18S2, marker_18S2),
+          TargetCq = Cq_median_18S2,
+          QualityMetric = quality_metric_label(WellAggregateConflict, FinalCall)
+        )
+
+      # Combine both targets
+      bind_rows(df_177t, df_18s2) %>%
+        arrange(SampleName, TestNumber, Target)
     })
 
     selected_results <- reactive({
@@ -1038,7 +1056,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
 
       # Round numeric columns
       numeric_cols <- intersect(
-        c("Cq_median_177T", "Cq_median_18S2", "Cq_median_RNAseP_DNA",
+        c("TargetCq", "Cq_median_177T", "Cq_median_18S2", "Cq_median_RNAseP_DNA",
           "Cq_median_RNAseP_RNA", "Delta_18S2_177T", "Delta_RP"),
         names(df)
       )
@@ -1047,10 +1065,11 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         df <- df %>% mutate(across(all_of(numeric_cols), ~round(.x, 2)))
       }
       
-      # Select columns to display - including Barcode, replicate counts, and decision tree columns
+      # Select columns to display - including Target, TargetCall, TargetCq
       available_cols <- intersect(
-        c("RunID", "SampleName", "Barcode", "TestOrderLabel", "TestNumber", "FinalCall",
-          "QualityMetric", "DecisionStep", "DecisionReason", "ConfidenceScore", "WellSummary", "WellAggregateConflict",
+        c("RunID", "SampleName", "Barcode", "TestOrderLabel", "TestNumber", "Target", "TargetCall", "TargetCq",
+          "FinalCall", "QualityMetric", "DecisionStep", "DecisionReason", "ConfidenceScore",
+          "WellSummary", "WellAggregateConflict",
           "Wells_TNA_Positive", "Wells_DNA_Positive", "Wells_RNA_Positive",
           "ReplicatesTotal", "Replicates_Positive", "Replicates_Negative", "Replicates_Failed",
           "Cq_median_177T", "Cq_median_18S2",
@@ -1083,6 +1102,18 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
                       c('Positive', 'Positive_DNA', 'Positive_RNA', 'LatePositive', 'Negative', 'Indeterminate', 'Invalid_NoDNA', 'Invalid', 'RunInvalid', 'Control', 'Control_Fail'),
                       c('#d4edda', '#b3e0f2', '#d4b3f2', '#ffe8a1', '#f8f9fa', '#fff3cd', '#f8d7da', '#f8d7da', '#f8d7da', '#dbe9ff', '#f5c6cb')
                     )) %>%
+        {
+          if ("TargetCall" %in% available_cols) {
+            formatStyle(.,
+                        'TargetCall',
+                        backgroundColor = styleEqual(
+                          c('Positive', 'Negative', 'Indeterminate'),
+                          c('#d4edda', '#f8f9fa', '#fff3cd')
+                        ))
+          } else {
+            .
+          }
+        } %>%
         formatStyle('QualityMetric',
                     backgroundColor = styleEqual(
                       c('Conflict', 'Invalid', 'Indeterminate', 'Clean'),

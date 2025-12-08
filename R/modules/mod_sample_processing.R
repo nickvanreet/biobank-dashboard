@@ -614,6 +614,14 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
     # ========================================================================
 
     output$summary_kpis <- renderUI({
+      # Explicitly depend on all filter inputs to ensure reactivity
+      # This forces the KPIs to re-render when any filter changes
+      filter_positivity <- input$filter_positivity
+      filter_completeness <- input$filter_completeness
+      filter_processing <- input$filter_processing
+      filter_qc <- input$filter_qc
+
+      # Get comprehensive and filtered samples
       all_samples <- comprehensive_samples()
       samples <- filtered_samples()
 
@@ -713,7 +721,14 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
     # ========================================================================
 
     output$processing_flow <- renderPlotly({
-      # Explicitly depend on filtered_samples to ensure reactivity
+      # Explicitly depend on all filter inputs to ensure reactivity
+      # This forces the chart to re-render when any filter changes
+      filter_positivity <- input$filter_positivity
+      filter_completeness <- input$filter_completeness
+      filter_processing <- input$filter_processing
+      filter_qc <- input$filter_qc
+
+      # Now get filtered samples
       samples <- filtered_samples()
 
       # Safety check
@@ -732,8 +747,17 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       n_ielisa <- as.integer(sum(samples$has_ielisa, na.rm = TRUE))
       n_fully_tested <- as.integer(sum(samples$n_test_types == 3, na.rm = TRUE))
 
-      # Create a Sankey-style funnel plot
-      # Explicitly create count vector to ensure proper evaluation
+      # Force evaluation of counts before creating vector
+      # This ensures counts are calculated before being used in the visualization
+      force(n_biobank)
+      force(n_extracted)
+      force(n_mic)
+      force(n_elisa_pe)
+      force(n_elisa_vsg)
+      force(n_ielisa)
+      force(n_fully_tested)
+
+      # Create count vector
       count_vector <- c(n_biobank, n_extracted, n_mic, n_elisa_pe, n_elisa_vsg, n_ielisa, n_fully_tested)
 
       flow_data <- tibble(
@@ -772,6 +796,14 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
     # ========================================================================
 
     output$samples_table <- renderDT({
+      # Explicitly depend on all filter inputs to ensure reactivity
+      # This forces the table to re-render when any filter changes
+      filter_positivity <- input$filter_positivity
+      filter_completeness <- input$filter_completeness
+      filter_processing <- input$filter_processing
+      filter_qc <- input$filter_qc
+
+      # Now get filtered samples
       samples <- filtered_samples()
 
       if (nrow(samples) == 0) {

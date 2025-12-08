@@ -875,7 +875,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         options = list(
           pageLength = 25,
           scrollX = TRUE,
-          scrollY = "600px",
+          scrollY = "1200px",
           scrollCollapse = TRUE,
           dom = 'frtip',
           columnDefs = list(

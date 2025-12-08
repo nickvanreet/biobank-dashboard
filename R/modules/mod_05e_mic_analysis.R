@@ -86,8 +86,12 @@ mod_mic_analysis_ui <- function(id) {
 
         card(
           class = "mic-plot-card",
-          card_header("Replicate Positivity Heatmap"),
+          card_header("Replicate Concordance: Proportion of Positive Replicates per Sample"),
           card_body(
+            div(
+              class = "mb-2 text-muted small",
+              "Shows what percentage of technical replicates were positive for each marker across top samples"
+            ),
             plotlyOutput(ns("heatmap_replicates"), height = "500px"),
             class = "p-3"
           )
@@ -522,30 +526,76 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         return(plotly_empty() %>% layout(title = "No data available"))
       }
 
-      # Focus on 177T for detection calls
-      df_plot <- df %>%
-        filter(!is.na(Cq_median_177T)) %>%
-        mutate(CallSimplified = case_when(
-          grepl("Positive", FinalCall) ~ "Positive",
-          FinalCall == "Negative" ~ "Negative",
-          FinalCall == "Indeterminate" ~ "Indeterminate",
-          TRUE ~ "Other"
-        ))
+      # Reshape to long format for all markers
+      df_long <- df %>%
+        select(SampleName, FinalCall,
+               `177T` = Cq_median_177T,
+               `18S2` = Cq_median_18S2,
+               `RNAseP-DNA` = Cq_median_RNAseP_DNA,
+               `RNAseP-RNA` = Cq_median_RNAseP_RNA) %>%
+        tidyr::pivot_longer(cols = c(`177T`, `18S2`, `RNAseP-DNA`, `RNAseP-RNA`),
+                           names_to = "Marker", values_to = "Cq") %>%
+        filter(!is.na(Cq))
 
-      if (!nrow(df_plot)) {
-        return(plotly_empty() %>% layout(title = "No 177T Cq data"))
+      if (!nrow(df_long)) {
+        return(plotly_empty() %>% layout(title = "No Cq data available"))
       }
 
-      plot_ly(df_plot, x = ~CallSimplified, y = ~Cq_median_177T,
-              color = ~CallSimplified,
+      # Define color palette for all FinalCall categories
+      call_colors <- c(
+        "Positive" = "#27ae60",
+        "Positive_DNA" = "#3498db",
+        "Positive_RNA" = "#9b59b6",
+        "LatePositive" = "#f39c12",
+        "Negative" = "#95a5a6",
+        "Indeterminate" = "#e67e22",
+        "Invalid_NoDNA" = "#e74c3c"
+      )
+
+      # Create faceted box plot
+      fig <- plot_ly()
+
+      markers <- unique(df_long$Marker)
+      for (i in seq_along(markers)) {
+        marker_data <- df_long %>% filter(Marker == markers[i])
+
+        for (call in unique(marker_data$FinalCall)) {
+          call_data <- marker_data %>% filter(FinalCall == call)
+
+          fig <- fig %>%
+            add_trace(
+              data = call_data,
+              x = ~FinalCall,
+              y = ~Cq,
               type = "box",
-              colors = c("Positive" = "#27ae60", "Negative" = "#95a5a6",
-                        "Indeterminate" = "#f39c12", "Other" = "#e74c3c")) %>%
+              name = call,
+              legendgroup = call,
+              showlegend = (i == 1),
+              marker = list(color = call_colors[[call]]),
+              xaxis = paste0("x", if (i > 1) i else "")
+            )
+        }
+      }
+
+      # Create subplot layout
+      fig %>%
+        subplot(nrows = 1, shareY = TRUE) %>%
         layout(
-          title = paste0("177T Cq by Call (n = ", nrow(df_plot), ")"),
-          xaxis = list(title = "Final Call"),
-          yaxis = list(title = "177T Cq Value"),
-          showlegend = FALSE
+          title = paste0("Cq Distribution by Final Call Category (n = ", length(unique(df_long$SampleName)), " samples)"),
+          yaxis = list(title = "Cq Value"),
+          annotations = lapply(seq_along(markers), function(i) {
+            list(
+              x = (i - 0.5) / length(markers),
+              y = -0.15,
+              text = markers[i],
+              xref = "paper",
+              yref = "paper",
+              xanchor = "center",
+              yanchor = "top",
+              showarrow = FALSE,
+              font = list(size = 12)
+            )
+          })
         )
     })
 
@@ -1071,12 +1121,12 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         zmax = 1,
         text = text_mat,
         hoverinfo = "text",
-        colorbar = list(title = "% Positive", tickformat = ".0%")
+        colorbar = list(title = "Proportion<br>Positive", tickformat = ".0%")
       ) %>%
         layout(
-          title = paste0("Top ", length(sample_levels), " samples by replicate positivity"),
+          title = paste0("Top ", length(sample_levels), " samples - ", length(target_levels), " markers"),
           xaxis = list(title = "Sample", tickangle = -45),
-          yaxis = list(title = "Target")
+          yaxis = list(title = "Marker")
         )
     })
 
@@ -1088,9 +1138,19 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         return(plotly_empty() %>% layout(title = "No replicate data available"))
       }
 
+      # Map target names
+      target_map <- c(
+        "177T" = "177T",
+        "18S2" = "18S2",
+        "RNAseP_DNA" = "RNAseP-DNA",
+        "RNAseP_RNA" = "RNAseP-RNA"
+      )
+
+      # Calculate replicate counts for all targets
       rep_counts <- replicates %>%
-        filter(ControlType == "Sample", Target == "177T", !is.na(Cq)) %>%
-        group_by(SampleName) %>%
+        filter(ControlType == "Sample", Target %in% names(target_map), !is.na(Cq)) %>%
+        mutate(TargetLabel = target_map[Target]) %>%
+        group_by(SampleName, TargetLabel) %>%
         summarise(
           TotalReps = sum(!is.na(Cq)),
           PositiveReps = sum(Call == "Positive", na.rm = TRUE),
@@ -1098,48 +1158,64 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         )
 
       if (!nrow(rep_counts)) {
-        return(plotly_empty() %>% layout(title = "No 177T replicate data available"))
+        return(plotly_empty() %>% layout(title = "No replicate data available"))
       }
 
-      max_reps <- max(rep_counts$TotalReps, na.rm = TRUE)
+      # Determine max replicates across all samples and targets
+      max_reps <- max(rep_counts$PositiveReps, na.rm = TRUE)
       if (!is.finite(max_reps)) {
         max_reps <- 4
       }
-      max_reps <- max(0, as.integer(ceiling(max(max_reps, 4))))
+      max_reps <- max(0, as.integer(ceiling(max_reps)))
 
-      rep_distribution <- rep_counts %>%
-        count(PositiveReps, name = "SampleCount") %>%
-        tidyr::complete(PositiveReps = 0:max_reps, fill = list(SampleCount = 0)) %>%
-        mutate(
-          PositiveReps = factor(PositiveReps, levels = 0:max_reps),
-          PositiveNumeric = as.numeric(as.character(PositiveReps)),
-          HoverLabel = paste0(
-            SampleCount, " sample", if_else(SampleCount == 1, "", "s"),
-            " with ", PositiveNumeric, " positive replicate",
-            if_else(PositiveNumeric == 1, "", "s")
-          )
-        )
+      # Create distribution for each target
+      fig <- plot_ly()
 
-      marker_colors <- rep("#27ae60", nrow(rep_distribution))
-      marker_colors[rep_distribution$PositiveNumeric == 0] <- "#95a5a6"
-      marker_colors[rep_distribution$PositiveNumeric == 1] <- "#f39c12"
+      targets <- c("177T", "18S2", "RNAseP-DNA", "RNAseP-RNA")
+      target_colors <- c(
+        "177T" = "#3498db",
+        "18S2" = "#9b59b6",
+        "RNAseP-DNA" = "#27ae60",
+        "RNAseP-RNA" = "#e74c3c"
+      )
 
-      plot_ly(
-        rep_distribution,
-        x = ~PositiveReps,
-        y = ~SampleCount,
-        type = "bar",
-        marker = list(color = marker_colors),
-        text = ~SampleCount,
-        textposition = "outside",
-        customdata = ~HoverLabel,
-        hovertemplate = "%{customdata}<extra></extra>"
-      ) %>%
+      for (i in seq_along(targets)) {
+        target <- targets[i]
+        target_data <- rep_counts %>% filter(TargetLabel == target)
+
+        if (nrow(target_data) > 0) {
+          rep_distribution <- target_data %>%
+            count(PositiveReps, name = "SampleCount") %>%
+            tidyr::complete(PositiveReps = 0:max_reps, fill = list(SampleCount = 0)) %>%
+            arrange(PositiveReps)
+
+          fig <- fig %>%
+            add_trace(
+              data = rep_distribution,
+              x = ~PositiveReps,
+              y = ~SampleCount,
+              type = "bar",
+              name = target,
+              marker = list(color = target_colors[[target]]),
+              text = ~SampleCount,
+              textposition = "outside",
+              hovertemplate = paste0(
+                "<b>", target, "</b><br>",
+                "Positive Replicates: %{x}<br>",
+                "Sample Count: %{y}<br>",
+                "<extra></extra>"
+              )
+            )
+        }
+      }
+
+      fig %>%
         layout(
-          title = paste0("Samples analysed: ", sum(rep_distribution$SampleCount)),
-          xaxis = list(title = "# Positive Replicates (177T)"),
+          title = paste0("Positive Replicate Distribution - All Markers (n = ", length(unique(rep_counts$SampleName)), " samples)"),
+          xaxis = list(title = "Number of Positive Replicates"),
           yaxis = list(title = "Sample Count"),
-          showlegend = FALSE
+          barmode = "group",
+          legend = list(title = list(text = "Marker"))
         )
     })
 

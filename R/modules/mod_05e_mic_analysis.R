@@ -309,7 +309,7 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         plot_ly(df, x = ~Cq_median_177T_plot, y = ~Cq_median_18S2_plot,
                 color = ~FinalCall,
                 symbol = ~is_retested,
-                symbols = c("0", "5"),  # 0 = circle, 5 = diamond
+                symbols = c("circle", "diamond"),  # circle for single test, diamond for retested
                 colors = c(
                   "Positive" = "#27ae60",
                   "Positive_DNA" = "#3498db",
@@ -322,7 +322,11 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
                 type = 'scatter', mode = 'markers',
                 hovertext = ~hover_text,
                 hoverinfo = 'text',
-                marker = list(size = 10, opacity = 0.7)) %>%
+                marker = list(
+                  size = 10,
+                  opacity = 0.8,
+                  line = list(width = 1, color = "white")  # Small white border for definition
+                )) %>%
           layout(
             xaxis = list(title = "177T Cq (DNA)"),
             yaxis = list(title = "18S2 Cq (RNA)"),
@@ -398,7 +402,11 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
                   "RNA Cq: %{y:.2f}<br>",
                   "<extra></extra>"
                 ),
-                marker = list(size = 10, opacity = 0.7)) %>%
+                marker = list(
+                  size = 10,
+                  opacity = 0.8,
+                  line = list(width = 1, color = "white")  # Small white border for definition
+                )) %>%
           layout(
             xaxis = list(title = "RNAseP-DNA Cq"),
             yaxis = list(title = "RNAseP-RNA Cq"),

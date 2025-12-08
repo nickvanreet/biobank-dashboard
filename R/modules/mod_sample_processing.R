@@ -334,7 +334,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             left_join(mic_summary, by = "sample_id") %>%
             mutate(
               has_mic = replace_na(has_mic, FALSE),
-              mic_results = replace_na(mic_results, "-"),
+              mic_results = replace_na(mic_results, "✗"),
               mic_positive = replace_na(mic_positive, FALSE),
               mic_positive_dna = replace_na(mic_positive_dna, FALSE),
               mic_positive_rna = replace_na(mic_positive_rna, FALSE),
@@ -349,7 +349,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             mutate(
               has_mic = FALSE,
               n_mic_tests = 0,
-              mic_results = "-",
+              mic_results = "✗",
               mic_positive = FALSE,
               mic_positive_dna = FALSE,
               mic_positive_rna = FALSE,
@@ -366,7 +366,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           mutate(
             has_mic = FALSE,
             n_mic_tests = 0,
-            mic_results = "-",
+            mic_results = "✗",
             mic_positive = FALSE,
             mic_positive_dna = FALSE,
             mic_positive_rna = FALSE,
@@ -404,7 +404,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           left_join(elisa_pe_summary, by = "sample_id") %>%
           mutate(
             has_elisa_pe = replace_na(has_elisa_pe, FALSE),
-            elisa_pe_results = replace_na(elisa_pe_results, "-"),
+            elisa_pe_results = replace_na(elisa_pe_results, "✗"),
             elisa_pe_positive = replace_na(elisa_pe_positive, FALSE),
             elisa_pe_qc_pass = replace_na(elisa_pe_qc_pass, TRUE)
           )
@@ -413,7 +413,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           mutate(
             has_elisa_pe = FALSE,
             n_elisa_pe_tests = 0,
-            elisa_pe_results = "-",
+            elisa_pe_results = "✗",
             elisa_pe_positive = FALSE,
             elisa_pe_qc_pass = TRUE,
             elisa_pe_dod = NA_real_
@@ -445,7 +445,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           left_join(elisa_vsg_summary, by = "sample_id") %>%
           mutate(
             has_elisa_vsg = replace_na(has_elisa_vsg, FALSE),
-            elisa_vsg_results = replace_na(elisa_vsg_results, "-"),
+            elisa_vsg_results = replace_na(elisa_vsg_results, "✗"),
             elisa_vsg_positive = replace_na(elisa_vsg_positive, FALSE),
             elisa_vsg_qc_pass = replace_na(elisa_vsg_qc_pass, TRUE)
           )
@@ -454,7 +454,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           mutate(
             has_elisa_vsg = FALSE,
             n_elisa_vsg_tests = 0,
-            elisa_vsg_results = "-",
+            elisa_vsg_results = "✗",
             elisa_vsg_positive = FALSE,
             elisa_vsg_qc_pass = TRUE,
             elisa_vsg_dod = NA_real_
@@ -487,7 +487,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           left_join(ielisa_summary, by = "sample_id") %>%
           mutate(
             has_ielisa = replace_na(has_ielisa, FALSE),
-            ielisa_results = replace_na(ielisa_results, "-"),
+            ielisa_results = replace_na(ielisa_results, "✗"),
             ielisa_positive = replace_na(ielisa_positive, FALSE)
           )
       } else {
@@ -495,7 +495,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           mutate(
             has_ielisa = FALSE,
             n_ielisa_tests = 0,
-            ielisa_results = "-",
+            ielisa_results = "✗",
             ielisa_positive = FALSE,
             ielisa_l13_positive = FALSE,
             ielisa_l15_positive = FALSE
@@ -806,11 +806,11 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         mutate(
           # Convert extraction to ✓/✗ (keep this one as is)
           has_extraction = ifelse(has_extraction, "✓", "✗"),
-          # Show test counts (number of tests performed, or "-" if none)
-          n_mic_tests = ifelse(is.na(n_mic_tests) | n_mic_tests == 0, "-", as.character(n_mic_tests)),
-          n_elisa_pe_tests = ifelse(is.na(n_elisa_pe_tests) | n_elisa_pe_tests == 0, "-", as.character(n_elisa_pe_tests)),
-          n_elisa_vsg_tests = ifelse(is.na(n_elisa_vsg_tests) | n_elisa_vsg_tests == 0, "-", as.character(n_elisa_vsg_tests)),
-          n_ielisa_tests = ifelse(is.na(n_ielisa_tests) | n_ielisa_tests == 0, "-", as.character(n_ielisa_tests)),
+          # Show test counts (number of tests performed, or "✗" if none)
+          n_mic_tests = ifelse(is.na(n_mic_tests) | n_mic_tests == 0, "✗", as.character(n_mic_tests)),
+          n_elisa_pe_tests = ifelse(is.na(n_elisa_pe_tests) | n_elisa_pe_tests == 0, "✗", as.character(n_elisa_pe_tests)),
+          n_elisa_vsg_tests = ifelse(is.na(n_elisa_vsg_tests) | n_elisa_vsg_tests == 0, "✗", as.character(n_elisa_vsg_tests)),
+          n_ielisa_tests = ifelse(is.na(n_ielisa_tests) | n_ielisa_tests == 0, "✗", as.character(n_ielisa_tests)),
           # Results show all test outcomes using simplified symbols (+/-/?)
           # Multiple results per sample are comma-separated (e.g., "+, -, +" for 3 tests)
           any_positive = ifelse(any_positive, "YES", "NO"),
@@ -873,6 +873,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             "function(value, type, row, meta) {
               if (!value || value === '') return '';
 
+              // Not done
+              if (value === '\u2717') return '#e9ecef'; // Gray for not done
+
               var hasPositive = value.includes('+');
               var hasNegative = value.includes('-');
               var hasIndeterminate = value.includes('?');
@@ -897,6 +900,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             "function(value, type, row, meta) {
               if (!value || value === '') return '';
 
+              // Not done
+              if (value === '\u2717') return '#e9ecef'; // Gray for not done
+
               var hasPos = value.includes('+');
               var hasNeg = value.includes('-');
 
@@ -918,6 +924,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             "function(value, type, row, meta) {
               if (!value || value === '') return '';
 
+              // Not done
+              if (value === '\u2717') return '#e9ecef'; // Gray for not done
+
               var hasPos = value.includes('+');
               var hasNeg = value.includes('-');
 
@@ -938,6 +947,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           backgroundColor = JS(
             "function(value, type, row, meta) {
               if (!value || value === '') return '';
+
+              // Not done
+              if (value === '\u2717') return '#e9ecef'; // Gray for not done
 
               var hasPos = value.includes('+');
               var hasNeg = value.includes('-');

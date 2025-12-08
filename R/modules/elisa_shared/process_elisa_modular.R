@@ -48,8 +48,9 @@ detect_elisa_type <- function(file_path) {
     return("PE")
   }
 
-  # Fall back to checking file structure
-  message("  ➜ Path-based detection failed, using content-based detection...")
+  # Fall back to checking file structure (only for iELISA vs PE/VSG distinction)
+  message("  ⚠️  Path-based detection failed, using content-based detection...")
+  message("     File path: ", file_path)
   tryCatch({
     # Check for iELISA-specific sheets (450-600 nm and ECHANTILLONS)
     sheets <- readxl::excel_sheets(file_path)
@@ -58,19 +59,13 @@ detect_elisa_type <- function(file_path) {
       return("iELISA")
     }
 
-    # Check for PE/VSG sheets (Results and Controls)
+    # For PE/VSG distinction, we can no longer rely on Plaque markers alone
+    # since both PE and VSG can use 4-plate format. Default to PE.
     if ("Results" %in% sheets && "Controls" %in% sheets) {
-      # Check for 4-plate markers (VSG)
-      raw <- readxl::read_excel(file_path, sheet = "450 nm - 600 nm", col_names = FALSE, n_max = 50)
-      has_plaque_markers <- any(grepl("Plaque \\d+:", raw[[1]], ignore.case = TRUE))
-
-      if (has_plaque_markers) {
-        message("  ➜ Content-based detection: VSG (found 'Plaque' markers)")
-        return("VSG")
-      } else {
-        message("  ➜ Content-based detection: PE (no 'Plaque' markers)")
-        return("PE")
-      }
+      warning("Cannot distinguish PE vs VSG without directory path. Defaulting to PE. ",
+              "Please ensure files are in correct directories (elisa_pe or elisa_vsg).")
+      message("  ➜ Content-based detection: PE (default for ambiguous files)")
+      return("PE")
     }
 
     # Default to PE if structure unclear

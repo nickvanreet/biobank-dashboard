@@ -836,7 +836,11 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           scrollY = "600px",
           scrollCollapse = TRUE,
           dom = 'Bfrtip',
-          buttons = c('copy', 'csv', 'excel'),
+          buttons = list(
+            list(extend = 'copy', exportOptions = list(modifier = list(page = 'all'))),
+            list(extend = 'csv', exportOptions = list(modifier = list(page = 'all'))),
+            list(extend = 'excel', exportOptions = list(modifier = list(page = 'all')))
+          ),
           columnDefs = list(
             list(className = 'dt-center', targets = "_all")
           )

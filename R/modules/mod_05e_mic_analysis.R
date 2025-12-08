@@ -246,135 +246,174 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
     
     # Trypanozoon scatter plot
     output$scatter_tryp <- renderPlotly({
-      df <- filtered_base()
-      
-      if (!nrow(df)) {
-        return(plotly_empty() %>% layout(title = "No data available"))
-      }
-      
-      required_cols <- c("ControlType", "Cq_median_177T", "Cq_median_18S2", "FinalCall", "SampleName")
-      missing_cols <- setdiff(required_cols, names(df))
-      
-      if (length(missing_cols) > 0) {
-        return(plotly_empty() %>% 
-                 layout(title = paste("Missing columns:", paste(missing_cols, collapse = ", "))))
-      }
-      
-      df <- df %>%
-        filter(
-          ControlType == "Sample",
-          !is.na(Cq_median_177T) | !is.na(Cq_median_18S2)
-        ) %>%
-        mutate(
-          # Replace NA with high Cq value to show "no detection" on plot
-          Cq_median_177T_plot = if_else(is.na(Cq_median_177T), 40.0, Cq_median_177T),
-          Cq_median_18S2_plot = if_else(is.na(Cq_median_18S2), 40.0, Cq_median_18S2)
-        )
+      tryCatch({
+        df <- filtered_base()
 
-      if (!nrow(df)) {
-        return(plotly_empty() %>% layout(title = "No samples with 177T or 18S2 data"))
-      }
+        if (is.null(df) || !nrow(df)) {
+          return(plotly_empty() %>% layout(title = "No data available"))
+        }
 
-      # Identify samples that were tested multiple times
-      sample_id_col <- if ("SampleID" %in% names(df)) "SampleID" else "SampleName"
+        required_cols <- c("ControlType", "Cq_median_177T", "Cq_median_18S2", "FinalCall", "SampleName")
+        missing_cols <- setdiff(required_cols, names(df))
 
-      df <- df %>%
-        group_by(across(all_of(sample_id_col))) %>%
-        mutate(
-          test_count = n(),
-          is_retested = test_count > 1
-        ) %>%
-        ungroup() %>%
-        mutate(
-          # Prepare hover text with proper NA handling and test info
-          hover_text = paste0(
-            "<b>", SampleName, "</b><br>",
-            "177T Cq: ", if_else(is.na(Cq_median_177T), "No detection", sprintf("%.2f", Cq_median_177T)), "<br>",
-            "18S2 Cq: ", if_else(is.na(Cq_median_18S2), "No detection", sprintf("%.2f", Cq_median_18S2)),
-            if ("TestNumber" %in% names(.)) paste0("<br>Test #: ", TestNumber) else "",
-            if (is_retested) paste0("<br>(Tested ", test_count, " times)") else ""
+        if (length(missing_cols) > 0) {
+          return(plotly_empty() %>%
+                   layout(title = paste("Missing columns:", paste(missing_cols, collapse = ", "))))
+        }
+
+        df <- df %>%
+          filter(
+            ControlType == "Sample",
+            !is.na(Cq_median_177T) | !is.na(Cq_median_18S2)
+          ) %>%
+          mutate(
+            # Replace NA with high Cq value to show "no detection" on plot
+            Cq_median_177T_plot = if_else(is.na(Cq_median_177T), 40.0, Cq_median_177T),
+            Cq_median_18S2_plot = if_else(is.na(Cq_median_18S2), 40.0, Cq_median_18S2)
           )
-        )
 
-      plot_ly(df, x = ~Cq_median_177T_plot, y = ~Cq_median_18S2_plot,
-              color = ~FinalCall,
-              symbol = ~is_retested,
-              symbols = c("0", "5"),  # 0 = circle, 5 = diamond
-              colors = c(
-                "Positive" = "#27ae60",
-                "Positive_DNA" = "#3498db",
-                "Positive_RNA" = "#9b59b6",
-                "LatePositive" = "#f39c12",
-                "Negative" = "#95a5a6",
-                "Indeterminate" = "#f1c40f",
-                "Invalid_NoDNA" = "#e74c3c"
-              ),
-              type = 'scatter', mode = 'markers',
-              hovertext = ~hover_text,
-              hoverinfo = 'text',
-              marker = list(size = 10, opacity = 0.7)) %>%
-        layout(
-          xaxis = list(title = "177T Cq (DNA)"),
-          yaxis = list(title = "18S2 Cq (RNA)"),
-          legend = list(title = list(text = "Call")),
-          hovermode = 'closest'
-        )
+        if (!nrow(df)) {
+          return(plotly_empty() %>% layout(title = "No samples with 177T or 18S2 data"))
+        }
+
+        # Identify samples that were tested multiple times
+        sample_id_col <- if ("SampleID" %in% names(df)) "SampleID" else "SampleName"
+
+        df <- df %>%
+          group_by(across(all_of(sample_id_col))) %>%
+          mutate(
+            test_count = n(),
+            is_retested = test_count > 1
+          ) %>%
+          ungroup() %>%
+          mutate(
+            # Prepare hover text with proper NA handling and test info
+            hover_text = paste0(
+              "<b>", SampleName, "</b><br>",
+              "177T Cq: ", if_else(is.na(Cq_median_177T), "No detection", sprintf("%.2f", Cq_median_177T)), "<br>",
+              "18S2 Cq: ", if_else(is.na(Cq_median_18S2), "No detection", sprintf("%.2f", Cq_median_18S2)),
+              if ("TestNumber" %in% names(.)) paste0("<br>Test #: ", TestNumber) else "",
+              if (is_retested) paste0("<br>(Tested ", test_count, " times)") else ""
+            )
+          )
+
+        plot_ly(df, x = ~Cq_median_177T_plot, y = ~Cq_median_18S2_plot,
+                color = ~FinalCall,
+                symbol = ~is_retested,
+                symbols = c("0", "5"),  # 0 = circle, 5 = diamond
+                colors = c(
+                  "Positive" = "#27ae60",
+                  "Positive_DNA" = "#3498db",
+                  "Positive_RNA" = "#9b59b6",
+                  "LatePositive" = "#f39c12",
+                  "Negative" = "#95a5a6",
+                  "Indeterminate" = "#f1c40f",
+                  "Invalid_NoDNA" = "#e74c3c"
+                ),
+                type = 'scatter', mode = 'markers',
+                hovertext = ~hover_text,
+                hoverinfo = 'text',
+                marker = list(size = 10, opacity = 0.7)) %>%
+          layout(
+            xaxis = list(title = "177T Cq (DNA)"),
+            yaxis = list(title = "18S2 Cq (RNA)"),
+            legend = list(title = list(text = "Call")),
+            hovermode = 'closest'
+          )
+      }, error = function(e) {
+        # Return a plot with the actual error message
+        plotly_empty() %>%
+          layout(
+            title = "Error rendering plot",
+            annotations = list(
+              list(
+                text = paste0("Error: ", conditionMessage(e),
+                             "<br><br>Please check the console for details."),
+                showarrow = FALSE,
+                x = 0.5,
+                y = 0.5,
+                xref = "paper",
+                yref = "paper",
+                font = list(color = "red", size = 14)
+              )
+            )
+          )
+      })
     })
     
     # RNAseP quality scatter plot
     output$scatter_rnp <- renderPlotly({
-      df <- filtered_base()
-      
-      if (!nrow(df)) {
-        return(plotly_empty() %>% layout(title = "No data available"))
-      }
-      
-      required_cols <- c("ControlType", "Cq_median_RNAseP_DNA", "Cq_median_RNAseP_RNA", "SampleName", "Delta_RP")
-      missing_cols <- setdiff(required_cols, names(df))
-      
-      if (length(missing_cols) > 0) {
-        return(plotly_empty() %>% 
-                 layout(title = paste("Missing columns:", paste(missing_cols, collapse = ", "))))
-      }
-      
-      df <- df %>%
-        filter(
-          ControlType == "Sample",
-          !is.na(Cq_median_RNAseP_DNA),
-          !is.na(Cq_median_RNAseP_RNA)
-        ) %>%
-        mutate(
-          Quality = case_when(
-            is.na(Delta_RP) ~ "Unknown",
-            Delta_RP <= 5 ~ "Good",
-            Delta_RP <= 8 ~ "Moderate",
-            TRUE ~ "Poor"
+      tryCatch({
+        df <- filtered_base()
+
+        if (is.null(df) || !nrow(df)) {
+          return(plotly_empty() %>% layout(title = "No data available"))
+        }
+
+        required_cols <- c("ControlType", "Cq_median_RNAseP_DNA", "Cq_median_RNAseP_RNA", "SampleName", "Delta_RP")
+        missing_cols <- setdiff(required_cols, names(df))
+
+        if (length(missing_cols) > 0) {
+          return(plotly_empty() %>%
+                   layout(title = paste("Missing columns:", paste(missing_cols, collapse = ", "))))
+        }
+
+        df <- df %>%
+          filter(
+            ControlType == "Sample",
+            !is.na(Cq_median_RNAseP_DNA),
+            !is.na(Cq_median_RNAseP_RNA)
+          ) %>%
+          mutate(
+            Quality = case_when(
+              is.na(Delta_RP) ~ "Unknown",
+              Delta_RP <= 5 ~ "Good",
+              Delta_RP <= 8 ~ "Moderate",
+              TRUE ~ "Poor"
+            )
           )
-        )
-      
-      if (!nrow(df)) {
-        return(plotly_empty() %>% layout(title = "No samples with RNAseP data"))
-      }
-      
-      plot_ly(df, x = ~Cq_median_RNAseP_DNA, y = ~Cq_median_RNAseP_RNA,
-              color = ~Quality,
-              colors = c("Good" = "#27ae60", "Moderate" = "#f39c12", 
-                         "Poor" = "#e74c3c", "Unknown" = "#95a5a6"),
-              type = 'scatter', mode = 'markers',
-              text = ~paste0(SampleName, "<br>ΔCq: ", round(Delta_RP, 2)),
-              hovertemplate = paste0(
-                "<b>%{text}</b><br>",
-                "DNA Cq: %{x:.2f}<br>",
-                "RNA Cq: %{y:.2f}<br>",
-                "<extra></extra>"
-              ),
-              marker = list(size = 10, opacity = 0.7)) %>%
-        layout(
-          xaxis = list(title = "RNAseP-DNA Cq"),
-          yaxis = list(title = "RNAseP-RNA Cq"),
-          legend = list(title = list(text = "RNA Quality")),
-          hovermode = 'closest'
-        )
+
+        if (!nrow(df)) {
+          return(plotly_empty() %>% layout(title = "No samples with RNAseP data"))
+        }
+
+        plot_ly(df, x = ~Cq_median_RNAseP_DNA, y = ~Cq_median_RNAseP_RNA,
+                color = ~Quality,
+                colors = c("Good" = "#27ae60", "Moderate" = "#f39c12",
+                           "Poor" = "#e74c3c", "Unknown" = "#95a5a6"),
+                type = 'scatter', mode = 'markers',
+                text = ~paste0(SampleName, "<br>ΔCq: ", round(Delta_RP, 2)),
+                hovertemplate = paste0(
+                  "<b>%{text}</b><br>",
+                  "DNA Cq: %{x:.2f}<br>",
+                  "RNA Cq: %{y:.2f}<br>",
+                  "<extra></extra>"
+                ),
+                marker = list(size = 10, opacity = 0.7)) %>%
+          layout(
+            xaxis = list(title = "RNAseP-DNA Cq"),
+            yaxis = list(title = "RNAseP-RNA Cq"),
+            legend = list(title = list(text = "RNA Quality")),
+            hovermode = 'closest'
+          )
+      }, error = function(e) {
+        plotly_empty() %>%
+          layout(
+            title = "Error rendering plot",
+            annotations = list(
+              list(
+                text = paste0("Error: ", conditionMessage(e),
+                             "<br><br>Please check the console for details."),
+                showarrow = FALSE,
+                x = 0.5,
+                y = 0.5,
+                xref = "paper",
+                yref = "paper",
+                font = list(color = "red", size = 14)
+              )
+            )
+          )
+      })
     })
     
     # Delta histograms

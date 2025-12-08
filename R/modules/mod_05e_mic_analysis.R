@@ -288,12 +288,17 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
           ungroup() %>%
           mutate(
             # Prepare hover text with proper NA handling and test info
+            TestNumberText = if ("TestNumber" %in% names(.)) {
+              paste0("<br>Test #: ", TestNumber)
+            } else {
+              ""
+            },
             hover_text = paste0(
               "<b>", SampleName, "</b><br>",
               "177T Cq: ", if_else(is.na(Cq_median_177T), "No detection", sprintf("%.2f", Cq_median_177T)), "<br>",
               "18S2 Cq: ", if_else(is.na(Cq_median_18S2), "No detection", sprintf("%.2f", Cq_median_18S2)),
-              if ("TestNumber" %in% names(.)) paste0("<br>Test #: ", TestNumber) else "",
-              if (is_retested) paste0("<br>(Tested ", test_count, " times)") else ""
+              TestNumberText,
+              if_else(is_retested, paste0("<br>(Tested ", test_count, " times)"), "")
             )
           )
 

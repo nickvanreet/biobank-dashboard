@@ -581,3 +581,175 @@ get_sample_autocomplete <- function(biobank_df = NULL, extraction_df = NULL,
 
   return(all_ids)
 }
+
+#' Calculate unified sample classification
+#'
+#' Combines results from all test types to produce a single classification:
+#' - Molecular only: MIC positive, serology negative
+#' - Serological only: MIC negative, serology positive
+#' - Both: MIC and serology positive
+#' - Negative: All tests negative
+#' - Borderline: Any borderline results requiring review
+#'
+#' @param journey_data List returned from gather_sample_journey
+#' @return List with classification details
+#' @export
+calculate_sample_classification <- function(journey_data) {
+
+  # Get consolidated statuses from each test type
+  # MIC status
+  mic_status <- if (nrow(journey_data$mic_data) > 0) {
+    if ("mic_status_final" %in% names(journey_data$mic_data)) {
+      journey_data$mic_data$mic_status_final[1]
+    } else if ("FinalCall" %in% names(journey_data$mic_data)) {
+      # Normalize the raw status
+      normalize_status(journey_data$mic_data$FinalCall[1], "mic")
+    } else {
+      NA_character_
+    }
+  } else {
+    NA_character_
+  }
+
+  mic_discordant <- if (nrow(journey_data$mic_data) > 0 && "mic_is_discordant" %in% names(journey_data$mic_data)) {
+    any(journey_data$mic_data$mic_is_discordant, na.rm = TRUE)
+  } else if (nrow(journey_data$mic_data) > 1 && "FinalCall" %in% names(journey_data$mic_data)) {
+    length(unique(na.omit(journey_data$mic_data$FinalCall))) > 1
+  } else {
+    FALSE
+  }
+
+  mic_n_tests <- nrow(journey_data$mic_data)
+
+  # ELISA VSG status
+  elisa_vsg_status <- if (nrow(journey_data$elisa_vsg_data) > 0) {
+    if ("elisa_vsg_status_final" %in% names(journey_data$elisa_vsg_data)) {
+      journey_data$elisa_vsg_data$elisa_vsg_status_final[1]
+    } else if ("sample_positive" %in% names(journey_data$elisa_vsg_data)) {
+      ifelse(journey_data$elisa_vsg_data$sample_positive[1], "Positive", "Negative")
+    } else {
+      NA_character_
+    }
+  } else {
+    NA_character_
+  }
+
+  elisa_vsg_discordant <- if (nrow(journey_data$elisa_vsg_data) > 0 && "elisa_vsg_is_discordant" %in% names(journey_data$elisa_vsg_data)) {
+    any(journey_data$elisa_vsg_data$elisa_vsg_is_discordant, na.rm = TRUE)
+  } else {
+    FALSE
+  }
+
+  elisa_vsg_n_tests <- nrow(journey_data$elisa_vsg_data)
+
+  # ELISA PE status (for comparison, not classification)
+  elisa_pe_status <- if (nrow(journey_data$elisa_pe_data) > 0) {
+    if ("elisa_pe_status_final" %in% names(journey_data$elisa_pe_data)) {
+      journey_data$elisa_pe_data$elisa_pe_status_final[1]
+    } else if ("sample_positive" %in% names(journey_data$elisa_pe_data)) {
+      ifelse(journey_data$elisa_pe_data$sample_positive[1], "Positive", "Negative")
+    } else {
+      NA_character_
+    }
+  } else {
+    NA_character_
+  }
+
+  elisa_pe_n_tests <- nrow(journey_data$elisa_pe_data)
+
+  # iELISA status
+  ielisa_status <- if (nrow(journey_data$ielisa_data) > 0) {
+    if ("ielisa_status_final" %in% names(journey_data$ielisa_data)) {
+      journey_data$ielisa_data$ielisa_status_final[1]
+    } else if ("status_final" %in% names(journey_data$ielisa_data)) {
+      journey_data$ielisa_data$status_final[1]
+    } else if (all(c("positive_L13", "positive_L15") %in% names(journey_data$ielisa_data))) {
+      # Derive from antigen positivity
+      pos_l13 <- journey_data$ielisa_data$positive_L13[1]
+      pos_l15 <- journey_data$ielisa_data$positive_L15[1]
+      if (isTRUE(pos_l13) || isTRUE(pos_l15)) "Positive" else "Negative"
+    } else {
+      NA_character_
+    }
+  } else {
+    NA_character_
+  }
+
+  ielisa_discordant <- if (nrow(journey_data$ielisa_data) > 0 && "ielisa_is_discordant" %in% names(journey_data$ielisa_data)) {
+    any(journey_data$ielisa_data$ielisa_is_discordant, na.rm = TRUE)
+  } else {
+    FALSE
+  }
+
+  ielisa_n_tests <- nrow(journey_data$ielisa_data)
+
+  # Apply classification using the utility function
+  if (exists("classify_suspect")) {
+    classification <- classify_suspect(
+      mic_status = mic_status,
+      elisa_vsg_status = elisa_vsg_status,
+      elisa_pe_status = elisa_pe_status,
+      ielisa_status = ielisa_status
+    )
+  } else {
+    # Fallback classification logic
+    is_pos <- function(s) !is.na(s) && tolower(s) %in% c("positive", "detected")
+    is_bl <- function(s) !is.na(s) && tolower(s) %in% c("borderline", "inconclusive")
+
+    molecular_positive <- is_pos(mic_status)
+    serological_positive <- is_pos(elisa_vsg_status) || is_pos(ielisa_status)
+
+    serological_confidence <- dplyr::case_when(
+      is_pos(elisa_vsg_status) && is_pos(ielisa_status) ~ "High",
+      is_pos(elisa_vsg_status) && !is_pos(ielisa_status) ~ "Low",
+      !is_pos(elisa_vsg_status) && is_pos(ielisa_status) ~ "Unusual",
+      TRUE ~ NA_character_
+    )
+
+    overall <- dplyr::case_when(
+      molecular_positive && serological_positive ~ paste0("Both (", serological_confidence, " serology)"),
+      molecular_positive ~ "Molecular only",
+      serological_positive ~ paste0("Serological only (", serological_confidence, ")"),
+      is_bl(mic_status) || is_bl(elisa_vsg_status) || is_bl(ielisa_status) ~ "Borderline - Review",
+      TRUE ~ "Negative"
+    )
+
+    classification <- list(
+      molecular_positive = molecular_positive,
+      serological_positive = serological_positive,
+      serological_confidence = serological_confidence,
+      classification = overall
+    )
+  }
+
+  # Return detailed result
+  return(list(
+    classification = classification$classification,
+    molecular = list(
+      status = mic_status,
+      positive = classification$molecular_positive,
+      n_tests = mic_n_tests,
+      discordant = mic_discordant
+    ),
+    serological = list(
+      positive = classification$serological_positive,
+      confidence = classification$serological_confidence,
+      elisa_vsg = list(
+        status = elisa_vsg_status,
+        n_tests = elisa_vsg_n_tests,
+        discordant = elisa_vsg_discordant
+      ),
+      elisa_pe = list(
+        status = elisa_pe_status,
+        n_tests = elisa_pe_n_tests
+      ),
+      ielisa = list(
+        status = ielisa_status,
+        n_tests = ielisa_n_tests,
+        discordant = ielisa_discordant
+      )
+    ),
+    has_any_discordance = mic_discordant || elisa_vsg_discordant || ielisa_discordant,
+    tested = mic_n_tests > 0 || elisa_vsg_n_tests > 0 || ielisa_n_tests > 0
+  ))
+}

@@ -145,6 +145,20 @@ if (file.exists("R/data/data_cleaner_improved.R")) {
 }
 
 # ============================================================================
+# RETEST CONSOLIDATION UTILITIES
+# ============================================================================
+# Generic utilities for resolving retested samples across all test types
+source("R/utils_thresholds.R")        # Threshold configuration loader
+source("R/utils_consolidate.R")       # Generic retest resolution functions
+
+# Test-specific consolidation modules
+source("R/modules/mic/consolidate_mic.R")       # MIC consolidation
+source("R/modules/elisa_pe/consolidate_elisa.R") # ELISA consolidation
+source("R/modules/ielisa/consolidate_ielisa.R") # iELISA consolidation
+
+cat("✓ Consolidation utilities loaded\n")
+
+# ============================================================================
 # LOAD ALL MODULES
 # ============================================================================
 

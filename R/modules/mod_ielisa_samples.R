@@ -74,6 +74,26 @@ mod_ielisa_samples_server <- function(id, ielisa_data) {
             positive_L15 ~ "LiTat 1.5",
             TRUE ~ "Neither"
           ),
+          # Consolidated status with discordance indicator
+          ConsolidatedStatus = if ("ielisa_status_final" %in% names(.) && "ielisa_is_discordant" %in% names(.)) {
+            dplyr::case_when(
+              ielisa_is_discordant == TRUE ~ paste0(ielisa_status_final, " \u26A0\uFE0F"),
+              ielisa_is_retest == TRUE ~ paste0(ielisa_status_final, " (", ielisa_n_tests, "x)"),
+              TRUE ~ ielisa_status_final
+            )
+          } else {
+            NA_character_
+          },
+          # Discordance flag
+          DiscordanceFlag = if ("ielisa_is_discordant" %in% names(.)) {
+            dplyr::case_when(
+              ielisa_is_discordant == TRUE ~ "Discordant",
+              ielisa_is_retest == TRUE ~ "Retested",
+              TRUE ~ "Single"
+            )
+          } else {
+            NA_character_
+          },
           # Format duplicate flags
           Dup_Flag = case_when(
             duplicate_across_files ~ "🔄 DUP",
@@ -81,26 +101,38 @@ mod_ielisa_samples_server <- function(id, ielisa_data) {
             labid_conflict ~ "⚠️ LID",
             TRUE ~ ""
           )
-        ) %>%
-        select(
-          File = file,
-          LabID,
-          Barcode,
-          `Positive For` = Positive_For,
-          `OD L13` = OD_L13,
-          `Inh% L13 (F1)` = pct_inh_f1_13,
-          `Inh% L13 (F2)` = pct_inh_f2_13,
-          `L13 Result` = L13_Result,
-          `OD L15` = OD_L15,
-          `Inh% L15 (F1)` = pct_inh_f1_15,
-          `Inh% L15 (F2)` = pct_inh_f2_15,
-          `L15 Result` = L15_Result,
-          `Δ F1-F2 L13` = diff_f1_f2_13,
-          `Δ F1-F2 L15` = diff_f1_f2_15,
-          Flags = Dup_Flag
         )
 
-      datatable(
+      # Select columns based on what's available
+      base_cols <- c("file", "LabID", "Barcode", "Positive_For",
+                     "ConsolidatedStatus", "DiscordanceFlag",
+                     "OD_L13", "pct_inh_f1_13", "pct_inh_f2_13", "L13_Result",
+                     "OD_L15", "pct_inh_f1_15", "pct_inh_f2_15", "L15_Result",
+                     "diff_f1_f2_13", "diff_f1_f2_15", "Dup_Flag")
+
+      available_cols <- base_cols[base_cols %in% names(display_data)]
+
+      display_data <- display_data %>%
+        select(all_of(available_cols))
+
+      # Rename columns for display
+      names(display_data) <- gsub("file", "File", names(display_data))
+      names(display_data) <- gsub("Positive_For", "Positive For", names(display_data))
+      names(display_data) <- gsub("ConsolidatedStatus", "Status", names(display_data))
+      names(display_data) <- gsub("DiscordanceFlag", "Retest", names(display_data))
+      names(display_data) <- gsub("OD_L13", "OD L13", names(display_data))
+      names(display_data) <- gsub("OD_L15", "OD L15", names(display_data))
+      names(display_data) <- gsub("pct_inh_f1_13", "Inh% L13 (F1)", names(display_data))
+      names(display_data) <- gsub("pct_inh_f2_13", "Inh% L13 (F2)", names(display_data))
+      names(display_data) <- gsub("pct_inh_f1_15", "Inh% L15 (F1)", names(display_data))
+      names(display_data) <- gsub("pct_inh_f2_15", "Inh% L15 (F2)", names(display_data))
+      names(display_data) <- gsub("L13_Result", "L13 Result", names(display_data))
+      names(display_data) <- gsub("L15_Result", "L15 Result", names(display_data))
+      names(display_data) <- gsub("diff_f1_f2_13", "Δ F1-F2 L13", names(display_data))
+      names(display_data) <- gsub("diff_f1_f2_15", "Δ F1-F2 L15", names(display_data))
+      names(display_data) <- gsub("Dup_Flag", "Flags", names(display_data))
+
+      dt <- datatable(
         display_data,
         filter = 'top',
         options = list(
@@ -132,6 +164,35 @@ mod_ielisa_samples_server <- function(id, ielisa_data) {
           'Flags',
           backgroundColor = styleInterval(c(0.5), c("white", "#fff3cd"))
         )
+
+      # Add discordance styling if columns exist
+      if ("Retest" %in% names(display_data)) {
+        dt <- dt %>%
+          formatStyle(
+            'Retest',
+            backgroundColor = styleEqual(
+              c('Discordant', 'Retested', 'Single'),
+              c('#f8d7da', '#fff3cd', 'transparent')
+            ),
+            fontWeight = styleEqual(
+              c('Discordant', 'Retested', 'Single'),
+              c('bold', 'normal', 'normal')
+            )
+          )
+      }
+
+      if ("Status" %in% names(display_data)) {
+        dt <- dt %>%
+          formatStyle(
+            'Status',
+            backgroundColor = styleEqual(
+              c('Positive', 'Negative', 'Borderline', 'Invalid'),
+              c('#d4edda', '#f8f9fa', '#fff3cd', '#f8d7da')
+            )
+          )
+      }
+
+      dt
     })
 
   })

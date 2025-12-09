@@ -1065,10 +1065,28 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         df <- df %>% mutate(across(all_of(numeric_cols), ~round(.x, 2)))
       }
       
+      # Add discordance indicator column for display
+      if ("mic_is_discordant" %in% names(df) && "mic_status_final" %in% names(df)) {
+        df <- df %>%
+          mutate(
+            ConsolidatedStatus = dplyr::case_when(
+              mic_is_discordant == TRUE ~ paste0(mic_status_final, " \u26A0\uFE0F"),
+              mic_is_retest == TRUE ~ paste0(mic_status_final, " (", mic_n_tests, "x)"),
+              TRUE ~ mic_status_final
+            ),
+            DiscordanceFlag = dplyr::case_when(
+              mic_is_discordant == TRUE ~ "Discordant",
+              mic_is_retest == TRUE ~ "Retested",
+              TRUE ~ "Single"
+            )
+          )
+      }
+
       # Select columns to display - including Target, TargetCall, TargetCq
       available_cols <- intersect(
         c("RunID", "SampleName", "Barcode", "TestOrderLabel", "TestNumber", "Target", "TargetCall", "TargetCq",
-          "FinalCall", "QualityMetric", "DecisionStep", "DecisionReason", "ConfidenceScore",
+          "FinalCall", "ConsolidatedStatus", "DiscordanceFlag", "mic_confidence",
+          "QualityMetric", "DecisionStep", "DecisionReason", "ConfidenceScore",
           "WellSummary", "WellAggregateConflict",
           "Wells_TNA_Positive", "Wells_DNA_Positive", "Wells_RNA_Positive",
           "ReplicatesTotal", "Replicates_Positive", "Replicates_Negative", "Replicates_Failed",
@@ -1138,6 +1156,49 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
                         backgroundColor = styleEqual(
                           c(TRUE, FALSE),
                           c('#f8d7da', 'transparent')
+                        ))
+          } else {
+            .
+          }
+        } %>%
+        # Discordance flag styling
+        {
+          if ("DiscordanceFlag" %in% available_cols) {
+            formatStyle(.,
+                        'DiscordanceFlag',
+                        backgroundColor = styleEqual(
+                          c('Discordant', 'Retested', 'Single'),
+                          c('#f8d7da', '#fff3cd', 'transparent')
+                        ),
+                        fontWeight = styleEqual(
+                          c('Discordant', 'Retested', 'Single'),
+                          c('bold', 'normal', 'normal')
+                        ))
+          } else {
+            .
+          }
+        } %>%
+        # Consolidated status styling
+        {
+          if ("ConsolidatedStatus" %in% available_cols) {
+            formatStyle(.,
+                        'ConsolidatedStatus',
+                        backgroundColor = styleEqual(
+                          c('Positive', 'Negative', 'Borderline', 'Invalid'),
+                          c('#d4edda', '#f8f9fa', '#fff3cd', '#f8d7da')
+                        ))
+          } else {
+            .
+          }
+        } %>%
+        # MIC confidence styling
+        {
+          if ("mic_confidence" %in% available_cols) {
+            formatStyle(.,
+                        'mic_confidence',
+                        backgroundColor = styleEqual(
+                          c('High', 'Medium', 'Low'),
+                          c('#d4edda', '#cfe2ff', '#fff3cd')
                         ))
           } else {
             .

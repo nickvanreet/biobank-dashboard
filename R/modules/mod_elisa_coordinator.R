@@ -51,6 +51,18 @@ mod_elisa_coordinator_ui <- function(id, label = "ELISA", elisa_type = "ELISA_pe
                 class = "text-muted ms-2",
                 "Filter samples with multiple test dates"
               )
+            ),
+            div(
+              class = "d-flex align-items-center",
+              checkboxInput(
+                ns("show_discordant_only"),
+                "Show discordant samples only",
+                value = FALSE
+              ),
+              tags$small(
+                class = "text-muted ms-2 text-danger",
+                "Samples with conflicting retest results"
+              )
             )
           ),
           div(
@@ -386,10 +398,36 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
         data <- data %>% filter(sample_type == "sample")
       }
 
+      # =======================================================================
+      # RETEST CONSOLIDATION
+      # =======================================================================
+      # Determine ELISA type prefix (pe or vsg)
+      elisa_prefix <- ifelse(grepl("vsg", tolower(elisa_type)), "vsg", "pe")
+
+      # Apply consolidation to resolve retested samples
+      data <- tryCatch({
+        consolidate_elisa_results(
+          data,
+          elisa_type = toupper(elisa_prefix),
+          sample_id_cols = c("numero_labo", "code_barres_kps"),
+          status_col = "status_raw",
+          include_all_runs = TRUE
+        )
+      }, error = function(e) {
+        message("Warning: ELISA consolidation failed: ", e$message)
+        data
+      })
+
       # Apply retest filter if enabled
       if (isTRUE(input$show_retests_only)) {
         # Identify samples that have been tested multiple times
-        if (all(c("code_barres_kps", "plate_date") %in% names(data))) {
+        retest_col <- paste0("elisa_", elisa_prefix, "_is_retest")
+        if (retest_col %in% names(data)) {
+          data <- data %>% filter(!!sym(retest_col) == TRUE)
+          message("DEBUG [mod_elisa_coordinator]: Showing only retested samples: ",
+                  n_distinct(data$code_barres_kps), " samples")
+        } else if (all(c("code_barres_kps", "plate_date") %in% names(data))) {
+          # Fallback to old method
           retested_samples <- data %>%
             group_by(code_barres_kps) %>%
             filter(n_distinct(plate_date) > 1) %>%
@@ -399,6 +437,16 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
                   n_distinct(retested_samples$code_barres_kps), " samples")
 
           data <- retested_samples
+        }
+      }
+
+      # Apply discordance filter if enabled
+      if (isTRUE(input$show_discordant_only)) {
+        discordant_col <- paste0("elisa_", elisa_prefix, "_is_discordant")
+        if (discordant_col %in% names(data)) {
+          data <- data %>% filter(!!sym(discordant_col) == TRUE)
+          message("DEBUG [mod_elisa_coordinator]: Showing only discordant samples: ",
+                  n_distinct(data$code_barres_kps), " samples")
         }
       }
 

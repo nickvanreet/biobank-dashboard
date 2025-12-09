@@ -139,13 +139,39 @@ mod_elisa_samples_server <- function(id, elisa_data) {
         ))
       }
 
+      # Detect ELISA type from column names to get the right prefix
+      elisa_prefix <- if (any(grepl("elisa_vsg_", names(data)))) "vsg" else "pe"
+      status_final_col <- paste0("elisa_", elisa_prefix, "_status_final")
+      is_discordant_col <- paste0("elisa_", elisa_prefix, "_is_discordant")
+      is_retest_col <- paste0("elisa_", elisa_prefix, "_is_retest")
+      n_tests_col <- paste0("elisa_", elisa_prefix, "_n_tests")
+      confidence_col <- paste0("elisa_", elisa_prefix, "_confidence")
+
+      # Add discordance indicator column for display
+      if (status_final_col %in% names(data) && is_discordant_col %in% names(data)) {
+        data <- data %>%
+          mutate(
+            ConsolidatedStatus = dplyr::case_when(
+              !!sym(is_discordant_col) == TRUE ~ paste0(!!sym(status_final_col), " \u26A0\uFE0F"),
+              !!sym(is_retest_col) == TRUE ~ paste0(!!sym(status_final_col), " (", !!sym(n_tests_col), "x)"),
+              TRUE ~ !!sym(status_final_col)
+            ),
+            DiscordanceFlag = dplyr::case_when(
+              !!sym(is_discordant_col) == TRUE ~ "Discordant",
+              !!sym(is_retest_col) == TRUE ~ "Retested",
+              TRUE ~ "Single"
+            )
+          )
+      }
+
       # Select columns to display (only those that exist)
       # Note: "sample" is the PLATE POSITION (e.g., S1, S2, PC1), not the actual sample ID
       # Actual sample IDs are in "numero_labo" (lab ID) or "code_barres_kps" (barcode)
       # Wells are aggregated across replicates, so well_id is not preserved
       available_cols <- c(
         "screening_num", "plate_number", "plate_date", "numero_labo", "code_barres_kps", "sample",
-        "DOD", "PP_percent", "sample_positive", "cv_Ag_plus", "cv_Ag0", "qc_overall",
+        "DOD", "PP_percent", "sample_positive", "ConsolidatedStatus", "DiscordanceFlag",
+        confidence_col, "cv_Ag_plus", "cv_Ag0", "qc_overall",
         "Province", "HealthZone", "Structure", "Sex", "AgeGroup", "BiobankMatched"
       )
 
@@ -173,7 +199,7 @@ mod_elisa_samples_server <- function(id, elisa_data) {
       col_names[col_names == "Code Barres Kps"] <- "Sample ID (Barcode)"
       names(display_data) <- col_names
 
-      datatable(
+      dt <- datatable(
         display_data,
         options = list(
           pageLength = 25,
@@ -204,6 +230,35 @@ mod_elisa_samples_server <- function(id, elisa_data) {
           backgroundColor = styleEqual(c("Positive", "Negative"), c('#cfe2ff', '#f8f9fa')),
           fontWeight = styleEqual(c("Positive", "Negative"), c('bold', 'normal'))
         )
+
+      # Add discordance styling if columns exist
+      if ("Discordanceflag" %in% names(display_data)) {
+        dt <- dt %>%
+          formatStyle(
+            columns = which(names(display_data) == "Discordanceflag"),
+            backgroundColor = styleEqual(
+              c('Discordant', 'Retested', 'Single'),
+              c('#f8d7da', '#fff3cd', 'transparent')
+            ),
+            fontWeight = styleEqual(
+              c('Discordant', 'Retested', 'Single'),
+              c('bold', 'normal', 'normal')
+            )
+          )
+      }
+
+      if ("Consolidatedstatus" %in% names(display_data)) {
+        dt <- dt %>%
+          formatStyle(
+            columns = which(names(display_data) == "Consolidatedstatus"),
+            backgroundColor = styleEqual(
+              c('Positive', 'Negative', 'Borderline', 'Invalid'),
+              c('#d4edda', '#f8f9fa', '#fff3cd', '#f8d7da')
+            )
+          )
+      }
+
+      dt
     })
   })
 }

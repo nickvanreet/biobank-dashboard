@@ -110,6 +110,9 @@ mod_sample_journey_ui <- function(id) {
         # Download PDF button
         uiOutput(ns("download_section")),
 
+        # Unified Classification (prominent display)
+        uiOutput(ns("classification_card")),
+
         # Timeline visualization
         uiOutput(ns("timeline_card")),
 
@@ -262,6 +265,188 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
               )
             )
           )
+        )
+      )
+    })
+
+    # Classification card - shows unified sample classification
+    output$classification_card <- renderUI({
+      data <- journey_data()
+
+      if (is.null(data) || !data$found) {
+        return(NULL)
+      }
+
+      # Calculate classification
+      class_data <- calculate_sample_classification(data)
+
+      if (!class_data$tested) {
+        return(NULL)
+      }
+
+      # Determine card styling based on classification
+      class_text <- class_data$classification
+      card_class <- dplyr::case_when(
+        grepl("Both", class_text) ~ "border-danger",
+        grepl("Molecular only", class_text) ~ "border-warning",
+        grepl("Serological only", class_text) ~ "border-info",
+        grepl("Borderline", class_text) ~ "border-warning",
+        TRUE ~ "border-secondary"
+      )
+
+      header_class <- dplyr::case_when(
+        grepl("Both", class_text) ~ "bg-danger text-white",
+        grepl("Molecular only", class_text) ~ "bg-warning",
+        grepl("Serological only", class_text) ~ "bg-info text-white",
+        grepl("Borderline", class_text) ~ "bg-warning",
+        TRUE ~ "bg-light"
+      )
+
+      classification_icon <- dplyr::case_when(
+        grepl("Both", class_text) ~ icon("triangle-exclamation"),
+        grepl("Molecular only", class_text) ~ icon("dna"),
+        grepl("Serological only", class_text) ~ icon("vial"),
+        grepl("Borderline", class_text) ~ icon("question-circle"),
+        TRUE ~ icon("circle-check")
+      )
+
+      # Build status badges
+      molecular_badge <- if (!is.na(class_data$molecular$status)) {
+        badge_class <- if (class_data$molecular$positive) "bg-danger" else "bg-success"
+        discordant_warning <- if (class_data$molecular$discordant) {
+          tags$span(class = "badge bg-warning text-dark ms-1", icon("exclamation-triangle"), " Discordant")
+        }
+        tags$div(
+          class = "d-flex align-items-center gap-2 mb-2",
+          tags$strong("MIC (Molecular):"),
+          tags$span(class = paste("badge", badge_class), class_data$molecular$status),
+          if (class_data$molecular$n_tests > 1) {
+            tags$small(class = "text-muted", sprintf("(%d tests)", class_data$molecular$n_tests))
+          },
+          discordant_warning
+        )
+      } else {
+        tags$div(
+          class = "d-flex align-items-center gap-2 mb-2 text-muted",
+          tags$strong("MIC (Molecular):"),
+          tags$span("Not tested")
+        )
+      }
+
+      elisa_vsg_badge <- if (!is.na(class_data$serological$elisa_vsg$status)) {
+        badge_class <- if (tolower(class_data$serological$elisa_vsg$status) == "positive") "bg-danger" else "bg-success"
+        discordant_warning <- if (class_data$serological$elisa_vsg$discordant) {
+          tags$span(class = "badge bg-warning text-dark ms-1", icon("exclamation-triangle"), " Discordant")
+        }
+        tags$div(
+          class = "d-flex align-items-center gap-2 mb-2",
+          tags$strong("ELISA VSG:"),
+          tags$span(class = paste("badge", badge_class), class_data$serological$elisa_vsg$status),
+          if (class_data$serological$elisa_vsg$n_tests > 1) {
+            tags$small(class = "text-muted", sprintf("(%d tests)", class_data$serological$elisa_vsg$n_tests))
+          },
+          discordant_warning
+        )
+      } else {
+        tags$div(
+          class = "d-flex align-items-center gap-2 mb-2 text-muted",
+          tags$strong("ELISA VSG:"),
+          tags$span("Not tested")
+        )
+      }
+
+      elisa_pe_badge <- if (!is.na(class_data$serological$elisa_pe$status)) {
+        badge_class <- if (tolower(class_data$serological$elisa_pe$status) == "positive") "bg-danger" else "bg-success"
+        tags$div(
+          class = "d-flex align-items-center gap-2 mb-2",
+          tags$strong("ELISA PE:"),
+          tags$span(class = paste("badge", badge_class), class_data$serological$elisa_pe$status),
+          if (class_data$serological$elisa_pe$n_tests > 1) {
+            tags$small(class = "text-muted", sprintf("(%d tests)", class_data$serological$elisa_pe$n_tests))
+          },
+          tags$small(class = "text-muted fst-italic", "(development)")
+        )
+      } else {
+        NULL
+      }
+
+      ielisa_badge <- if (!is.na(class_data$serological$ielisa$status)) {
+        badge_class <- if (tolower(class_data$serological$ielisa$status) == "positive") "bg-danger" else "bg-success"
+        discordant_warning <- if (class_data$serological$ielisa$discordant) {
+          tags$span(class = "badge bg-warning text-dark ms-1", icon("exclamation-triangle"), " Discordant")
+        }
+        tags$div(
+          class = "d-flex align-items-center gap-2 mb-2",
+          tags$strong("iELISA:"),
+          tags$span(class = paste("badge", badge_class), class_data$serological$ielisa$status),
+          if (class_data$serological$ielisa$n_tests > 1) {
+            tags$small(class = "text-muted", sprintf("(%d tests)", class_data$serological$ielisa$n_tests))
+          },
+          discordant_warning
+        )
+      } else {
+        tags$div(
+          class = "d-flex align-items-center gap-2 mb-2 text-muted",
+          tags$strong("iELISA:"),
+          tags$span("Not tested")
+        )
+      }
+
+      # Discordance warning
+      discordance_alert <- if (class_data$has_any_discordance) {
+        tags$div(
+          class = "alert alert-warning mb-0 mt-3",
+          role = "alert",
+          icon("triangle-exclamation"),
+          tags$strong(" Discordance Detected: "),
+          "This sample has conflicting results from retests. Review individual test results below."
+        )
+      } else {
+        NULL
+      }
+
+      card(
+        class = paste("mb-3", card_class),
+        style = "border-width: 2px;",
+        card_header(
+          class = header_class,
+          div(
+            class = "d-flex justify-content-between align-items-center",
+            div(
+              class = "d-flex align-items-center gap-2",
+              classification_icon,
+              tags$h5(class = "mb-0", "Sample Classification")
+            ),
+            tags$h4(class = "mb-0", class_text)
+          )
+        ),
+        card_body(
+          layout_column_wrap(
+            width = 1/2,
+            # Molecular results
+            div(
+              tags$h6(class = "text-muted mb-3", icon("dna"), " Molecular Testing"),
+              molecular_badge
+            ),
+            # Serological results
+            div(
+              tags$h6(class = "text-muted mb-3", icon("vial"), " Serological Testing"),
+              elisa_vsg_badge,
+              elisa_pe_badge,
+              ielisa_badge,
+              if (!is.na(class_data$serological$confidence)) {
+                tags$div(
+                  class = "mt-2",
+                  tags$small(
+                    class = "text-muted",
+                    tags$strong("Serology Confidence: "),
+                    class_data$serological$confidence
+                  )
+                )
+              }
+            )
+          ),
+          discordance_alert
         )
       )
     })

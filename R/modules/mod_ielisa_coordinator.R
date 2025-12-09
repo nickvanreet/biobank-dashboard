@@ -50,6 +50,18 @@ mod_ielisa_coordinator_ui <- function(id, label = "iELISA") {
                 class = "text-muted ms-2",
                 "Filter samples with multiple test dates"
               )
+            ),
+            div(
+              class = "d-flex align-items-center",
+              checkboxInput(
+                ns("show_discordant_only"),
+                "Show discordant samples only",
+                value = FALSE
+              ),
+              tags$small(
+                class = "text-muted ms-2 text-danger",
+                "Samples with conflicting retest results"
+              )
             )
           ),
           div(
@@ -313,10 +325,32 @@ mod_ielisa_coordinator_server <- function(id, biobank_df = reactive(NULL), filte
           filter(plate_valid_L13 == TRUE | plate_valid_L15 == TRUE)
       }
 
+      # =======================================================================
+      # RETEST CONSOLIDATION
+      # =======================================================================
+      # Apply consolidation to resolve retested samples
+      data <- tryCatch({
+        consolidate_ielisa_results(
+          data,
+          sample_id_cols = c("numero_labo", "code_barres_kps"),
+          status_col = "status_final",
+          include_all_runs = TRUE,
+          positive_threshold = input$positivity_threshold,
+          borderline_threshold = max(input$positivity_threshold - 5, 20)
+        )
+      }, error = function(e) {
+        message("Warning: iELISA consolidation failed: ", e$message)
+        data
+      })
+
       # Apply retest filter if enabled
       if (isTRUE(input$show_retests_only)) {
-        # Identify samples that have been tested multiple times
-        if (all(c("code_barres_kps", "PlateDate") %in% names(data))) {
+        if ("ielisa_is_retest" %in% names(data)) {
+          data <- data %>% filter(ielisa_is_retest == TRUE)
+          message("DEBUG [mod_ielisa_coordinator]: Showing only retested samples: ",
+                  n_distinct(data$code_barres_kps), " samples")
+        } else if (all(c("code_barres_kps", "PlateDate") %in% names(data))) {
+          # Fallback to old method
           retested_samples <- data %>%
             group_by(code_barres_kps) %>%
             filter(n_distinct(PlateDate) > 1) %>%
@@ -326,6 +360,15 @@ mod_ielisa_coordinator_server <- function(id, biobank_df = reactive(NULL), filte
                   n_distinct(retested_samples$code_barres_kps), " samples")
 
           data <- retested_samples
+        }
+      }
+
+      # Apply discordance filter if enabled
+      if (isTRUE(input$show_discordant_only)) {
+        if ("ielisa_is_discordant" %in% names(data)) {
+          data <- data %>% filter(ielisa_is_discordant == TRUE)
+          message("DEBUG [mod_ielisa_coordinator]: Showing only discordant samples: ",
+                  n_distinct(data$code_barres_kps), " samples")
         }
       }
 

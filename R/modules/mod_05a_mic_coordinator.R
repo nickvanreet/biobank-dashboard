@@ -42,6 +42,18 @@ mod_mic_qpcr_coordinator_ui <- function(id) {
                 class = "text-muted ms-2",
                 "Filter samples with multiple test dates"
               )
+            ),
+            div(
+              class = "d-flex align-items-center",
+              checkboxInput(
+                ns("show_discordant_only"),
+                "Show discordant samples only",
+                value = FALSE
+              ),
+              tags$small(
+                class = "text-muted ms-2 text-danger",
+                "Samples with conflicting retest results"
+              )
             )
           ),
           div(
@@ -302,6 +314,19 @@ mod_mic_qpcr_coordinator_server <- function(id, biobank_df, extractions_df, filt
                   n_distinct(retested_samples$SampleID), " samples")
 
           df <- retested_samples
+        }
+      }
+
+      # Apply discordance filter if enabled
+      if (isTRUE(input$show_discordant_only)) {
+        if ("mic_is_discordant" %in% names(df)) {
+          discordant_samples <- df %>%
+            filter(mic_is_discordant == TRUE)
+
+          message("DEBUG [mod_mic_coordinator]: Showing only discordant samples: ",
+                  n_distinct(discordant_samples$SampleID), " samples")
+
+          df <- discordant_samples
         }
       }
 

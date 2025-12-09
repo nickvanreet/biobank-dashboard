@@ -13,7 +13,9 @@ required_packages <- c(
   # New packages for Sample Journey and Concordance modules
   "irr", "pROC", "randomForest", "xgboost", "rmarkdown", "openxlsx", "officer",
   # Packages for PDF export functionality
-  "knitr", "kableExtra"
+  "knitr", "kableExtra",
+  # Packages for Geographic visualization module
+  "sf", "leaflet", "viridisLite", "htmltools"
 )
 
 for (pkg in required_packages) {
@@ -208,6 +210,10 @@ source("R/concordanceVisualizations.R")
 source("R/concordancePredictive.R")
 source("R/modules/mod_11_concordance.R")
 
+# Geographic visualization module
+source("R/modules/mod_12_geographic.R")
+cat("✓ Geographic module loaded\n")
+
 # ============================================================================
 # SOURCE MIC SUB-MODULES
 # ============================================================================
@@ -395,6 +401,47 @@ app_theme <- bslib::bs_add_rules(
   }
 
   [id*='ielisa'] .plotly {
+    width: 100% !important;
+  }
+
+  /* Geographic Module Styling - Interactive map with scrolling */
+  .geo-panel {
+    max-height: calc(100vh - 160px);
+    overflow-y: auto;
+    padding-right: 0.5rem;
+    padding-bottom: 1rem;
+  }
+
+  .geo-panel::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .geo-panel::-webkit-scrollbar-thumb {
+    background-color: rgba(79, 70, 229, 0.4);
+    border-radius: 4px;
+  }
+
+  .geo-panel::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  @media (max-width: 991.98px) {
+    .geo-panel {
+      max-height: none;
+      padding-right: 0;
+    }
+  }
+
+  /* Leaflet map styling */
+  .leaflet-container {
+    border-radius: 8px;
+  }
+
+  [id*='geographic'] .card {
+    margin-bottom: 1rem;
+  }
+
+  [id*='geographic'] .plotly {
     width: 100% !important;
   }
   "

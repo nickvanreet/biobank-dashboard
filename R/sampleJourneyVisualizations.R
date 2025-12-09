@@ -101,50 +101,78 @@ plot_sample_timeline <- function(timeline_data) {
 }
 
 #' Plot DRS volume as radial gauge
-#' @param volume_ml DRS volume in milliliters (will be converted to microliters for display)
-#' @return Plotly gauge chart
+#' @param initial_volume_ul Initial DRS volume in microliters (default 2000)
+#' @param num_extractions Number of extractions performed (each uses 300µL)
+#' @return Plotly gauge chart showing remaining volume
 #' @export
-plot_drs_gauge <- function(volume_ml) {
-  # Convert ml to µL for display
-  volume_ul <- if (!is.null(volume_ml) && !is.na(volume_ml)) {
-    volume_ml * 1000
-  } else {
-    0
-  }
+plot_drs_gauge <- function(initial_volume_ul = 2000, num_extractions = 0) {
+  # Calculate remaining volume: initial - (300µL per extraction)
+  volume_used <- num_extractions * 300
+  remaining_volume_ul <- max(0, initial_volume_ul - volume_used)
 
-  # Determine color based on thresholds
-  gauge_color <- if (volume_ul >= 30) {
+  # Determine color based on remaining volume thresholds
+  # Critical: < 300µL (can't do another extraction)
+  # Warning: 300-600µL (only 1-2 extractions left)
+  # Good: > 600µL
+  gauge_color <- if (remaining_volume_ul >= 600) {
     COLORS$negative  # Green for good
-  } else if (volume_ul >= 20) {
+  } else if (remaining_volume_ul >= 300) {
     COLORS$borderline  # Orange for warning
   } else {
     COLORS$positive  # Red for critical
   }
 
+  # Calculate how many more extractions are possible
+  extractions_remaining <- floor(remaining_volume_ul / 300)
+
   p <- plot_ly(
     type = "indicator",
-    mode = "gauge+number+delta",
-    value = volume_ul,
-    title = list(text = "DRS Volume (µL)"),
-    delta = list(reference = 30),
+    mode = "gauge+number",
+    value = remaining_volume_ul,
+    title = list(
+      text = sprintf("DRS Remaining Volume<br><span style='font-size:0.7em;color:#666'>Initial: %d µL | Used: %d µL (%d extractions)</span>",
+                     initial_volume_ul, volume_used, num_extractions)
+    ),
+    number = list(
+      suffix = " µL",
+      font = list(size = 28)
+    ),
     gauge = list(
-      axis = list(range = list(NULL, 200)),
+      axis = list(
+        range = list(0, initial_volume_ul),
+        tickvals = seq(0, initial_volume_ul, by = 500),
+        ticktext = paste0(seq(0, initial_volume_ul, by = 500), "µL")
+      ),
       bar = list(color = gauge_color),
       steps = list(
-        list(range = c(0, 20), color = "rgba(228, 26, 28, 0.2)"),
-        list(range = c(20, 30), color = "rgba(255, 127, 0, 0.2)"),
-        list(range = c(30, 200), color = "rgba(77, 175, 74, 0.2)")
+        list(range = c(0, 300), color = "rgba(228, 26, 28, 0.2)"),       # Critical
+        list(range = c(300, 600), color = "rgba(255, 127, 0, 0.2)"),     # Warning
+        list(range = c(600, initial_volume_ul), color = "rgba(77, 175, 74, 0.2)")  # Good
       ),
       threshold = list(
         line = list(color = "black", width = 4),
         thickness = 0.75,
-        value = 30
+        value = 300  # Threshold for one more extraction
       )
     ),
-    height = 250
+    height = 280
   ) %>%
     layout(
-      margin = list(l = 20, r = 20, t = 50, b = 20)
+      margin = list(l = 20, r = 20, t = 80, b = 20),
+      annotations = list(
+        list(
+          x = 0.5,
+          y = -0.15,
+          xref = "paper",
+          yref = "paper",
+          text = sprintf("<b>%d extraction(s) remaining</b>", extractions_remaining),
+          showarrow = FALSE,
+          font = list(
+            size = 14,
+            color = if (extractions_remaining == 0) COLORS$positive else if (extractions_remaining <= 2) COLORS$borderline else COLORS$negative
+          )
+        )
+      )
     )
 
   return(p)

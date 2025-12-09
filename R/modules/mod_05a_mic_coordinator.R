@@ -235,13 +235,49 @@ mod_mic_qpcr_coordinator_server <- function(id, biobank_df, extractions_df, filt
         samples_linked <- samples_linked %>%
           distinct(RunID, SampleID, .keep_all = TRUE)
 
+        # =======================================================================
+        # RETEST CONSOLIDATION
+        # =======================================================================
+        # Apply consolidation to resolve retested samples with potentially
+        # discordant results. Uses conservative logic: any positive = positive.
+        # Adds columns: mic_status_final, mic_n_tests, mic_is_discordant, etc.
+
+        samples_consolidated <- tryCatch({
+          consolidate_mic_results(
+            samples_linked,
+            sample_id_col = "SampleID",
+            status_col = "FinalCall",
+            include_all_runs = TRUE
+          )
+        }, error = function(e) {
+          message("Warning: MIC consolidation failed: ", e$message)
+          samples_linked
+        })
+
+        # Get discordance summary for reporting
+        discordance_summary <- tryCatch({
+          get_mic_discordance_report(samples_consolidated, "SampleID")
+        }, error = function(e) {
+          tibble()
+        })
+
+        # Get one-row-per-sample summary
+        sample_summary <- tryCatch({
+          get_mic_sample_summary(samples_consolidated, "SampleID")
+        }, error = function(e) {
+          tibble()
+        })
+
         list(
           runs = runs_summary,
-          samples = samples_linked,
+          samples = samples_consolidated,
           replicates = replicates_df,
           control_status = control_status,
           lj_stats = lj_stats,
-          files = rd$files
+          files = rd$files,
+          # New consolidation outputs
+          discordance_summary = discordance_summary,
+          sample_summary = sample_summary
         )
       })
     }) %>% bindCache(raw_data(), settings(), input$exclude_invalid_runs)

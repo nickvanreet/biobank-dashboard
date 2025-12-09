@@ -24,6 +24,7 @@ ui <- do.call(
       mod_data_quality_ui("data_quality"),
       mod_overview_assays_ui("overview_assays"),
       mod_overview_demographics_ui("overview_demographics"),
+      mod_geographic_ui("geographic"),
       mod_transport_ui("transport"),
       mod_extractions_ui("extractions"),
       mod_mic_qpcr_coordinator_ui("mic"),
@@ -110,6 +111,16 @@ server <- function(input, output, session) {
     "elisa_vsg",
     biobank_df = data$clean_data,
     filters = data$filters
+  )
+
+  # Geographic visualization module (map with test results)
+  mod_geographic_server(
+    "geographic",
+    filtered_data = data$filtered_data,
+    mic_data = mic_data$qpcr_samples,
+    elisa_pe_data = elisa_pe_data$samples,
+    elisa_vsg_data = elisa_vsg_data$samples,
+    ielisa_data = ielisa_data$samples
   )
 
   # ELISA Concordance module (PE vs VSG comparison)

@@ -675,20 +675,28 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
           )
         },
 
-        # DRS Volume Gauge - shows initial 2000µL minus 300µL per extraction
+        # DRS Volume Gauge - shows initial volume (from data) minus 300µL per extraction
         plotlyOutput(ns("drs_gauge"), height = "280px")
       )
     })
 
-    # DRS gauge - shows initial volume (2000µL) minus 300µL per extraction
+    # DRS gauge - shows initial volume from extraction data minus 300µL per extraction
     output$drs_gauge <- renderPlotly({
       data <- journey_data()
       req(data, nrow(data$extraction_data) > 0)
 
       num_extractions <- nrow(data$extraction_data)
 
-      # Initial DRS volume is 2000µL, each extraction uses 300µL
-      plot_drs_gauge(initial_volume_ul = 2000, num_extractions = num_extractions)
+      # Get initial DRS volume from the first extraction record (in mL, convert to µL)
+      first_extraction <- data$extraction_data[1, ]
+      initial_volume_ul <- if ("drs_volume_ml" %in% names(first_extraction) && !is.na(first_extraction$drs_volume_ml)) {
+        first_extraction$drs_volume_ml * 1000  # Convert mL to µL
+      } else {
+        2000  # Default fallback if not recorded
+      }
+
+      # Each extraction uses 300µL
+      plot_drs_gauge(initial_volume_ul = initial_volume_ul, num_extractions = num_extractions)
     })
 
     # MIC detailed results

@@ -421,18 +421,20 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
           )
         ),
         card_body(
-          layout_column_wrap(
-            width = 1/2,
-            # Molecular results
+          div(
+            class = "row",
+            # Molecular results (left column)
             div(
+              class = "col-md-6",
               tags$h6(class = "text-muted mb-3", icon("dna"), " Molecular Testing"),
               molecular_badge
             ),
-            # Serological results
+            # Serological results (right column)
             div(
+              class = "col-md-6",
               tags$h6(class = "text-muted mb-3", icon("vial"), " Serological Testing"),
               elisa_vsg_badge,
-              elisa_pe_badge,
+              if (!is.null(elisa_pe_badge)) elisa_pe_badge,
               ielisa_badge,
               if (!is.na(class_data$serological$confidence)) {
                 tags$div(
@@ -446,7 +448,7 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
               }
             )
           ),
-          discordance_alert
+          if (!is.null(discordance_alert)) discordance_alert
         )
       )
     })
@@ -476,7 +478,7 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
       plot_sample_timeline(data$timeline)
     })
 
-    # Results section (4-column layout)
+    # Results section (row-based layout)
     output$results_section <- renderUI({
       data <- journey_data()
 
@@ -484,55 +486,63 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
         return(NULL)
       }
 
-      card(
-        class = "mb-3",
-        card_header("Test Results"),
-        card_body(
-          layout_column_wrap(
-            width = 1/4,
-            heights_equal = "row",
-
-            # Column 1: Biobank & Extraction/QC
-            card(
-              card_header("Biobank & Extraction"),
-              card_body(
-                uiOutput(ns("biobank_info")),
-                tags$hr(),
+      tagList(
+        # Row 1: Biobank & Extraction/QC
+        card(
+          class = "mb-3",
+          card_header(
+            class = "bg-primary text-white",
+            icon("database"), " Biobank & Extraction"
+          ),
+          card_body(
+            div(
+              class = "row",
+              div(
+                class = "col-md-6",
+                uiOutput(ns("biobank_info"))
+              ),
+              div(
+                class = "col-md-6",
                 uiOutput(ns("extraction_info"))
-              ),
-              height = "700px",
-              style = "overflow-y: auto;"
-            ),
-
-            # Column 2: MIC
-            card(
-              card_header("MIC qPCR"),
-              card_body(
-                uiOutput(ns("mic_results"))
-              ),
-              height = "700px",
-              style = "overflow-y: auto;"
-            ),
-
-            # Column 3: ELISA
-            card(
-              card_header("ELISA (PE/VSG)"),
-              card_body(
-                uiOutput(ns("elisa_cards"))
-              ),
-              height = "700px",
-              style = "overflow-y: auto;"
-            ),
-
-            # Column 4: iELISA
-            card(
-              card_header("iELISA"),
-              card_body(
-                uiOutput(ns("ielisa_results"))
-              ),
-              height = "700px",
-              style = "overflow-y: auto;"
+              )
             )
+          )
+        ),
+
+        # Row 2: MIC qPCR
+        card(
+          class = "mb-3",
+          card_header(
+            class = "bg-warning",
+            icon("dna"), " MIC qPCR (Molecular)"
+          ),
+          card_body(
+            uiOutput(ns("mic_results"))
+          )
+        ),
+
+        # Row 3: ELISA (PE/VSG)
+        card(
+          class = "mb-3",
+          card_header(
+            class = "bg-info text-white",
+            icon("vial"), " ELISA (PE/VSG)"
+          ),
+          card_body(
+            uiOutput(ns("elisa_cards"))
+          )
+        ),
+
+        # Row 4: iELISA
+        card(
+          class = "mb-3",
+          card_header(
+            class = "bg-purple text-white",
+            style = "background-color: #8B5CF6 !important;",
+            icon("flask"), " iELISA (Inhibition)"
+          ),
+          card_body(
+            uiOutput(ns("ielisa_results"))
           )
         )
       )
@@ -592,18 +602,14 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
       data <- journey_data()
       req(data)
 
-      if (nrow(data$extraction_data) == 0) {
+      num_extractions <- nrow(data$extraction_data)
+
+      if (num_extractions == 0) {
         return(tags$p(class = "text-muted", "No extraction records"))
       }
 
       # Show most recent extraction
-      extraction <- data$extraction_data[nrow(data$extraction_data), ]
-
-      drs_volume <- if ("drs_volume_ml" %in% names(extraction)) {
-        extraction$drs_volume_ml
-      } else {
-        NA_real_
-      }
+      extraction <- data$extraction_data[num_extractions, ]
 
       ext_date <- if ("extraction_date" %in% names(extraction)) {
         format(as.Date(extraction$extraction_date), "%Y-%m-%d")
@@ -631,7 +637,7 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
       }
 
       tagList(
-        tags$h6(sprintf("Extraction (%d total)", nrow(data$extraction_data)), class = "fw-bold"),
+        tags$h6(sprintf("Extractions (%d performed)", num_extractions), class = "fw-bold"),
         tags$p(tags$strong("Latest Date: "), ext_date),
 
         # Sample Identifiers Section
@@ -669,27 +675,20 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
           )
         },
 
-        if (!is.na(drs_volume)) {
-          plotlyOutput(ns("drs_gauge"), height = "200px")
-        } else {
-          tags$p(class = "text-muted", "DRS volume not recorded")
-        }
+        # DRS Volume Gauge - shows initial 2000µL minus 300µL per extraction
+        plotlyOutput(ns("drs_gauge"), height = "280px")
       )
     })
 
-    # DRS gauge
+    # DRS gauge - shows initial volume (2000µL) minus 300µL per extraction
     output$drs_gauge <- renderPlotly({
       data <- journey_data()
       req(data, nrow(data$extraction_data) > 0)
 
-      extraction <- data$extraction_data[nrow(data$extraction_data), ]
-      drs_volume <- if ("drs_volume_ml" %in% names(extraction)) {
-        extraction$drs_volume_ml
-      } else {
-        NA_real_
-      }
+      num_extractions <- nrow(data$extraction_data)
 
-      plot_drs_gauge(drs_volume)
+      # Initial DRS volume is 2000µL, each extraction uses 300µL
+      plot_drs_gauge(initial_volume_ul = 2000, num_extractions = num_extractions)
     })
 
     # MIC detailed results

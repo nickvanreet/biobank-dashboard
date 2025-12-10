@@ -302,13 +302,14 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
         TRUE ~ "bg-light"
       )
 
-      classification_icon <- dplyr::case_when(
-        grepl("Both", class_text) ~ icon("triangle-exclamation"),
-        grepl("Molecular only", class_text) ~ icon("dna"),
-        grepl("Serological only", class_text) ~ icon("vial"),
-        grepl("Borderline", class_text) ~ icon("question-circle"),
-        TRUE ~ icon("circle-check")
+      classification_icon_name <- dplyr::case_when(
+        grepl("Both", class_text) ~ "triangle-exclamation",
+        grepl("Molecular only", class_text) ~ "dna",
+        grepl("Serological only", class_text) ~ "vial",
+        grepl("Borderline", class_text) ~ "question-circle",
+        TRUE ~ "circle-check"
       )
+      classification_icon <- icon(classification_icon_name)
 
       # Build status badges
       molecular_badge <- if (!is.na(class_data$molecular$status)) {

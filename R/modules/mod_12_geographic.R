@@ -76,9 +76,12 @@ mod_geographic_ui <- function(id) {
                 label = NULL,
                 choices = c(
                   "Total Samples" = "total",
-                  "MIC DNA Positive (177T)" = "mic_dna",
-                  "MIC RNA Positive (18S2)" = "mic_rna",
+                  "MIC DNA+ (177T)" = "mic_dna",
+                  "MIC RNA+ (18S2)" = "mic_rna",
+                  "MIC TNA+ (DNA+RNA)" = "mic_tna",
                   "MIC Any Positive" = "mic_any",
+                  "RNAseP-DNA+" = "rnasep_dna",
+                  "RNAseP-RNA+" = "rnasep_rna",
                   "ELISA-PE Positive" = "elisa_pe",
                   "ELISA-VSG Positive" = "elisa_vsg",
                   "iELISA LiTat 1.3+" = "ielisa_l13",
@@ -326,8 +329,11 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         health_zone_norm = character(),
         mic_dna_pos = integer(),
         mic_rna_pos = integer(),
+        mic_tna_pos = integer(),
         mic_any_pos = integer(),
         mic_negative = integer(),
+        mic_rnasep_dna_pos = integer(),
+        mic_rnasep_rna_pos = integer(),
         mic_total = integer()
       )
 
@@ -398,30 +404,29 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         return(empty_result)
       }
 
-      # Determine DNA/RNA positivity
+      # Determine DNA/RNA/TNA/RNAseP positivity
       # Check for marker columns or FinalCall
       mic_results <- mic_joined %>%
         dplyr::filter(!is.na(health_zone)) %>%
         dplyr::mutate(
           health_zone_norm = normalize_zone_name(health_zone),
-          # DNA positive: 177T marker or DNA in FinalCall
+          # DNA positive: 177T marker
           is_dna_pos = dplyr::case_when(
             "marker_177T" %in% names(.) ~ grepl("Pos", marker_177T, ignore.case = TRUE),
             "FinalCall" %in% names(.) ~ grepl("DNA|177T", FinalCall, ignore.case = TRUE) &
               grepl("Pos|detect", FinalCall, ignore.case = TRUE),
-            "category" %in% names(.) ~ category == "positive" &
-              (grepl("DNA", dplyr::coalesce(FinalCall, ""), ignore.case = TRUE) |
-               !grepl("RNA", dplyr::coalesce(FinalCall, ""), ignore.case = TRUE)),
             TRUE ~ FALSE
           ),
-          # RNA positive: 18S2 marker or RNA in FinalCall
+          # RNA positive: 18S2 marker
           is_rna_pos = dplyr::case_when(
             "marker_18S2" %in% names(.) ~ grepl("Pos", marker_18S2, ignore.case = TRUE),
             "FinalCall" %in% names(.) ~ grepl("RNA|18S", FinalCall, ignore.case = TRUE) &
               grepl("Pos|detect", FinalCall, ignore.case = TRUE),
             TRUE ~ FALSE
           ),
-          # Any positive
+          # TNA positive: Both DNA AND RNA positive
+          is_tna_pos = is_dna_pos & is_rna_pos,
+          # Any positive (DNA or RNA)
           is_any_pos = dplyr::case_when(
             "FinalCall" %in% names(.) ~ grepl("Pos|detect", FinalCall, ignore.case = TRUE),
             "category" %in% names(.) ~ category == "positive",
@@ -432,6 +437,18 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
             "FinalCall" %in% names(.) ~ grepl("Neg", FinalCall, ignore.case = TRUE),
             "category" %in% names(.) ~ category == "negative",
             TRUE ~ !is_any_pos
+          ),
+          # RNAseP-DNA positive (extraction quality control)
+          is_rnasep_dna_pos = dplyr::case_when(
+            "marker_RNAseP_DNA" %in% names(.) ~ grepl("Pos", marker_RNAseP_DNA, ignore.case = TRUE),
+            "RNAseP_DNA" %in% names(.) ~ grepl("Pos|Good", RNAseP_DNA, ignore.case = TRUE),
+            TRUE ~ FALSE
+          ),
+          # RNAseP-RNA positive (extraction quality control)
+          is_rnasep_rna_pos = dplyr::case_when(
+            "marker_RNAseP_RNA" %in% names(.) ~ grepl("Pos", marker_RNAseP_RNA, ignore.case = TRUE),
+            "RNAseP_RNA" %in% names(.) ~ grepl("Pos|Good", RNAseP_RNA, ignore.case = TRUE),
+            TRUE ~ FALSE
           )
         )
 
@@ -440,8 +457,11 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         dplyr::summarise(
           mic_dna_pos = sum(is_dna_pos, na.rm = TRUE),
           mic_rna_pos = sum(is_rna_pos, na.rm = TRUE),
+          mic_tna_pos = sum(is_tna_pos, na.rm = TRUE),
           mic_any_pos = sum(is_any_pos, na.rm = TRUE),
           mic_negative = sum(is_negative, na.rm = TRUE),
+          mic_rnasep_dna_pos = sum(is_rnasep_dna_pos, na.rm = TRUE),
+          mic_rnasep_rna_pos = sum(is_rnasep_rna_pos, na.rm = TRUE),
           mic_total = dplyr::n(),
           .groups = "drop"
         )
@@ -821,7 +841,10 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         "total" = map$n_samples,
         "mic_dna" = map$mic_dna_pos,
         "mic_rna" = map$mic_rna_pos,
+        "mic_tna" = map$mic_tna_pos,
         "mic_any" = map$mic_any_pos,
+        "rnasep_dna" = map$mic_rnasep_dna_pos,
+        "rnasep_rna" = map$mic_rnasep_rna_pos,
         "elisa_pe" = map$elisa_pe_pos,
         "elisa_vsg" = map$elisa_vsg_pos,
         "ielisa_l13" = map$ielisa_l13_pos,
@@ -858,7 +881,13 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         <b>MOLECULAR (MIC):</b><br/>
         &nbsp;&nbsp;DNA+ (177T): %d<br/>
         &nbsp;&nbsp;RNA+ (18S2): %d<br/>
+        &nbsp;&nbsp;TNA+ (DNA+RNA): %d<br/>
+        &nbsp;&nbsp;Any positive: %d<br/>
         &nbsp;&nbsp;Total tested: %d<br/>
+        <hr style='margin: 5px 0;'>
+        <b>EXTRACTION QC:</b><br/>
+        &nbsp;&nbsp;RNAseP-DNA+: %d<br/>
+        &nbsp;&nbsp;RNAseP-RNA+: %d<br/>
         <hr style='margin: 5px 0;'>
         <b>SEROLOGICAL:</b><br/>
         &nbsp;&nbsp;ELISA-PE+: %d / %d<br/>
@@ -872,7 +901,8 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         map$zonesante,
         map$province,
         scales::comma(map$n_samples),
-        map$mic_dna_pos, map$mic_rna_pos, map$mic_total,
+        map$mic_dna_pos, map$mic_rna_pos, map$mic_tna_pos, map$mic_any_pos, map$mic_total,
+        map$mic_rnasep_dna_pos, map$mic_rnasep_rna_pos,
         map$elisa_pe_pos, map$elisa_pe_total,
         map$elisa_vsg_pos, map$elisa_vsg_total,
         map$ielisa_l13_pos, map$ielisa_l15_pos, map$ielisa_total,
@@ -885,7 +915,10 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         "total" = "Samples",
         "mic_dna" = "MIC DNA+",
         "mic_rna" = "MIC RNA+",
+        "mic_tna" = "MIC TNA+",
         "mic_any" = "MIC Any+",
+        "rnasep_dna" = "RNAseP-DNA+",
+        "rnasep_rna" = "RNAseP-RNA+",
         "elisa_pe" = "ELISA-PE+",
         "elisa_vsg" = "ELISA-VSG+",
         "ielisa_l13" = "iELISA L1.3+",
@@ -954,7 +987,10 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         "total" = data$n_samples,
         "mic_dna" = data$mic_dna_pos,
         "mic_rna" = data$mic_rna_pos,
+        "mic_tna" = data$mic_tna_pos,
         "mic_any" = data$mic_any_pos,
+        "rnasep_dna" = data$mic_rnasep_dna_pos,
+        "rnasep_rna" = data$mic_rnasep_rna_pos,
         "elisa_pe" = data$elisa_pe_pos,
         "elisa_vsg" = data$elisa_vsg_pos,
         "ielisa_l13" = data$ielisa_l13_pos,
@@ -969,7 +1005,10 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         "total" = "Samples",
         "mic_dna" = "MIC DNA+",
         "mic_rna" = "MIC RNA+",
+        "mic_tna" = "MIC TNA+",
         "mic_any" = "MIC Any+",
+        "rnasep_dna" = "RNAseP-DNA+",
+        "rnasep_rna" = "RNAseP-RNA+",
         "elisa_pe" = "ELISA-PE+",
         "elisa_vsg" = "ELISA-VSG+",
         "ielisa_l13" = "iELISA L1.3+",
@@ -988,7 +1027,10 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         "total" = "#4F46E5",
         "mic_dna" = "#DC2626",
         "mic_rna" = "#F59E0B",
+        "mic_tna" = "#B91C1C",
         "mic_any" = "#EF4444",
+        "rnasep_dna" = "#0891B2",
+        "rnasep_rna" = "#06B6D4",
         "elisa_pe" = "#10B981",
         "elisa_vsg" = "#059669",
         "ielisa_l13" = "#8B5CF6",
@@ -1041,13 +1083,18 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
 
       plotly::plot_ly(mic_data, x = ~reorder(health_zone, mic_total)) %>%
         plotly::add_bars(
-          y = ~mic_dna_pos,
-          name = "DNA+ (177T)",
+          y = ~mic_tna_pos,
+          name = "TNA+ (DNA+RNA)",
+          marker = list(color = "#B91C1C")
+        ) %>%
+        plotly::add_bars(
+          y = ~pmax(0, mic_dna_pos - mic_tna_pos),
+          name = "DNA only (177T)",
           marker = list(color = "#DC2626")
         ) %>%
         plotly::add_bars(
-          y = ~mic_rna_pos,
-          name = "RNA+ (18S2)",
+          y = ~pmax(0, mic_rna_pos - mic_tna_pos),
+          name = "RNA only (18S2)",
           marker = list(color = "#F59E0B")
         ) %>%
         plotly::add_bars(
@@ -1381,7 +1428,10 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           `Female` = n_female,
           `MIC DNA+` = mic_dna_pos,
           `MIC RNA+` = mic_rna_pos,
+          `MIC TNA+` = mic_tna_pos,
           `MIC Total` = mic_total,
+          `RNAseP-DNA+` = mic_rnasep_dna_pos,
+          `RNAseP-RNA+` = mic_rnasep_rna_pos,
           `ELISA-PE+` = elisa_pe_pos,
           `ELISA-PE Tot` = elisa_pe_total,
           `ELISA-VSG+` = elisa_vsg_pos,

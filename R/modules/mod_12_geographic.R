@@ -104,6 +104,12 @@ mod_geographic_ui <- function(id) {
                 ),
                 selected = "YlOrRd",
                 width = "150px"
+              ),
+              checkboxInput(
+                ns("show_structures"),
+                label = span(icon("hospital"), " Show Structures"),
+                value = TRUE,
+                width = "160px"
               )
             )
           ),
@@ -284,6 +290,49 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         }
       }, error = function(e) NULL)
     }
+
+    # ========================================================================
+    # HEALTH STRUCTURES DATA (with coordinates and endemicity)
+    # ========================================================================
+
+    health_structures_data <- tibble::tibble(
+      province = c(
+        "Lomami", "Lomami", "Lomami", "Lomami",
+        "Kasai-Oriental", "Kasai-Oriental", "Kasai-Oriental", "Kasai-Oriental",
+        "Kasai-Oriental", "Kasai-Oriental", "Kasai-Oriental", "Kasai-Oriental",
+        "Kasai-Oriental", "Kasai-Oriental", "Kasai-Oriental"
+      ),
+      zone_sante = c(
+        "ZS Kalambayi Kabanga", "ZS Mulumba", "ZS Muene Ditu", "ZS Kabinda",
+        "ZS Bibanga", "ZS Bibanga", "ZS Mukumbi", "ZS Miabi",
+        "ZS Tshitenge", "ZS Tshishimbi", "ZS Lukelenge", "ZS Dibindi",
+        "ZS Bipemba", "ZS Muya", "ZS Bonzola"
+      ),
+      structure = c(
+        "HGR Kalambayi Kabanga", "HGR de Mulumba", "HGR Mwene-Ditu", "CS Nkumba",
+        "HS Katanda", "CSR Tshibila", "HGR Mukumbi", "HGR Miabi",
+        "HGR Tshitenge", "HGR Tshishimbi", "HGR Lukelenge", "HGR Dibindi",
+        "HGR Bipemba", "HGR Muya", "HGR Dipumba"
+      ),
+      endemicite = c(
+        "A", "B", "B", "B",
+        "A", "A", "A", "B",
+        "B", "B", "B", "B",
+        "B", "C", "A"
+      ),
+      latitude = c(
+        -6.498208333, -6.528583333, -7.0171585, -6.211511667,
+        -6.333333333, -6.0627, -6.023643586, -6.214743333,
+        -6.13261, -6.1906, -6.110713333, -6.12615835,
+        -6.108013333, -6.105933762, -6.13627845
+      ),
+      longitude = c(
+        23.9965, 23.86480167, 23.45565555, 24.03191833,
+        23.901715, 23.80390333, 23.70578596, 23.39243167,
+        23.66920833, 23.563735, 23.65144833, 23.61680671,
+        23.58201333, 23.62184745, 23.57444875
+      )
+    )
 
     # ========================================================================
     # AGGREGATE BIOBANK DATA BY HEALTH ZONE
@@ -1199,7 +1248,8 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         "Samples"
       )
 
-      leaflet::leaflet(map) %>%
+      # Build base map with polygons
+      base_map <- leaflet::leaflet(map) %>%
         leaflet::addProviderTiles(
           leaflet::providers$CartoDB.Positron,
           options = leaflet::providerTileOptions(maxZoom = 18)
@@ -1236,7 +1286,60 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           opacity = 0.8,
           title = legend_title,
           position = "bottomright"
-        ) %>%
+        )
+
+      # Add health structure markers if enabled
+      show_structures <- input$show_structures %||% TRUE
+      if (show_structures && nrow(health_structures_data) > 0) {
+        # Color palette for endemicity levels
+        endemicity_colors <- c("A" = "#DC2626", "B" = "#F59E0B", "C" = "#10B981")
+
+        # Create popup labels for structures
+        structure_labels <- sprintf(
+          "<strong>%s</strong><br/>
+          <b>Province:</b> %s<br/>
+          <b>Zone de Sant\u00e9:</b> %s<br/>
+          <b>End\u00e9micit\u00e9:</b> <span style='color: %s; font-weight: bold;'>%s</span><br/>
+          <b>Coordinates:</b> %.6f, %.6f",
+          health_structures_data$structure,
+          health_structures_data$province,
+          health_structures_data$zone_sante,
+          endemicity_colors[health_structures_data$endemicite],
+          health_structures_data$endemicite,
+          health_structures_data$latitude,
+          health_structures_data$longitude
+        ) %>% lapply(htmltools::HTML)
+
+        base_map <- base_map %>%
+          leaflet::addCircleMarkers(
+            data = health_structures_data,
+            lng = ~longitude,
+            lat = ~latitude,
+            radius = 8,
+            color = "#333333",
+            weight = 2,
+            fillColor = ~endemicity_colors[endemicite],
+            fillOpacity = 0.9,
+            popup = structure_labels,
+            label = ~structure,
+            labelOptions = leaflet::labelOptions(
+              style = list(
+                "font-family" = "Inter, sans-serif",
+                "font-size" = "11px",
+                "padding" = "4px 8px"
+              )
+            )
+          ) %>%
+          leaflet::addLegend(
+            position = "bottomleft",
+            colors = c("#DC2626", "#F59E0B", "#10B981"),
+            labels = c("A - Haute", "B - Moyenne", "C - Basse"),
+            title = "End\u00e9micit\u00e9",
+            opacity = 0.9
+          )
+      }
+
+      base_map %>%
         leaflet::setView(lng = 23.8, lat = -6.0, zoom = 8)
     })
 

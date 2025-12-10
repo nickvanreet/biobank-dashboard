@@ -75,10 +75,35 @@ mod_data_manager_ui <- function(id) {
     ),
     
     hr(),
-    
+
     # Status Section
     h5(icon("info-circle"), " Status"),
-    uiOutput(ns("data_status"))
+    uiOutput(ns("data_status")),
+
+    hr(),
+
+    # Cache Management Section
+    h5(icon("database"), " Cache"),
+    uiOutput(ns("cache_status")),
+    div(
+      class = "d-flex gap-2 mt-2",
+      actionButton(
+        ns("clear_cache"),
+        "Clear Cache",
+        icon = icon("trash"),
+        class = "btn-outline-danger btn-sm flex-grow-1"
+      ),
+      actionButton(
+        ns("refresh_data"),
+        "Reload",
+        icon = icon("sync"),
+        class = "btn-outline-primary btn-sm"
+      )
+    ),
+    tags$small(
+      class = "text-muted mt-1 d-block",
+      "Clear cache if data seems stale"
+    )
   )
 }
 
@@ -140,12 +165,10 @@ mod_data_manager_server <- function(id) {
 
     # Helper function to load all data for a site
     load_site_data <- function(site_id) {
-      # Show loading notification
-      loading_id <- showNotification(
-        paste("Loading data for", config$sites[[site_id]]$short_name, "..."),
-        duration = NULL,
-        type = "message"
-      )
+      start_time <- Sys.time()
+
+      # Show loading notification with progress
+      withProgress(message = paste("Loading", config$sites[[site_id]]$short_name, "data..."), value = 0, {
 
       tryCatch({
         # Update current site
@@ -154,11 +177,12 @@ mod_data_manager_server <- function(id) {
         # Get site-specific paths
         site_paths <- get_site_paths(site_id)
 
+        incProgress(0.05, detail = "Finding biobank file...")
+
         # Find latest biobank file
         biobank_file <- get_latest_biobank_file(site_paths$biobank_dir)
 
         if (is.null(biobank_file)) {
-          removeNotification(loading_id)
           showNotification(
             paste("No biobank files found for", config$sites[[site_id]]$short_name),
             type = "warning",
@@ -167,12 +191,18 @@ mod_data_manager_server <- function(id) {
           return()
         }
 
+        incProgress(0.05, detail = "Loading biobank data...")
+
         # Load biobank data with RDS caching
         df_raw <- load_biobank_file_cached(biobank_file, cache_dir = site_paths$cache_dir)
         rv$raw_data <- df_raw
 
+        incProgress(0.1, detail = "Analyzing data quality...")
+
         # Analyze quality BEFORE cleaning
         quality <- analyze_data_quality(df_raw)
+
+        incProgress(0.1, detail = "Cleaning data...")
 
         # Clean data using the improved cleaner
         df_clean <- clean_biobank_data_improved(df_raw)
@@ -227,6 +257,8 @@ mod_data_manager_server <- function(id) {
         }
 
         rv$clean_data <- df_clean
+
+        incProgress(0.1, detail = "Loading extractions...")
 
         # Load extraction data
         extraction_df <- tryCatch({
@@ -307,6 +339,8 @@ mod_data_manager_server <- function(id) {
         # Update filter choices
         update_filter_choices(session, df_clean)
 
+        incProgress(0.1, detail = "Loading iELISA data...")
+
         # Load iELISA data
         tryCatch({
           ielisa_data <- load_ielisa_data(
@@ -319,6 +353,8 @@ mod_data_manager_server <- function(id) {
           rv$ielisa_data <- NULL
         })
 
+        incProgress(0.15, detail = "Loading ELISA PE/VSG data...")
+
         # Load ELISA PE/VSG data
         tryCatch({
           elisa_data <- load_elisa_data(
@@ -330,6 +366,8 @@ mod_data_manager_server <- function(id) {
           message("Failed to load ELISA PE/VSG data: ", e$message)
           rv$elisa_data <- NULL
         })
+
+        incProgress(0.15, detail = "Loading MIC qPCR data...")
 
         # Load MIC qPCR data
         tryCatch({
@@ -368,8 +406,10 @@ mod_data_manager_server <- function(id) {
           rv$mic_data <- NULL
         })
 
-        # Success notification
-        removeNotification(loading_id)
+        incProgress(0.1, detail = "Finalizing...")
+
+        # Calculate loading time
+        elapsed_time <- round(difftime(Sys.time(), start_time, units = "secs"), 1)
 
         # Calculate counts for all data types
         n_extractions <- if (!is.null(rv$extraction_data)) nrow(rv$extraction_data) else 0
@@ -379,13 +419,14 @@ mod_data_manager_server <- function(id) {
 
         showNotification(
           HTML(sprintf(
-            "<strong>Loaded %s data:</strong><br/>
+            "<strong>Loaded %s data in %.1fs:</strong><br/>
             • Biobank: %d rows (cleaned to %d)<br/>
             • Extractions: %d samples<br/>
             • iELISA: %d samples<br/>
             • ELISA PE/VSG: %d samples<br/>
             • MIC qPCR: %d samples",
             config$sites[[site_id]]$short_name,
+            elapsed_time,
             nrow(df_raw), nrow(df_clean),
             n_extractions, n_ielisa, n_elisa, n_mic
           )),
@@ -394,13 +435,13 @@ mod_data_manager_server <- function(id) {
         )
 
       }, error = function(e) {
-        removeNotification(loading_id)
         showNotification(
           paste("Error loading data:", e$message),
           type = "error",
           duration = 10
         )
       })
+      }) # End withProgress
     }
 
     # Create observers for each biobank button
@@ -1000,7 +1041,7 @@ mod_data_manager_server <- function(id) {
       } else {
         total <- nrow(rv$clean_data)
         filtered <- nrow(filtered_data())
-        
+
         tagList(
           div(
             class = "d-flex justify-content-between mb-2",
@@ -1018,6 +1059,106 @@ mod_data_manager_server <- function(id) {
               sprintf("(%d%% shown)", round(filtered/total*100))
             )
           }
+        )
+      }
+    })
+
+    # ========================================================================
+    # CACHE MANAGEMENT
+    # ========================================================================
+
+    # Cache status display
+    output$cache_status <- renderUI({
+      # Invalidate on clear_cache or refresh_data clicks
+      input$clear_cache
+      input$refresh_data
+
+      site_paths <- if (!is.null(rv$current_site)) {
+        get_site_paths(rv$current_site)
+      } else if (!is.null(config$site_paths)) {
+        config$site_paths
+      } else {
+        NULL
+      }
+
+      if (is.null(site_paths)) {
+        return(div(
+          class = "text-muted small",
+          "No site selected"
+        ))
+      }
+
+      status <- tryCatch(
+        get_cache_status(site_paths),
+        error = function(e) NULL
+      )
+
+      if (is.null(status)) {
+        return(div(
+          class = "text-muted small",
+          "Cache status unavailable"
+        ))
+      }
+
+      div(
+        class = "small",
+        style = "font-size: 0.8rem;",
+        if (status$total$n_files > 0) {
+          tagList(
+            div(
+              class = "d-flex justify-content-between",
+              span("Cached files:"),
+              strong(status$total$n_files)
+            ),
+            div(
+              class = "d-flex justify-content-between text-muted",
+              span("Size:"),
+              span(sprintf("%.1f MB", status$total$size_mb))
+            )
+          )
+        } else {
+          span(class = "text-muted", "No cached data")
+        }
+      )
+    })
+
+    # Clear cache button handler
+    observeEvent(input$clear_cache, {
+      site_paths <- if (!is.null(rv$current_site)) {
+        get_site_paths(rv$current_site)
+      } else if (!is.null(config$site_paths)) {
+        config$site_paths
+      } else {
+        NULL
+      }
+
+      if (!is.null(site_paths)) {
+        results <- clear_all_caches(site_paths, clear_rds = TRUE, clear_memory = TRUE)
+        total_cleared <- results$biobank + results$elisa + results$ielisa + results$mic
+
+        showNotification(
+          sprintf("Cache cleared: %d files removed", total_cleared),
+          type = "message",
+          duration = 3
+        )
+      } else {
+        showNotification(
+          "No site selected to clear cache",
+          type = "warning",
+          duration = 3
+        )
+      }
+    })
+
+    # Refresh data button handler (reload current site)
+    observeEvent(input$refresh_data, {
+      if (!is.null(rv$current_site)) {
+        load_site_data(rv$current_site)
+      } else {
+        showNotification(
+          "No site loaded to refresh",
+          type = "warning",
+          duration = 3
         )
       }
     })

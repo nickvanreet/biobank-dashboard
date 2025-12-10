@@ -124,6 +124,7 @@ config$site_paths <- get_site_paths(config$current_site)
 source("R/core/data_loader_utils.R")       # Must source BEFORE data_linking
 source("R/core/data_linking_utils.R")      # Defines normalize_barcode()
 source("R/core/extraction_data_utils.R")   # Extraction utilities
+source("R/core/cache_manager.R")           # Unified cache management
 source("R/utils_elisa.R")                  # ELISA loader utilities
 source("R/data/dashboard_data_utils.R")    # Shared assay prep utilities
 

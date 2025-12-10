@@ -21,9 +21,9 @@ mod_geographic_ui <- function(id) {
         # ==== HEADER SECTION ================================================
         h4(class = "mb-3", icon("globe-africa"), " Geographic Distribution"),
 
-        # KPI Cards (Top Row)
+        # KPI Cards (Top Row) - Molecular vs Serological
         layout_column_wrap(
-          width = 1/5, fixed_width = TRUE, heights_equal = "row", gap = "12px",
+          width = 1/6, fixed_width = TRUE, heights_equal = "row", gap = "10px",
 
           value_box(
             title = "Health Zones",
@@ -38,22 +38,28 @@ mod_geographic_ui <- function(id) {
             theme = "info"
           ),
           value_box(
-            title = "MIC Positive",
-            value = textOutput(ns("mic_positive")),
+            title = "MIC DNA+",
+            value = textOutput(ns("mic_dna_positive")),
             showcase = icon("dna"),
             theme = "danger"
           ),
           value_box(
-            title = "ELISA Positive",
-            value = textOutput(ns("elisa_positive")),
-            showcase = icon("flask"),
+            title = "MIC RNA+",
+            value = textOutput(ns("mic_rna_positive")),
+            showcase = icon("disease"),
             theme = "warning"
           ),
           value_box(
-            title = "iELISA Positive",
+            title = "Sero+ (ELISA)",
+            value = textOutput(ns("elisa_positive")),
+            showcase = icon("flask"),
+            theme = "success"
+          ),
+          value_box(
+            title = "Sero+ (iELISA)",
             value = textOutput(ns("ielisa_positive")),
             showcase = icon("vials"),
-            theme = "success"
+            theme = "purple"
           )
         ),
 
@@ -70,22 +76,27 @@ mod_geographic_ui <- function(id) {
                 label = NULL,
                 choices = c(
                   "Total Samples" = "total",
-                  "MIC qPCR Results" = "mic",
-                  "ELISA Results" = "elisa",
-                  "iELISA Results" = "ielisa",
-                  "Positivity Rate" = "positivity"
+                  "MIC DNA Positive (177T)" = "mic_dna",
+                  "MIC RNA Positive (18S2)" = "mic_rna",
+                  "MIC Any Positive" = "mic_any",
+                  "ELISA-PE Positive" = "elisa_pe",
+                  "ELISA-VSG Positive" = "elisa_vsg",
+                  "iELISA LiTat 1.3+" = "ielisa_l13",
+                  "iELISA LiTat 1.5+" = "ielisa_l15",
+                  "Molecular Positivity %" = "molecular_rate",
+                  "Serological Positivity %" = "sero_rate"
                 ),
                 selected = "total",
-                width = "200px"
+                width = "220px"
               ),
               selectInput(
                 ns("color_scheme"),
                 label = NULL,
                 choices = c(
+                  "Heat (Yellow-Red)" = "YlOrRd",
                   "Blue Gradient" = "Blues",
                   "Red Gradient" = "Reds",
                   "Green Gradient" = "Greens",
-                  "Heat (Yellow-Red)" = "YlOrRd",
                   "Viridis" = "viridis"
                 ),
                 selected = "YlOrRd",
@@ -107,43 +118,68 @@ mod_geographic_ui <- function(id) {
           )
         ),
 
-        # ==== TEST RESULTS BY ZONE ==========================================
-        h4(class = "mt-4 mb-3", icon("microscope"), " Test Results by Health Zone"),
+        # ==== MOLECULAR VS SEROLOGICAL ======================================
+        h4(class = "mt-4 mb-3", icon("microscope"), " Molecular vs Serological Results"),
 
         layout_columns(
           col_widths = c(6, 6), gap = "16px",
 
           card(
             full_screen = TRUE,
-            card_header(icon("dna"), " MIC qPCR Distribution"),
+            card_header(icon("dna"), " MIC qPCR by Zone (DNA vs RNA)"),
             card_body_fill(
               plotly::plotlyOutput(ns("mic_zone_plot"), height = "400px")
             )
           ),
           card(
             full_screen = TRUE,
-            card_header(icon("flask"), " ELISA Distribution"),
+            card_header(icon("chart-pie"), " Molecular vs Serological by Zone"),
             card_body_fill(
-              plotly::plotlyOutput(ns("elisa_zone_plot"), height = "400px")
+              plotly::plotlyOutput(ns("mol_sero_plot"), height = "400px")
             )
           )
         ),
+
+        # ==== ELISA RESULTS =================================================
+        h4(class = "mt-4 mb-3", icon("flask"), " ELISA Results by Health Zone"),
 
         layout_columns(
           col_widths = c(6, 6), gap = "16px",
 
           card(
             full_screen = TRUE,
-            card_header(icon("vials"), " iELISA Distribution"),
+            card_header(icon("flask"), " ELISA-PE Distribution"),
             card_body_fill(
-              plotly::plotlyOutput(ns("ielisa_zone_plot"), height = "400px")
+              plotly::plotlyOutput(ns("elisa_pe_zone_plot"), height = "400px")
             )
           ),
           card(
             full_screen = TRUE,
-            card_header(icon("chart-pie"), " Combined Positivity by Zone"),
+            card_header(icon("flask-vial"), " ELISA-VSG Distribution"),
             card_body_fill(
-              plotly::plotlyOutput(ns("combined_positivity_plot"), height = "400px")
+              plotly::plotlyOutput(ns("elisa_vsg_zone_plot"), height = "400px")
+            )
+          )
+        ),
+
+        # ==== iELISA LiTat RESULTS ==========================================
+        h4(class = "mt-4 mb-3", icon("vials"), " iELISA Results: LiTat 1.3 vs LiTat 1.5"),
+
+        layout_columns(
+          col_widths = c(6, 6), gap = "16px",
+
+          card(
+            full_screen = TRUE,
+            card_header(icon("vial"), " iELISA LiTat 1.3 by Zone"),
+            card_body_fill(
+              plotly::plotlyOutput(ns("ielisa_l13_plot"), height = "400px")
+            )
+          ),
+          card(
+            full_screen = TRUE,
+            card_header(icon("vial"), " iELISA LiTat 1.5 by Zone"),
+            card_body_fill(
+              plotly::plotlyOutput(ns("ielisa_l15_plot"), height = "400px")
             )
           )
         ),
@@ -205,7 +241,6 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
     # ========================================================================
 
     map_data <- reactive({
-      # Try to load the GeoJSON map
       map_path <- "data/lsd/map/cod_kasai_lomami_health_zones.geojson"
 
       if (!file.exists(map_path)) {
@@ -221,7 +256,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
     })
 
     # ========================================================================
-    # PREPARE GEOGRAPHIC DATA
+    # HELPER FUNCTIONS
     # ========================================================================
 
     # Normalize health zone names for matching
@@ -230,12 +265,27 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       x <- as.character(x)
       x <- stringr::str_trim(x)
       x <- stringr::str_to_title(x)
-      # Remove accents
       x <- stringi::stri_trans_general(x, "Latin-ASCII")
       x
     }
 
-    # Aggregate biobank data by health zone
+    # Safe data extraction from reactive
+    safe_get_data <- function(data_reactive) {
+      tryCatch({
+        if (is.reactive(data_reactive)) {
+          data_reactive()
+        } else if (is.function(data_reactive)) {
+          data_reactive()
+        } else {
+          data_reactive
+        }
+      }, error = function(e) NULL)
+    }
+
+    # ========================================================================
+    # AGGREGATE BIOBANK DATA BY HEALTH ZONE
+    # ========================================================================
+
     zone_summary <- reactive({
       req(filtered_data())
       data <- filtered_data()
@@ -243,6 +293,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       if (nrow(data) == 0 || !"health_zone" %in% names(data)) {
         return(tibble::tibble(
           health_zone = character(),
+          health_zone_norm = character(),
           n_samples = integer(),
           n_male = integer(),
           n_female = integer(),
@@ -263,263 +314,366 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         )
     })
 
-    # Get MIC results by zone
+    # ========================================================================
+    # MIC DATA BY ZONE (DNA vs RNA differentiation)
+    # ========================================================================
+
     mic_by_zone <- reactive({
-      mic <- if (is.reactive(mic_data)) mic_data() else mic_data
+      mic <- safe_get_data(mic_data)
       biobank <- filtered_data()
 
+      empty_result <- tibble::tibble(
+        health_zone_norm = character(),
+        mic_dna_pos = integer(),
+        mic_rna_pos = integer(),
+        mic_any_pos = integer(),
+        mic_negative = integer(),
+        mic_total = integer()
+      )
+
       if (is.null(mic) || !is.data.frame(mic) || nrow(mic) == 0) {
-        return(tibble::tibble(
-          health_zone_norm = character(),
-          mic_positive = integer(),
-          mic_negative = integer(),
-          mic_inconclusive = integer(),
-          mic_total = integer()
-        ))
+        return(empty_result)
       }
 
-      if (is.null(biobank) || nrow(biobank) == 0 || !"health_zone" %in% names(biobank)) {
-        return(tibble::tibble(
-          health_zone_norm = character(),
-          mic_positive = integer(),
-          mic_negative = integer(),
-          mic_inconclusive = integer(),
-          mic_total = integer()
-        ))
+      if (is.null(biobank) || nrow(biobank) == 0) {
+        return(empty_result)
       }
 
-      # Determine the status column
-      status_col <- intersect(c("final_status", "status_final", "result", "interpretation"), names(mic))
-      if (length(status_col) == 0) {
-        return(tibble::tibble(
-          health_zone_norm = character(),
-          mic_positive = integer(),
-          mic_negative = integer(),
-          mic_inconclusive = integer(),
-          mic_total = integer()
-        ))
-      }
-      status_col <- status_col[1]
+      # Get health zone from biobank via sample identifiers
+      biobank_geo <- biobank %>%
+        dplyr::select(dplyr::any_of(c("barcode", "lab_id", "health_zone"))) %>%
+        dplyr::filter(!is.na(health_zone)) %>%
+        dplyr::distinct()
 
-      # Join MIC with biobank to get health zone
+      # Find matching columns in MIC data
+      mic_id_cols <- intersect(names(mic), c("code_barres_kps", "numero_labo", "barcode", "lab_id", "SampleID"))
+
+      if (length(mic_id_cols) == 0) {
+        return(empty_result)
+      }
+
+      # Create join key
       mic_joined <- mic %>%
-        dplyr::left_join(
-          biobank %>%
-            dplyr::select(dplyr::any_of(c("barcode", "lab_id", "health_zone"))) %>%
-            dplyr::distinct(),
-          by = intersect(names(mic), c("barcode", "lab_id", "numero_labo"))
+        dplyr::mutate(
+          join_barcode = dplyr::coalesce(
+            if ("code_barres_kps" %in% names(.)) code_barres_kps else NULL,
+            if ("barcode" %in% names(.)) barcode else NULL,
+            if ("SampleID" %in% names(.)) SampleID else NULL
+          ),
+          join_labid = dplyr::coalesce(
+            if ("numero_labo" %in% names(.)) as.character(numero_labo) else NULL,
+            if ("lab_id" %in% names(.)) as.character(lab_id) else NULL
+          )
         )
 
-      if (!"health_zone" %in% names(mic_joined)) {
-        return(tibble::tibble(
-          health_zone_norm = character(),
-          mic_positive = integer(),
-          mic_negative = integer(),
-          mic_inconclusive = integer(),
-          mic_total = integer()
-        ))
+      # Join with biobank
+      if ("barcode" %in% names(biobank_geo)) {
+        mic_joined <- mic_joined %>%
+          dplyr::left_join(
+            biobank_geo %>% dplyr::rename(join_barcode = barcode),
+            by = "join_barcode"
+          )
       }
 
-      mic_joined %>%
+      # If no health_zone yet, try lab_id join
+      if (!"health_zone" %in% names(mic_joined) || all(is.na(mic_joined$health_zone))) {
+        if ("lab_id" %in% names(biobank_geo)) {
+          mic_joined <- mic %>%
+            dplyr::mutate(join_labid = as.character(
+              dplyr::coalesce(
+                if ("numero_labo" %in% names(.)) numero_labo else NULL,
+                if ("lab_id" %in% names(.)) lab_id else NULL
+              )
+            )) %>%
+            dplyr::left_join(
+              biobank_geo %>%
+                dplyr::mutate(join_labid = as.character(lab_id)) %>%
+                dplyr::select(join_labid, health_zone),
+              by = "join_labid"
+            )
+        }
+      }
+
+      if (!"health_zone" %in% names(mic_joined)) {
+        return(empty_result)
+      }
+
+      # Determine DNA/RNA positivity
+      # Check for marker columns or FinalCall
+      mic_results <- mic_joined %>%
         dplyr::filter(!is.na(health_zone)) %>%
         dplyr::mutate(
           health_zone_norm = normalize_zone_name(health_zone),
-          status = toupper(.data[[status_col]])
-        ) %>%
+          # DNA positive: 177T marker or DNA in FinalCall
+          is_dna_pos = dplyr::case_when(
+            "marker_177T" %in% names(.) ~ grepl("Pos", marker_177T, ignore.case = TRUE),
+            "FinalCall" %in% names(.) ~ grepl("DNA|177T", FinalCall, ignore.case = TRUE) &
+              grepl("Pos|detect", FinalCall, ignore.case = TRUE),
+            "category" %in% names(.) ~ category == "positive" &
+              (grepl("DNA", dplyr::coalesce(FinalCall, ""), ignore.case = TRUE) |
+               !grepl("RNA", dplyr::coalesce(FinalCall, ""), ignore.case = TRUE)),
+            TRUE ~ FALSE
+          ),
+          # RNA positive: 18S2 marker or RNA in FinalCall
+          is_rna_pos = dplyr::case_when(
+            "marker_18S2" %in% names(.) ~ grepl("Pos", marker_18S2, ignore.case = TRUE),
+            "FinalCall" %in% names(.) ~ grepl("RNA|18S", FinalCall, ignore.case = TRUE) &
+              grepl("Pos|detect", FinalCall, ignore.case = TRUE),
+            TRUE ~ FALSE
+          ),
+          # Any positive
+          is_any_pos = dplyr::case_when(
+            "FinalCall" %in% names(.) ~ grepl("Pos|detect", FinalCall, ignore.case = TRUE),
+            "category" %in% names(.) ~ category == "positive",
+            TRUE ~ is_dna_pos | is_rna_pos
+          ),
+          # Negative
+          is_negative = dplyr::case_when(
+            "FinalCall" %in% names(.) ~ grepl("Neg", FinalCall, ignore.case = TRUE),
+            "category" %in% names(.) ~ category == "negative",
+            TRUE ~ !is_any_pos
+          )
+        )
+
+      mic_results %>%
         dplyr::group_by(health_zone_norm) %>%
         dplyr::summarise(
-          mic_positive = sum(grepl("POS", status), na.rm = TRUE),
-          mic_negative = sum(grepl("NEG", status), na.rm = TRUE),
-          mic_inconclusive = sum(grepl("INC|INDO|BORDER", status), na.rm = TRUE),
+          mic_dna_pos = sum(is_dna_pos, na.rm = TRUE),
+          mic_rna_pos = sum(is_rna_pos, na.rm = TRUE),
+          mic_any_pos = sum(is_any_pos, na.rm = TRUE),
+          mic_negative = sum(is_negative, na.rm = TRUE),
           mic_total = dplyr::n(),
           .groups = "drop"
         )
     })
 
-    # Get ELISA results by zone (combine PE and VSG)
-    elisa_by_zone <- reactive({
-      pe <- if (is.reactive(elisa_pe_data)) elisa_pe_data() else elisa_pe_data
-      vsg <- if (is.reactive(elisa_vsg_data)) elisa_vsg_data() else elisa_vsg_data
+    # ========================================================================
+    # ELISA PE DATA BY ZONE
+    # ========================================================================
+
+    elisa_pe_by_zone <- reactive({
+      elisa <- safe_get_data(elisa_pe_data)
       biobank <- filtered_data()
 
-      # Combine PE and VSG
-      elisa <- dplyr::bind_rows(
-        if (!is.null(pe) && is.data.frame(pe)) pe else tibble::tibble(),
-        if (!is.null(vsg) && is.data.frame(vsg)) vsg else tibble::tibble()
+      empty_result <- tibble::tibble(
+        health_zone_norm = character(),
+        elisa_pe_pos = integer(),
+        elisa_pe_neg = integer(),
+        elisa_pe_border = integer(),
+        elisa_pe_total = integer()
       )
 
-      if (nrow(elisa) == 0) {
-        return(tibble::tibble(
-          health_zone_norm = character(),
-          elisa_positive = integer(),
-          elisa_negative = integer(),
-          elisa_borderline = integer(),
-          elisa_total = integer()
-        ))
+      if (is.null(elisa) || !is.data.frame(elisa) || nrow(elisa) == 0) {
+        return(empty_result)
       }
 
-      if (is.null(biobank) || nrow(biobank) == 0 || !"health_zone" %in% names(biobank)) {
-        return(tibble::tibble(
-          health_zone_norm = character(),
-          elisa_positive = integer(),
-          elisa_negative = integer(),
-          elisa_borderline = integer(),
-          elisa_total = integer()
-        ))
+      if (is.null(biobank) || nrow(biobank) == 0) {
+        return(empty_result)
       }
 
-      # Determine the status column
-      status_col <- intersect(c("status_final", "final_status", "result", "interpretation"), names(elisa))
-      if (length(status_col) == 0) {
-        return(tibble::tibble(
-          health_zone_norm = character(),
-          elisa_positive = integer(),
-          elisa_negative = integer(),
-          elisa_borderline = integer(),
-          elisa_total = integer()
-        ))
-      }
-      status_col <- status_col[1]
+      # Get health zone from biobank
+      biobank_geo <- biobank %>%
+        dplyr::select(dplyr::any_of(c("barcode", "lab_id", "health_zone"))) %>%
+        dplyr::filter(!is.na(health_zone)) %>%
+        dplyr::distinct()
 
       # Join ELISA with biobank
-      barcode_col <- intersect(c("code_barres_kps", "barcode", "numero_labo", "lab_id"), names(elisa))
-      if (length(barcode_col) == 0) {
-        return(tibble::tibble(
-          health_zone_norm = character(),
-          elisa_positive = integer(),
-          elisa_negative = integer(),
-          elisa_borderline = integer(),
-          elisa_total = integer()
-        ))
-      }
-
       elisa_joined <- elisa %>%
-        dplyr::rename_with(~ "join_key", .cols = dplyr::all_of(barcode_col[1])) %>%
+        dplyr::mutate(
+          join_key = dplyr::coalesce(
+            if ("code_barres_kps" %in% names(.)) as.character(code_barres_kps) else NULL,
+            if ("barcode" %in% names(.)) as.character(barcode) else NULL,
+            if ("numero_labo" %in% names(.)) as.character(numero_labo) else NULL
+          )
+        ) %>%
         dplyr::left_join(
-          biobank %>%
-            dplyr::select(dplyr::any_of(c("barcode", "lab_id", "health_zone"))) %>%
-            dplyr::mutate(join_key = dplyr::coalesce(barcode, as.character(lab_id))) %>%
+          biobank_geo %>%
+            dplyr::mutate(join_key = dplyr::coalesce(as.character(barcode), as.character(lab_id))) %>%
+            dplyr::select(join_key, health_zone) %>%
             dplyr::distinct(join_key, .keep_all = TRUE),
           by = "join_key"
         )
 
-      if (!"health_zone" %in% names(elisa_joined)) {
-        return(tibble::tibble(
-          health_zone_norm = character(),
-          elisa_positive = integer(),
-          elisa_negative = integer(),
-          elisa_borderline = integer(),
-          elisa_total = integer()
-        ))
+      if (!"health_zone" %in% names(elisa_joined) || all(is.na(elisa_joined$health_zone))) {
+        return(empty_result)
+      }
+
+      # Get status column
+      status_col <- intersect(c("status_final", "status_raw", "result"), names(elisa_joined))
+      if (length(status_col) == 0) {
+        return(empty_result)
       }
 
       elisa_joined %>%
         dplyr::filter(!is.na(health_zone)) %>%
         dplyr::mutate(
           health_zone_norm = normalize_zone_name(health_zone),
-          status = toupper(.data[[status_col]])
+          status = toupper(.data[[status_col[1]]])
         ) %>%
         dplyr::group_by(health_zone_norm) %>%
         dplyr::summarise(
-          elisa_positive = sum(grepl("POS", status), na.rm = TRUE),
-          elisa_negative = sum(grepl("NEG", status), na.rm = TRUE),
-          elisa_borderline = sum(grepl("BORDER|IND", status), na.rm = TRUE),
-          elisa_total = dplyr::n(),
+          elisa_pe_pos = sum(grepl("POS", status), na.rm = TRUE),
+          elisa_pe_neg = sum(grepl("NEG", status), na.rm = TRUE),
+          elisa_pe_border = sum(grepl("BORDER|IND", status), na.rm = TRUE),
+          elisa_pe_total = dplyr::n(),
           .groups = "drop"
         )
     })
 
-    # Get iELISA results by zone
-    ielisa_by_zone <- reactive({
-      ielisa <- if (is.reactive(ielisa_data)) ielisa_data() else ielisa_data
+    # ========================================================================
+    # ELISA VSG DATA BY ZONE
+    # ========================================================================
+
+    elisa_vsg_by_zone <- reactive({
+      elisa <- safe_get_data(elisa_vsg_data)
       biobank <- filtered_data()
 
-      if (is.null(ielisa) || !is.data.frame(ielisa) || nrow(ielisa) == 0) {
-        return(tibble::tibble(
-          health_zone_norm = character(),
-          ielisa_positive = integer(),
-          ielisa_negative = integer(),
-          ielisa_indeterminate = integer(),
-          ielisa_total = integer()
-        ))
+      empty_result <- tibble::tibble(
+        health_zone_norm = character(),
+        elisa_vsg_pos = integer(),
+        elisa_vsg_neg = integer(),
+        elisa_vsg_border = integer(),
+        elisa_vsg_total = integer()
+      )
+
+      if (is.null(elisa) || !is.data.frame(elisa) || nrow(elisa) == 0) {
+        return(empty_result)
       }
 
-      if (is.null(biobank) || nrow(biobank) == 0 || !"health_zone" %in% names(biobank)) {
-        return(tibble::tibble(
-          health_zone_norm = character(),
-          ielisa_positive = integer(),
-          ielisa_negative = integer(),
-          ielisa_indeterminate = integer(),
-          ielisa_total = integer()
-        ))
+      if (is.null(biobank) || nrow(biobank) == 0) {
+        return(empty_result)
       }
 
-      # Determine the status column
-      status_col <- intersect(c("status_final", "final_status", "result", "interpretation"), names(ielisa))
-      if (length(status_col) == 0) {
-        return(tibble::tibble(
-          health_zone_norm = character(),
-          ielisa_positive = integer(),
-          ielisa_negative = integer(),
-          ielisa_indeterminate = integer(),
-          ielisa_total = integer()
-        ))
-      }
-      status_col <- status_col[1]
+      biobank_geo <- biobank %>%
+        dplyr::select(dplyr::any_of(c("barcode", "lab_id", "health_zone"))) %>%
+        dplyr::filter(!is.na(health_zone)) %>%
+        dplyr::distinct()
 
-      # Join iELISA with biobank
-      barcode_col <- intersect(c("code_barres_kps", "barcode", "numero_labo", "lab_id"), names(ielisa))
-      if (length(barcode_col) == 0) {
-        return(tibble::tibble(
-          health_zone_norm = character(),
-          ielisa_positive = integer(),
-          ielisa_negative = integer(),
-          ielisa_indeterminate = integer(),
-          ielisa_total = integer()
-        ))
-      }
-
-      ielisa_joined <- ielisa %>%
-        dplyr::rename_with(~ "join_key", .cols = dplyr::all_of(barcode_col[1])) %>%
+      elisa_joined <- elisa %>%
+        dplyr::mutate(
+          join_key = dplyr::coalesce(
+            if ("code_barres_kps" %in% names(.)) as.character(code_barres_kps) else NULL,
+            if ("barcode" %in% names(.)) as.character(barcode) else NULL,
+            if ("numero_labo" %in% names(.)) as.character(numero_labo) else NULL
+          )
+        ) %>%
         dplyr::left_join(
-          biobank %>%
-            dplyr::select(dplyr::any_of(c("barcode", "lab_id", "health_zone"))) %>%
-            dplyr::mutate(join_key = dplyr::coalesce(barcode, as.character(lab_id))) %>%
+          biobank_geo %>%
+            dplyr::mutate(join_key = dplyr::coalesce(as.character(barcode), as.character(lab_id))) %>%
+            dplyr::select(join_key, health_zone) %>%
             dplyr::distinct(join_key, .keep_all = TRUE),
           by = "join_key"
         )
 
-      if (!"health_zone" %in% names(ielisa_joined)) {
-        return(tibble::tibble(
-          health_zone_norm = character(),
-          ielisa_positive = integer(),
-          ielisa_negative = integer(),
-          ielisa_indeterminate = integer(),
-          ielisa_total = integer()
-        ))
+      if (!"health_zone" %in% names(elisa_joined) || all(is.na(elisa_joined$health_zone))) {
+        return(empty_result)
       }
+
+      status_col <- intersect(c("status_final", "status_raw", "result"), names(elisa_joined))
+      if (length(status_col) == 0) {
+        return(empty_result)
+      }
+
+      elisa_joined %>%
+        dplyr::filter(!is.na(health_zone)) %>%
+        dplyr::mutate(
+          health_zone_norm = normalize_zone_name(health_zone),
+          status = toupper(.data[[status_col[1]]])
+        ) %>%
+        dplyr::group_by(health_zone_norm) %>%
+        dplyr::summarise(
+          elisa_vsg_pos = sum(grepl("POS", status), na.rm = TRUE),
+          elisa_vsg_neg = sum(grepl("NEG", status), na.rm = TRUE),
+          elisa_vsg_border = sum(grepl("BORDER|IND", status), na.rm = TRUE),
+          elisa_vsg_total = dplyr::n(),
+          .groups = "drop"
+        )
+    })
+
+    # ========================================================================
+    # iELISA DATA BY ZONE (LiTat 1.3 and 1.5)
+    # ========================================================================
+
+    ielisa_by_zone <- reactive({
+      ielisa <- safe_get_data(ielisa_data)
+      biobank <- filtered_data()
+
+      empty_result <- tibble::tibble(
+        health_zone_norm = character(),
+        ielisa_l13_pos = integer(),
+        ielisa_l13_neg = integer(),
+        ielisa_l15_pos = integer(),
+        ielisa_l15_neg = integer(),
+        ielisa_any_pos = integer(),
+        ielisa_total = integer()
+      )
+
+      if (is.null(ielisa) || !is.data.frame(ielisa) || nrow(ielisa) == 0) {
+        return(empty_result)
+      }
+
+      if (is.null(biobank) || nrow(biobank) == 0) {
+        return(empty_result)
+      }
+
+      biobank_geo <- biobank %>%
+        dplyr::select(dplyr::any_of(c("barcode", "lab_id", "health_zone"))) %>%
+        dplyr::filter(!is.na(health_zone)) %>%
+        dplyr::distinct()
+
+      ielisa_joined <- ielisa %>%
+        dplyr::mutate(
+          join_key = dplyr::coalesce(
+            if ("code_barres_kps" %in% names(.)) as.character(code_barres_kps) else NULL,
+            if ("barcode" %in% names(.)) as.character(barcode) else NULL,
+            if ("numero_labo" %in% names(.)) as.character(numero_labo) else NULL
+          )
+        ) %>%
+        dplyr::left_join(
+          biobank_geo %>%
+            dplyr::mutate(join_key = dplyr::coalesce(as.character(barcode), as.character(lab_id))) %>%
+            dplyr::select(join_key, health_zone) %>%
+            dplyr::distinct(join_key, .keep_all = TRUE),
+          by = "join_key"
+        )
+
+      if (!"health_zone" %in% names(ielisa_joined) || all(is.na(ielisa_joined$health_zone))) {
+        return(empty_result)
+      }
+
+      # Check for LiTat 1.3 and 1.5 columns
+      has_l13 <- "positive_L13" %in% names(ielisa_joined)
+      has_l15 <- "positive_L15" %in% names(ielisa_joined)
 
       ielisa_joined %>%
         dplyr::filter(!is.na(health_zone)) %>%
         dplyr::mutate(
           health_zone_norm = normalize_zone_name(health_zone),
-          status = toupper(.data[[status_col]])
+          l13_pos = if (has_l13) as.logical(positive_L13) else FALSE,
+          l15_pos = if (has_l15) as.logical(positive_L15) else FALSE,
+          any_pos = l13_pos | l15_pos
         ) %>%
         dplyr::group_by(health_zone_norm) %>%
         dplyr::summarise(
-          ielisa_positive = sum(grepl("POS", status), na.rm = TRUE),
-          ielisa_negative = sum(grepl("NEG", status), na.rm = TRUE),
-          ielisa_indeterminate = sum(grepl("IND|BORDER", status), na.rm = TRUE),
+          ielisa_l13_pos = sum(l13_pos, na.rm = TRUE),
+          ielisa_l13_neg = sum(!l13_pos, na.rm = TRUE),
+          ielisa_l15_pos = sum(l15_pos, na.rm = TRUE),
+          ielisa_l15_neg = sum(!l15_pos, na.rm = TRUE),
+          ielisa_any_pos = sum(any_pos, na.rm = TRUE),
           ielisa_total = dplyr::n(),
           .groups = "drop"
         )
     })
 
-    # Combined data for map
+    # ========================================================================
+    # COMBINED DATA FOR MAP
+    # ========================================================================
+
     combined_geo_data <- reactive({
       zones <- zone_summary()
       mic <- mic_by_zone()
-      elisa <- elisa_by_zone()
+      elisa_pe <- elisa_pe_by_zone()
+      elisa_vsg <- elisa_vsg_by_zone()
       ielisa <- ielisa_by_zone()
 
       if (nrow(zones) == 0) {
@@ -528,18 +682,24 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
 
       result <- zones %>%
         dplyr::left_join(mic, by = "health_zone_norm") %>%
-        dplyr::left_join(elisa, by = "health_zone_norm") %>%
+        dplyr::left_join(elisa_pe, by = "health_zone_norm") %>%
+        dplyr::left_join(elisa_vsg, by = "health_zone_norm") %>%
         dplyr::left_join(ielisa, by = "health_zone_norm") %>%
         dplyr::mutate(
           dplyr::across(dplyr::where(is.numeric), ~ tidyr::replace_na(.x, 0)),
-          # Calculate overall positivity
-          total_tested = mic_total + elisa_total + ielisa_total,
-          total_positive = mic_positive + elisa_positive + ielisa_positive,
-          positivity_rate = dplyr::if_else(
-            total_tested > 0,
-            round(total_positive / total_tested * 100, 1),
-            0
-          )
+          # Combined ELISA
+          elisa_total = elisa_pe_total + elisa_vsg_total,
+          elisa_pos = elisa_pe_pos + elisa_vsg_pos,
+          # Molecular = MIC
+          molecular_tested = mic_total,
+          molecular_pos = mic_any_pos,
+          molecular_rate = dplyr::if_else(molecular_tested > 0,
+                                          round(molecular_pos / molecular_tested * 100, 1), 0),
+          # Serological = ELISA + iELISA
+          sero_tested = elisa_total + ielisa_total,
+          sero_pos = elisa_pos + ielisa_any_pos,
+          sero_rate = dplyr::if_else(sero_tested > 0,
+                                     round(sero_pos / sero_tested * 100, 1), 0)
         )
 
       result
@@ -554,21 +714,13 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         return(map)
       }
 
-      # Normalize map zone names
       map$zone_norm <- normalize_zone_name(map$zonesante)
 
-      # Join data to map
       map_joined <- map %>%
-        dplyr::left_join(
-          data,
-          by = c("zone_norm" = "health_zone_norm")
-        ) %>%
+        dplyr::left_join(data, by = c("zone_norm" = "health_zone_norm")) %>%
         dplyr::mutate(
           dplyr::across(
-            dplyr::any_of(c("n_samples", "mic_positive", "mic_negative", "mic_total",
-                           "elisa_positive", "elisa_negative", "elisa_total",
-                           "ielisa_positive", "ielisa_negative", "ielisa_total",
-                           "total_positive", "positivity_rate")),
+            dplyr::where(is.numeric),
             ~ tidyr::replace_na(.x, 0)
           )
         )
@@ -583,7 +735,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
     output$n_zones <- renderText({
       data <- combined_geo_data()
       if (nrow(data) == 0) return("0")
-      as.character(nrow(data))
+      as.character(sum(data$n_samples > 0))
     })
 
     output$total_samples <- renderText({
@@ -592,11 +744,23 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       scales::comma(sum(data$n_samples, na.rm = TRUE))
     })
 
-    output$mic_positive <- renderText({
+    output$mic_dna_positive <- renderText({
       data <- combined_geo_data()
       if (nrow(data) == 0) return("0")
       total <- sum(data$mic_total, na.rm = TRUE)
-      pos <- sum(data$mic_positive, na.rm = TRUE)
+      pos <- sum(data$mic_dna_pos, na.rm = TRUE)
+      if (total > 0) {
+        sprintf("%s (%.1f%%)", scales::comma(pos), pos/total*100)
+      } else {
+        "0"
+      }
+    })
+
+    output$mic_rna_positive <- renderText({
+      data <- combined_geo_data()
+      if (nrow(data) == 0) return("0")
+      total <- sum(data$mic_total, na.rm = TRUE)
+      pos <- sum(data$mic_rna_pos, na.rm = TRUE)
       if (total > 0) {
         sprintf("%s (%.1f%%)", scales::comma(pos), pos/total*100)
       } else {
@@ -608,7 +772,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       data <- combined_geo_data()
       if (nrow(data) == 0) return("0")
       total <- sum(data$elisa_total, na.rm = TRUE)
-      pos <- sum(data$elisa_positive, na.rm = TRUE)
+      pos <- sum(data$elisa_pos, na.rm = TRUE)
       if (total > 0) {
         sprintf("%s (%.1f%%)", scales::comma(pos), pos/total*100)
       } else {
@@ -620,7 +784,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       data <- combined_geo_data()
       if (nrow(data) == 0) return("0")
       total <- sum(data$ielisa_total, na.rm = TRUE)
-      pos <- sum(data$ielisa_positive, na.rm = TRUE)
+      pos <- sum(data$ielisa_any_pos, na.rm = TRUE)
       if (total > 0) {
         sprintf("%s (%.1f%%)", scales::comma(pos), pos/total*100)
       } else {
@@ -636,7 +800,6 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       map <- map_with_data()
 
       if (is.null(map)) {
-        # Return empty map centered on DRC
         return(
           leaflet::leaflet() %>%
             leaflet::addTiles() %>%
@@ -651,26 +814,27 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         )
       }
 
-      # Determine which metric to display
       metric <- input$map_metric %||% "total"
 
       map$display_value <- switch(
         metric,
         "total" = map$n_samples,
-        "mic" = map$mic_positive,
-        "elisa" = map$elisa_positive,
-        "ielisa" = map$ielisa_positive,
-        "positivity" = map$positivity_rate,
+        "mic_dna" = map$mic_dna_pos,
+        "mic_rna" = map$mic_rna_pos,
+        "mic_any" = map$mic_any_pos,
+        "elisa_pe" = map$elisa_pe_pos,
+        "elisa_vsg" = map$elisa_vsg_pos,
+        "ielisa_l13" = map$ielisa_l13_pos,
+        "ielisa_l15" = map$ielisa_l15_pos,
+        "molecular_rate" = map$molecular_rate,
+        "sero_rate" = map$sero_rate,
         map$n_samples
       )
 
-      # Replace NAs with 0 for display
       map$display_value[is.na(map$display_value)] <- 0
 
-      # Create color palette
       pal_name <- input$color_scheme %||% "YlOrRd"
 
-      # Handle viridis separately
       if (pal_name == "viridis") {
         pal <- leaflet::colorNumeric(
           palette = viridisLite::viridis(9),
@@ -685,38 +849,52 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         )
       }
 
-      # Create labels
       labels <- sprintf(
         "<strong>%s</strong><br/>
         Province: %s<br/>
         <hr style='margin: 5px 0;'>
-        Samples: %s<br/>
-        <b>MIC:</b> %d pos / %d total<br/>
-        <b>ELISA:</b> %d pos / %d total<br/>
-        <b>iELISA:</b> %d pos / %d total<br/>
-        <b>Positivity:</b> %.1f%%",
+        <b>Samples:</b> %s<br/>
+        <hr style='margin: 5px 0;'>
+        <b>MOLECULAR (MIC):</b><br/>
+        &nbsp;&nbsp;DNA+ (177T): %d<br/>
+        &nbsp;&nbsp;RNA+ (18S2): %d<br/>
+        &nbsp;&nbsp;Total tested: %d<br/>
+        <hr style='margin: 5px 0;'>
+        <b>SEROLOGICAL:</b><br/>
+        &nbsp;&nbsp;ELISA-PE+: %d / %d<br/>
+        &nbsp;&nbsp;ELISA-VSG+: %d / %d<br/>
+        &nbsp;&nbsp;iELISA L1.3+: %d<br/>
+        &nbsp;&nbsp;iELISA L1.5+: %d<br/>
+        &nbsp;&nbsp;iELISA total: %d<br/>
+        <hr style='margin: 5px 0;'>
+        <b>Molecular rate:</b> %.1f%%<br/>
+        <b>Sero rate:</b> %.1f%%",
         map$zonesante,
         map$province,
         scales::comma(map$n_samples),
-        map$mic_positive, map$mic_total,
-        map$elisa_positive, map$elisa_total,
-        map$ielisa_positive, map$ielisa_total,
-        map$positivity_rate
+        map$mic_dna_pos, map$mic_rna_pos, map$mic_total,
+        map$elisa_pe_pos, map$elisa_pe_total,
+        map$elisa_vsg_pos, map$elisa_vsg_total,
+        map$ielisa_l13_pos, map$ielisa_l15_pos, map$ielisa_total,
+        map$molecular_rate, map$sero_rate
       ) %>%
         lapply(htmltools::HTML)
 
-      # Create metric title for legend
       legend_title <- switch(
         metric,
         "total" = "Samples",
-        "mic" = "MIC+",
-        "elisa" = "ELISA+",
-        "ielisa" = "iELISA+",
-        "positivity" = "Positivity %",
+        "mic_dna" = "MIC DNA+",
+        "mic_rna" = "MIC RNA+",
+        "mic_any" = "MIC Any+",
+        "elisa_pe" = "ELISA-PE+",
+        "elisa_vsg" = "ELISA-VSG+",
+        "ielisa_l13" = "iELISA L1.3+",
+        "ielisa_l15" = "iELISA L1.5+",
+        "molecular_rate" = "Molecular %",
+        "sero_rate" = "Sero %",
         "Samples"
       )
 
-      # Build the map
       leaflet::leaflet(map) %>%
         leaflet::addProviderTiles(
           leaflet::providers$CartoDB.Positron,
@@ -740,11 +918,11 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           labelOptions = leaflet::labelOptions(
             style = list(
               "font-family" = "Inter, sans-serif",
-              "font-size" = "13px",
+              "font-size" = "12px",
               "padding" = "8px 12px",
               "border-radius" = "6px"
             ),
-            textsize = "13px",
+            textsize = "12px",
             direction = "auto"
           )
         ) %>%
@@ -771,40 +949,52 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
 
       metric <- input$map_metric %||% "total"
 
-      # Select the appropriate column
       data$value <- switch(
         metric,
         "total" = data$n_samples,
-        "mic" = data$mic_positive,
-        "elisa" = data$elisa_positive,
-        "ielisa" = data$ielisa_positive,
-        "positivity" = data$positivity_rate,
+        "mic_dna" = data$mic_dna_pos,
+        "mic_rna" = data$mic_rna_pos,
+        "mic_any" = data$mic_any_pos,
+        "elisa_pe" = data$elisa_pe_pos,
+        "elisa_vsg" = data$elisa_vsg_pos,
+        "ielisa_l13" = data$ielisa_l13_pos,
+        "ielisa_l15" = data$ielisa_l15_pos,
+        "molecular_rate" = data$molecular_rate,
+        "sero_rate" = data$sero_rate,
         data$n_samples
       )
 
       y_title <- switch(
         metric,
         "total" = "Samples",
-        "mic" = "MIC Positive",
-        "elisa" = "ELISA Positive",
-        "ielisa" = "iELISA Positive",
-        "positivity" = "Positivity Rate (%)",
+        "mic_dna" = "MIC DNA+",
+        "mic_rna" = "MIC RNA+",
+        "mic_any" = "MIC Any+",
+        "elisa_pe" = "ELISA-PE+",
+        "elisa_vsg" = "ELISA-VSG+",
+        "ielisa_l13" = "iELISA L1.3+",
+        "ielisa_l15" = "iELISA L1.5+",
+        "molecular_rate" = "Molecular %",
+        "sero_rate" = "Sero %",
         "Samples"
       )
 
-      # Sort and limit to top 15
       data <- data %>%
         dplyr::arrange(dplyr::desc(value)) %>%
         dplyr::slice_head(n = 15)
 
-      # Color based on metric
       bar_color <- switch(
         metric,
         "total" = "#4F46E5",
-        "mic" = "#EF4444",
-        "elisa" = "#F59E0B",
-        "ielisa" = "#10B981",
-        "positivity" = "#8B5CF6",
+        "mic_dna" = "#DC2626",
+        "mic_rna" = "#F59E0B",
+        "mic_any" = "#EF4444",
+        "elisa_pe" = "#10B981",
+        "elisa_vsg" = "#059669",
+        "ielisa_l13" = "#8B5CF6",
+        "ielisa_l15" = "#7C3AED",
+        "molecular_rate" = "#EF4444",
+        "sero_rate" = "#10B981",
         "#4F46E5"
       )
 
@@ -814,14 +1004,8 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         y = ~reorder(health_zone, value),
         type = "bar",
         orientation = "h",
-        marker = list(
-          color = bar_color,
-          line = list(color = "white", width = 1)
-        ),
-        hovertemplate = paste0(
-          "<b>%{y}</b><br>",
-          y_title, ": %{x}<extra></extra>"
-        )
+        marker = list(color = bar_color, line = list(color = "white", width = 1)),
+        hovertemplate = paste0("<b>%{y}</b><br>", y_title, ": %{x}<extra></extra>")
       ) %>%
         plotly::layout(
           xaxis = list(title = y_title, gridcolor = "#E5E7EB"),
@@ -833,10 +1017,9 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
     })
 
     # ========================================================================
-    # TEST DISTRIBUTION PLOTS
+    # MIC PLOT (DNA vs RNA)
     # ========================================================================
 
-    # MIC distribution by zone
     output$mic_zone_plot <- plotly::renderPlotly({
       data <- combined_geo_data()
 
@@ -851,7 +1034,6 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
                  ))
       }
 
-      # Filter to zones with MIC data and sort
       mic_data <- data %>%
         dplyr::filter(mic_total > 0) %>%
         dplyr::arrange(dplyr::desc(mic_total)) %>%
@@ -859,13 +1041,13 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
 
       plotly::plot_ly(mic_data, x = ~reorder(health_zone, mic_total)) %>%
         plotly::add_bars(
-          y = ~mic_positive,
-          name = "Positive",
-          marker = list(color = "#EF4444")
+          y = ~mic_dna_pos,
+          name = "DNA+ (177T)",
+          marker = list(color = "#DC2626")
         ) %>%
         plotly::add_bars(
-          y = ~mic_inconclusive,
-          name = "Inconclusive",
+          y = ~mic_rna_pos,
+          name = "RNA+ (18S2)",
           marker = list(color = "#F59E0B")
         ) %>%
         plotly::add_bars(
@@ -882,15 +1064,58 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         )
     })
 
-    # ELISA distribution by zone
-    output$elisa_zone_plot <- plotly::renderPlotly({
+    # ========================================================================
+    # MOLECULAR VS SEROLOGICAL PLOT
+    # ========================================================================
+
+    output$mol_sero_plot <- plotly::renderPlotly({
       data <- combined_geo_data()
 
-      if (nrow(data) == 0 || sum(data$elisa_total) == 0) {
+      if (nrow(data) == 0) {
+        return(plotly::plotly_empty())
+      }
+
+      plot_data <- data %>%
+        dplyr::filter(molecular_tested > 0 | sero_tested > 0) %>%
+        dplyr::arrange(dplyr::desc(n_samples)) %>%
+        dplyr::slice_head(n = 12)
+
+      if (nrow(plot_data) == 0) {
+        return(plotly::plotly_empty())
+      }
+
+      plotly::plot_ly(plot_data, x = ~reorder(health_zone, n_samples)) %>%
+        plotly::add_bars(
+          y = ~molecular_rate,
+          name = "Molecular (MIC) %",
+          marker = list(color = "#EF4444")
+        ) %>%
+        plotly::add_bars(
+          y = ~sero_rate,
+          name = "Serological (ELISA+iELISA) %",
+          marker = list(color = "#10B981")
+        ) %>%
+        plotly::layout(
+          barmode = "group",
+          xaxis = list(title = "", tickangle = -45),
+          yaxis = list(title = "Positivity Rate (%)", range = c(0, 100)),
+          legend = list(orientation = "h", y = -0.25),
+          margin = list(b = 100)
+        )
+    })
+
+    # ========================================================================
+    # ELISA PE PLOT
+    # ========================================================================
+
+    output$elisa_pe_zone_plot <- plotly::renderPlotly({
+      data <- combined_geo_data()
+
+      if (nrow(data) == 0 || sum(data$elisa_pe_total) == 0) {
         return(plotly::plotly_empty() %>%
                  plotly::layout(
                    annotations = list(
-                     text = "No ELISA data available",
+                     text = "No ELISA-PE data available",
                      showarrow = FALSE,
                      font = list(size = 16, color = "#6B7280")
                    )
@@ -898,23 +1123,23 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       }
 
       elisa_data <- data %>%
-        dplyr::filter(elisa_total > 0) %>%
-        dplyr::arrange(dplyr::desc(elisa_total)) %>%
+        dplyr::filter(elisa_pe_total > 0) %>%
+        dplyr::arrange(dplyr::desc(elisa_pe_total)) %>%
         dplyr::slice_head(n = 12)
 
-      plotly::plot_ly(elisa_data, x = ~reorder(health_zone, elisa_total)) %>%
+      plotly::plot_ly(elisa_data, x = ~reorder(health_zone, elisa_pe_total)) %>%
         plotly::add_bars(
-          y = ~elisa_positive,
+          y = ~elisa_pe_pos,
           name = "Positive",
           marker = list(color = "#EF4444")
         ) %>%
         plotly::add_bars(
-          y = ~elisa_borderline,
+          y = ~elisa_pe_border,
           name = "Borderline",
           marker = list(color = "#F59E0B")
         ) %>%
         plotly::add_bars(
-          y = ~elisa_negative,
+          y = ~elisa_pe_neg,
           name = "Negative",
           marker = list(color = "#10B981")
         ) %>%
@@ -927,8 +1152,59 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         )
     })
 
-    # iELISA distribution by zone
-    output$ielisa_zone_plot <- plotly::renderPlotly({
+    # ========================================================================
+    # ELISA VSG PLOT
+    # ========================================================================
+
+    output$elisa_vsg_zone_plot <- plotly::renderPlotly({
+      data <- combined_geo_data()
+
+      if (nrow(data) == 0 || sum(data$elisa_vsg_total) == 0) {
+        return(plotly::plotly_empty() %>%
+                 plotly::layout(
+                   annotations = list(
+                     text = "No ELISA-VSG data available",
+                     showarrow = FALSE,
+                     font = list(size = 16, color = "#6B7280")
+                   )
+                 ))
+      }
+
+      elisa_data <- data %>%
+        dplyr::filter(elisa_vsg_total > 0) %>%
+        dplyr::arrange(dplyr::desc(elisa_vsg_total)) %>%
+        dplyr::slice_head(n = 12)
+
+      plotly::plot_ly(elisa_data, x = ~reorder(health_zone, elisa_vsg_total)) %>%
+        plotly::add_bars(
+          y = ~elisa_vsg_pos,
+          name = "Positive",
+          marker = list(color = "#EF4444")
+        ) %>%
+        plotly::add_bars(
+          y = ~elisa_vsg_border,
+          name = "Borderline",
+          marker = list(color = "#F59E0B")
+        ) %>%
+        plotly::add_bars(
+          y = ~elisa_vsg_neg,
+          name = "Negative",
+          marker = list(color = "#10B981")
+        ) %>%
+        plotly::layout(
+          barmode = "stack",
+          xaxis = list(title = "", tickangle = -45),
+          yaxis = list(title = "Number of Tests"),
+          legend = list(orientation = "h", y = -0.25),
+          margin = list(b = 100)
+        )
+    })
+
+    # ========================================================================
+    # iELISA L13 PLOT
+    # ========================================================================
+
+    output$ielisa_l13_plot <- plotly::renderPlotly({
       data <- combined_geo_data()
 
       if (nrow(data) == 0 || sum(data$ielisa_total) == 0) {
@@ -949,19 +1225,14 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
 
       plotly::plot_ly(ielisa_data, x = ~reorder(health_zone, ielisa_total)) %>%
         plotly::add_bars(
-          y = ~ielisa_positive,
-          name = "Positive",
-          marker = list(color = "#EF4444")
+          y = ~ielisa_l13_pos,
+          name = "LiTat 1.3 Positive",
+          marker = list(color = "#8B5CF6")
         ) %>%
         plotly::add_bars(
-          y = ~ielisa_indeterminate,
-          name = "Indeterminate",
-          marker = list(color = "#F59E0B")
-        ) %>%
-        plotly::add_bars(
-          y = ~ielisa_negative,
-          name = "Negative",
-          marker = list(color = "#10B981")
+          y = ~ielisa_l13_neg,
+          name = "LiTat 1.3 Negative",
+          marker = list(color = "#C4B5FD")
         ) %>%
         plotly::layout(
           barmode = "stack",
@@ -972,49 +1243,44 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         )
     })
 
-    # Combined positivity plot
-    output$combined_positivity_plot <- plotly::renderPlotly({
+    # ========================================================================
+    # iELISA L15 PLOT
+    # ========================================================================
+
+    output$ielisa_l15_plot <- plotly::renderPlotly({
       data <- combined_geo_data()
 
-      if (nrow(data) == 0) {
-        return(plotly::plotly_empty())
+      if (nrow(data) == 0 || sum(data$ielisa_total) == 0) {
+        return(plotly::plotly_empty() %>%
+                 plotly::layout(
+                   annotations = list(
+                     text = "No iELISA data available",
+                     showarrow = FALSE,
+                     font = list(size = 16, color = "#6B7280")
+                   )
+                 ))
       }
 
-      # Calculate positivity rates per test
-      pos_data <- data %>%
-        dplyr::mutate(
-          mic_rate = dplyr::if_else(mic_total > 0, mic_positive / mic_total * 100, NA_real_),
-          elisa_rate = dplyr::if_else(elisa_total > 0, elisa_positive / elisa_total * 100, NA_real_),
-          ielisa_rate = dplyr::if_else(ielisa_total > 0, ielisa_positive / ielisa_total * 100, NA_real_)
-        ) %>%
-        dplyr::filter(!is.na(mic_rate) | !is.na(elisa_rate) | !is.na(ielisa_rate)) %>%
-        dplyr::arrange(dplyr::desc(positivity_rate)) %>%
+      ielisa_data <- data %>%
+        dplyr::filter(ielisa_total > 0) %>%
+        dplyr::arrange(dplyr::desc(ielisa_total)) %>%
         dplyr::slice_head(n = 12)
 
-      if (nrow(pos_data) == 0) {
-        return(plotly::plotly_empty())
-      }
-
-      plotly::plot_ly(pos_data, x = ~reorder(health_zone, positivity_rate)) %>%
+      plotly::plot_ly(ielisa_data, x = ~reorder(health_zone, ielisa_total)) %>%
         plotly::add_bars(
-          y = ~mic_rate,
-          name = "MIC",
-          marker = list(color = "#EF4444")
+          y = ~ielisa_l15_pos,
+          name = "LiTat 1.5 Positive",
+          marker = list(color = "#7C3AED")
         ) %>%
         plotly::add_bars(
-          y = ~elisa_rate,
-          name = "ELISA",
-          marker = list(color = "#F59E0B")
-        ) %>%
-        plotly::add_bars(
-          y = ~ielisa_rate,
-          name = "iELISA",
-          marker = list(color = "#10B981")
+          y = ~ielisa_l15_neg,
+          name = "LiTat 1.5 Negative",
+          marker = list(color = "#DDD6FE")
         ) %>%
         plotly::layout(
-          barmode = "group",
+          barmode = "stack",
           xaxis = list(title = "", tickangle = -45),
-          yaxis = list(title = "Positivity Rate (%)", range = c(0, 100)),
+          yaxis = list(title = "Number of Tests"),
           legend = list(orientation = "h", y = -0.25),
           margin = list(b = 100)
         )
@@ -1113,14 +1379,18 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           `Samples` = n_samples,
           `Male` = n_male,
           `Female` = n_female,
-          `Median Age` = median_age,
-          `MIC+` = mic_positive,
+          `MIC DNA+` = mic_dna_pos,
+          `MIC RNA+` = mic_rna_pos,
           `MIC Total` = mic_total,
-          `ELISA+` = elisa_positive,
-          `ELISA Total` = elisa_total,
-          `iELISA+` = ielisa_positive,
-          `iELISA Total` = ielisa_total,
-          `Positivity %` = positivity_rate
+          `ELISA-PE+` = elisa_pe_pos,
+          `ELISA-PE Tot` = elisa_pe_total,
+          `ELISA-VSG+` = elisa_vsg_pos,
+          `ELISA-VSG Tot` = elisa_vsg_total,
+          `iELISA L1.3+` = ielisa_l13_pos,
+          `iELISA L1.5+` = ielisa_l15_pos,
+          `iELISA Tot` = ielisa_total,
+          `Molecular %` = molecular_rate,
+          `Sero %` = sero_rate
         ) %>%
         dplyr::arrange(dplyr::desc(Samples))
 
@@ -1144,14 +1414,19 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           backgroundPosition = 'center'
         ) %>%
         DT::formatStyle(
-          'Positivity %',
-          background = DT::styleColorBar(c(0, max(table_data$`Positivity %`, na.rm = TRUE)), '#EF4444'),
+          'Molecular %',
+          background = DT::styleColorBar(c(0, 100), '#EF4444'),
           backgroundSize = '100% 90%',
           backgroundRepeat = 'no-repeat',
           backgroundPosition = 'center'
         ) %>%
-        DT::formatRound('Median Age', digits = 1) %>%
-        DT::formatRound('Positivity %', digits = 1)
+        DT::formatStyle(
+          'Sero %',
+          background = DT::styleColorBar(c(0, 100), '#10B981'),
+          backgroundSize = '100% 90%',
+          backgroundRepeat = 'no-repeat',
+          backgroundPosition = 'center'
+        )
     })
 
   })

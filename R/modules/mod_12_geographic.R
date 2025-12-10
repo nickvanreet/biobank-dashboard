@@ -531,48 +531,73 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         return(empty_result)
       }
 
-      # Create join key safely
+      # Create a copy and add join keys safely (dual-key strategy like MIC)
       elisa_work <- elisa
+
+      # Add barcode join key
       if ("code_barres_kps" %in% names(elisa_work)) {
-        elisa_work$join_key <- as.character(elisa_work$code_barres_kps)
+        elisa_work$join_barcode <- as.character(elisa_work$code_barres_kps)
       } else if ("barcode" %in% names(elisa_work)) {
-        elisa_work$join_key <- as.character(elisa_work$barcode)
-      } else if ("numero_labo" %in% names(elisa_work)) {
-        elisa_work$join_key <- as.character(elisa_work$numero_labo)
+        elisa_work$join_barcode <- as.character(elisa_work$barcode)
       } else {
+        elisa_work$join_barcode <- NA_character_
+      }
+
+      # Add lab_id join key
+      if ("numero_labo" %in% names(elisa_work)) {
+        elisa_work$join_labid <- as.character(elisa_work$numero_labo)
+      } else if ("lab_id" %in% names(elisa_work)) {
+        elisa_work$join_labid <- as.character(elisa_work$lab_id)
+      } else {
+        elisa_work$join_labid <- NA_character_
+      }
+
+      # Try joining by barcode first
+      elisa_joined <- NULL
+      if ("barcode" %in% names(biobank_geo) && any(!is.na(elisa_work$join_barcode))) {
+        biobank_bc <- biobank_geo %>%
+          dplyr::filter(!is.na(barcode)) %>%
+          dplyr::mutate(join_barcode = as.character(barcode)) %>%
+          dplyr::select(join_barcode, health_zone) %>%
+          dplyr::distinct(join_barcode, .keep_all = TRUE)
+
+        elisa_joined <- elisa_work %>%
+          dplyr::left_join(biobank_bc, by = "join_barcode")
+      }
+
+      # If no health_zone yet, try lab_id join
+      if (is.null(elisa_joined) || !"health_zone" %in% names(elisa_joined) || all(is.na(elisa_joined$health_zone))) {
+        if ("lab_id" %in% names(biobank_geo) && any(!is.na(elisa_work$join_labid))) {
+          biobank_lab <- biobank_geo %>%
+            dplyr::filter(!is.na(lab_id)) %>%
+            dplyr::mutate(join_labid = as.character(lab_id)) %>%
+            dplyr::select(join_labid, health_zone) %>%
+            dplyr::distinct(join_labid, .keep_all = TRUE)
+
+          elisa_joined <- elisa_work %>%
+            dplyr::left_join(biobank_lab, by = "join_labid")
+        }
+      }
+
+      if (is.null(elisa_joined) || !"health_zone" %in% names(elisa_joined)) {
         return(empty_result)
       }
 
-      # Create biobank join key
-      biobank_join <- biobank_geo
-      if ("barcode" %in% names(biobank_join) && any(!is.na(biobank_join$barcode))) {
-        biobank_join$join_key <- as.character(biobank_join$barcode)
-      } else if ("lab_id" %in% names(biobank_join) && any(!is.na(biobank_join$lab_id))) {
-        biobank_join$join_key <- as.character(biobank_join$lab_id)
-      } else {
-        return(empty_result)
-      }
+      # Filter to rows with health zone
+      elisa_with_zone <- elisa_joined %>%
+        dplyr::filter(!is.na(health_zone))
 
-      biobank_join <- biobank_join %>%
-        dplyr::filter(!is.na(join_key)) %>%
-        dplyr::select(join_key, health_zone) %>%
-        dplyr::distinct(join_key, .keep_all = TRUE)
-
-      elisa_joined <- elisa_work %>%
-        dplyr::left_join(biobank_join, by = "join_key")
-
-      if (!"health_zone" %in% names(elisa_joined) || all(is.na(elisa_joined$health_zone))) {
+      if (nrow(elisa_with_zone) == 0) {
         return(empty_result)
       }
 
       # Get status column
-      status_col <- intersect(c("status_final", "status_raw", "result"), names(elisa_joined))
+      status_col <- intersect(c("status_final", "status_raw", "result"), names(elisa_with_zone))
       if (length(status_col) == 0) {
         return(empty_result)
       }
 
-      elisa_joined %>%
-        dplyr::filter(!is.na(health_zone)) %>%
+      elisa_with_zone %>%
         dplyr::mutate(
           health_zone_norm = normalize_zone_name(health_zone),
           status = toupper(.data[[status_col[1]]])
@@ -620,47 +645,72 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         return(empty_result)
       }
 
-      # Create join key safely
+      # Create a copy and add join keys safely (dual-key strategy like MIC)
       elisa_work <- elisa
+
+      # Add barcode join key
       if ("code_barres_kps" %in% names(elisa_work)) {
-        elisa_work$join_key <- as.character(elisa_work$code_barres_kps)
+        elisa_work$join_barcode <- as.character(elisa_work$code_barres_kps)
       } else if ("barcode" %in% names(elisa_work)) {
-        elisa_work$join_key <- as.character(elisa_work$barcode)
-      } else if ("numero_labo" %in% names(elisa_work)) {
-        elisa_work$join_key <- as.character(elisa_work$numero_labo)
+        elisa_work$join_barcode <- as.character(elisa_work$barcode)
       } else {
-        return(empty_result)
+        elisa_work$join_barcode <- NA_character_
       }
 
-      # Create biobank join key
-      biobank_join <- biobank_geo
-      if ("barcode" %in% names(biobank_join) && any(!is.na(biobank_join$barcode))) {
-        biobank_join$join_key <- as.character(biobank_join$barcode)
-      } else if ("lab_id" %in% names(biobank_join) && any(!is.na(biobank_join$lab_id))) {
-        biobank_join$join_key <- as.character(biobank_join$lab_id)
+      # Add lab_id join key
+      if ("numero_labo" %in% names(elisa_work)) {
+        elisa_work$join_labid <- as.character(elisa_work$numero_labo)
+      } else if ("lab_id" %in% names(elisa_work)) {
+        elisa_work$join_labid <- as.character(elisa_work$lab_id)
       } else {
+        elisa_work$join_labid <- NA_character_
+      }
+
+      # Try joining by barcode first
+      elisa_joined <- NULL
+      if ("barcode" %in% names(biobank_geo) && any(!is.na(elisa_work$join_barcode))) {
+        biobank_bc <- biobank_geo %>%
+          dplyr::filter(!is.na(barcode)) %>%
+          dplyr::mutate(join_barcode = as.character(barcode)) %>%
+          dplyr::select(join_barcode, health_zone) %>%
+          dplyr::distinct(join_barcode, .keep_all = TRUE)
+
+        elisa_joined <- elisa_work %>%
+          dplyr::left_join(biobank_bc, by = "join_barcode")
+      }
+
+      # If no health_zone yet, try lab_id join
+      if (is.null(elisa_joined) || !"health_zone" %in% names(elisa_joined) || all(is.na(elisa_joined$health_zone))) {
+        if ("lab_id" %in% names(biobank_geo) && any(!is.na(elisa_work$join_labid))) {
+          biobank_lab <- biobank_geo %>%
+            dplyr::filter(!is.na(lab_id)) %>%
+            dplyr::mutate(join_labid = as.character(lab_id)) %>%
+            dplyr::select(join_labid, health_zone) %>%
+            dplyr::distinct(join_labid, .keep_all = TRUE)
+
+          elisa_joined <- elisa_work %>%
+            dplyr::left_join(biobank_lab, by = "join_labid")
+        }
+      }
+
+      if (is.null(elisa_joined) || !"health_zone" %in% names(elisa_joined)) {
         return(empty_result)
       }
 
-      biobank_join <- biobank_join %>%
-        dplyr::filter(!is.na(join_key)) %>%
-        dplyr::select(join_key, health_zone) %>%
-        dplyr::distinct(join_key, .keep_all = TRUE)
+      # Filter to rows with health zone
+      elisa_with_zone <- elisa_joined %>%
+        dplyr::filter(!is.na(health_zone))
 
-      elisa_joined <- elisa_work %>%
-        dplyr::left_join(biobank_join, by = "join_key")
-
-      if (!"health_zone" %in% names(elisa_joined) || all(is.na(elisa_joined$health_zone))) {
+      if (nrow(elisa_with_zone) == 0) {
         return(empty_result)
       }
 
-      status_col <- intersect(c("status_final", "status_raw", "result"), names(elisa_joined))
+      status_col <- intersect(c("status_final", "status_raw", "result"), names(elisa_with_zone))
       if (length(status_col) == 0) {
         return(empty_result)
       }
 
-      elisa_joined %>%
-        dplyr::filter(!is.na(health_zone)) %>%
+      elisa_with_zone %>%
         dplyr::mutate(
           health_zone_norm = normalize_zone_name(health_zone),
           status = toupper(.data[[status_col[1]]])
@@ -711,43 +761,68 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         return(empty_result)
       }
 
-      # Create join key safely (avoid coalesce with conditional NULL values)
+      # Create a copy and add join keys safely (dual-key strategy like MIC)
       ielisa_work <- ielisa
+
+      # Add barcode join key
       if ("code_barres_kps" %in% names(ielisa_work)) {
-        ielisa_work$join_key <- as.character(ielisa_work$code_barres_kps)
+        ielisa_work$join_barcode <- as.character(ielisa_work$code_barres_kps)
       } else if ("barcode" %in% names(ielisa_work)) {
-        ielisa_work$join_key <- as.character(ielisa_work$barcode)
-      } else if ("numero_labo" %in% names(ielisa_work)) {
-        ielisa_work$join_key <- as.character(ielisa_work$numero_labo)
+        ielisa_work$join_barcode <- as.character(ielisa_work$barcode)
       } else {
+        ielisa_work$join_barcode <- NA_character_
+      }
+
+      # Add lab_id join key
+      if ("numero_labo" %in% names(ielisa_work)) {
+        ielisa_work$join_labid <- as.character(ielisa_work$numero_labo)
+      } else if ("lab_id" %in% names(ielisa_work)) {
+        ielisa_work$join_labid <- as.character(ielisa_work$lab_id)
+      } else {
+        ielisa_work$join_labid <- NA_character_
+      }
+
+      # Try joining by barcode first
+      ielisa_joined <- NULL
+      if ("barcode" %in% names(biobank_geo) && any(!is.na(ielisa_work$join_barcode))) {
+        biobank_bc <- biobank_geo %>%
+          dplyr::filter(!is.na(barcode)) %>%
+          dplyr::mutate(join_barcode = as.character(barcode)) %>%
+          dplyr::select(join_barcode, health_zone) %>%
+          dplyr::distinct(join_barcode, .keep_all = TRUE)
+
+        ielisa_joined <- ielisa_work %>%
+          dplyr::left_join(biobank_bc, by = "join_barcode")
+      }
+
+      # If no health_zone yet, try lab_id join
+      if (is.null(ielisa_joined) || !"health_zone" %in% names(ielisa_joined) || all(is.na(ielisa_joined$health_zone))) {
+        if ("lab_id" %in% names(biobank_geo) && any(!is.na(ielisa_work$join_labid))) {
+          biobank_lab <- biobank_geo %>%
+            dplyr::filter(!is.na(lab_id)) %>%
+            dplyr::mutate(join_labid = as.character(lab_id)) %>%
+            dplyr::select(join_labid, health_zone) %>%
+            dplyr::distinct(join_labid, .keep_all = TRUE)
+
+          ielisa_joined <- ielisa_work %>%
+            dplyr::left_join(biobank_lab, by = "join_labid")
+        }
+      }
+
+      if (is.null(ielisa_joined) || !"health_zone" %in% names(ielisa_joined)) {
         return(empty_result)
       }
 
-      # Create biobank join key
-      biobank_join <- biobank_geo
-      if ("barcode" %in% names(biobank_join) && any(!is.na(biobank_join$barcode))) {
-        biobank_join$join_key <- as.character(biobank_join$barcode)
-      } else if ("lab_id" %in% names(biobank_join) && any(!is.na(biobank_join$lab_id))) {
-        biobank_join$join_key <- as.character(biobank_join$lab_id)
-      } else {
-        return(empty_result)
-      }
+      # Filter to rows with health zone
+      ielisa_with_zone <- ielisa_joined %>%
+        dplyr::filter(!is.na(health_zone))
 
-      biobank_join <- biobank_join %>%
-        dplyr::filter(!is.na(join_key)) %>%
-        dplyr::select(join_key, health_zone) %>%
-        dplyr::distinct(join_key, .keep_all = TRUE)
-
-      ielisa_joined <- ielisa_work %>%
-        dplyr::left_join(biobank_join, by = "join_key")
-
-      if (!"health_zone" %in% names(ielisa_joined) || all(is.na(ielisa_joined$health_zone))) {
+      if (nrow(ielisa_with_zone) == 0) {
         return(empty_result)
       }
 
       # Check for LiTat 1.3 and 1.5 columns and compute positivity
-      ielisa_results <- ielisa_joined %>%
-        dplyr::filter(!is.na(health_zone)) %>%
+      ielisa_results <- ielisa_with_zone %>%
         dplyr::mutate(health_zone_norm = normalize_zone_name(health_zone))
 
       # L1.3 positivity

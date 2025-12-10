@@ -243,6 +243,8 @@ analyze_data_quality <- function(df_raw) {
     .detect_col(nms, c("^num[eé]ro$", "^numero$", "^num$", "lab.?id"))
   date_col    <- if ("date_sample" %in% nms) "date_sample" else
     .detect_col(nms, c("date.*pr[eé]l[eè]v", "date.*sample", "jj.?/?mm.?/?aaaa", "date.*prlv"))
+  zone_col    <- if ("health_zone" %in% nms) "health_zone" else
+    .detect_col(nms, c("zone.*sant[eé]", "health.*zone"))
   
   # --- Create normalized helper columns -------------------------------------
   if (!is.null(barcode_col) && barcode_col %in% nms) {
@@ -391,9 +393,17 @@ analyze_data_quality <- function(df_raw) {
     stringsAsFactors = FALSE
   )
   
+  # Include health_zone if available for heatmap visualization
+  health_zone_values <- if (!is.null(zone_col) && zone_col %in% names(df_kept)) {
+    as.character(df_kept[[zone_col]])
+  } else {
+    NA_character_
+  }
+
   row_flags_detailed <- data.frame(
     date_sample = df_kept$.__date_sample,
     reason = ifelse(is.na(invalid_reason), "OK", invalid_reason),
+    health_zone = health_zone_values,
     stringsAsFactors = FALSE
   )
   

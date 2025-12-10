@@ -726,20 +726,17 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
     # ---- QUALITY HEATMAP ---------------------------------------------------
     output$quality_heatmap <- plotly::renderPlotly({
       req(quality_report())
-      req(raw_data())
       report <- quality_report()
-      rd <- raw_data()
 
       if (is.null(report$row_flags_detailed) || !nrow(report$row_flags_detailed)) {
         return(plotly::plotly_empty())
       }
 
-      # Get zone and date columns
-      nms <- names(rd)
-      zone_col <- .find_col(nms, c("zone.*sant[eé]", "health.*zone"))
-      date_col <- .find_col(nms, c("date.*pr[eé]l[eè]v", "date.*sample"))
+      # Check if health_zone is available in row_flags_detailed
+      has_zone <- "health_zone" %in% names(report$row_flags_detailed)
+      has_date <- "date_sample" %in% names(report$row_flags_detailed)
 
-      if (is.null(zone_col) || is.null(date_col)) {
+      if (!has_zone || !has_date) {
         return(plotly::plot_ly() %>%
                  plotly::add_text(
                    x = 0.5, y = 0.5,
@@ -753,13 +750,8 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
                  ))
       }
 
-      # Combine flags with zone/date info
-      df_heatmap <- data.frame(
-        date_sample = report$row_flags_detailed$date_sample,
-        reason = report$row_flags_detailed$reason,
-        health_zone = rd[[zone_col]],
-        stringsAsFactors = FALSE
-      ) %>%
+      # Use health_zone directly from row_flags_detailed (properly aligned)
+      df_heatmap <- report$row_flags_detailed %>%
         dplyr::filter(!is.na(date_sample), !is.na(health_zone), reason != "OK") %>%
         dplyr::mutate(
           week = lubridate::floor_date(date_sample, "week")

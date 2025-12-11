@@ -15,7 +15,9 @@ required_packages <- c(
   # Packages for PDF export functionality
   "knitr", "kableExtra",
   # Packages for Geographic visualization module
-  "sf", "leaflet", "viridisLite", "htmltools"
+  "sf", "leaflet", "viridisLite", "htmltools",
+  # Packages for Predictive Analytics module
+  "zoo"
 )
 
 for (pkg in required_packages) {
@@ -210,6 +212,11 @@ source("R/concordanceStatistics.R")
 source("R/concordanceVisualizations.R")
 source("R/concordancePredictive.R")
 source("R/modules/mod_11_concordance.R")
+
+# Predictive Analytics module (epidemiological forecasting and risk prediction)
+source("R/predictiveAnalytics.R")
+source("R/modules/mod_11_predictive_analytics.R")
+cat("✓ Predictive Analytics module loaded\n")
 
 # Geographic visualization module
 source("R/modules/mod_12_geographic.R")

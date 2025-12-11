@@ -133,11 +133,12 @@ server <- function(input, output, session) {
     filters = data$filters
   )
 
-  # DRS vs RNAseP module
+  # Pre-Analytical Factors & RNAseP Quality module
   mod_drs_rnasep_server(
     "drs_rnasep",
     extractions_df = data$filtered_extractions, # ← Extractions data from data manager
     qpcr_data = mic_data$qpcr_samples,          # ← qPCR data from MIC module
+    biobank_df = data$filtered_data,            # ← Biobank data for transport fields
     filters = data$filters                      # ← Filters from data manager
   )
 

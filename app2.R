@@ -75,7 +75,10 @@ server <- function(input, output, session) {
   # Pass filtered data to transport module so visuals respect dashboard filters
   mod_transport_server(
     "transport",
-    filtered_data = data$filtered_data
+    filtered_data = data$filtered_data,
+    mic_data = data$mic_data,
+    elisa_data = data$elisa_data,
+    ielisa_data = data$ielisa_data
   )
   
   # Extraction quality module (uses shared data manager reactives)

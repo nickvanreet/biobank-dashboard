@@ -241,6 +241,33 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, biobank_df, fil
   moduleServer(id, function(input, output, session) {
 
     # ========================================================================
+    # HELPER: Robust barcode normalization for matching
+    # ========================================================================
+    normalize_barcode_for_match <- function(x) {
+      if (is.null(x)) return(character(0))
+
+      # Convert to character and trim
+      bc <- trimws(as.character(x))
+
+      # Normalize to lowercase
+      bc <- tolower(bc)
+
+      # Remove common prefixes (KPS, kps, etc.)
+      bc <- gsub("^kps[- _]*", "", bc)
+
+      # Remove all non-alphanumeric characters except hyphens
+      bc <- gsub("[^a-z0-9-]", "", bc)
+
+      # Remove leading zeros (but keep if it's the only character)
+      bc <- gsub("^0+(?=.)", "", bc, perl = TRUE)
+
+      # Replace empty strings with NA
+      bc[bc == "" | bc == "na" | bc == "n/a"] <- NA_character_
+
+      bc
+    }
+
+    # ========================================================================
     # REACTIVE DATA PREPARATION
     # ========================================================================
 
@@ -254,30 +281,64 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, biobank_df, fil
         return(tibble::tibble())
       }
 
-      # Normalize sample ID for matching
-      ext_data <- ext_data %>%
-        mutate(barcode_norm = toupper(trimws(as.character(sample_id))))
+      # Normalize sample ID for matching - use robust normalization
+      ext_data$barcode_norm <- normalize_barcode_for_match(ext_data$sample_id)
+
+      # Also try matching on barcode column if different from sample_id
+      if ("barcode" %in% names(ext_data)) {
+        ext_data$barcode_alt_norm <- normalize_barcode_for_match(ext_data$barcode)
+      } else {
+        ext_data$barcode_alt_norm <- ext_data$barcode_norm
+      }
+
+      # And try numero if available
+      if ("numero" %in% names(ext_data)) {
+        ext_data$numero_norm <- normalize_barcode_for_match(ext_data$numero)
+      } else {
+        ext_data$numero_norm <- NA_character_
+      }
 
       # ----- Join qPCR data -----
       if (!is.null(qpcr_data) && !is.null(qpcr_data()) && nrow(qpcr_data()) > 0) {
         qpcr <- qpcr_data()
 
-        qpcr_summary <- qpcr %>%
-          mutate(barcode_norm = toupper(trimws(as.character(SampleID))))
+        # Normalize the SampleID for matching
+        qpcr$barcode_norm <- normalize_barcode_for_match(qpcr$SampleID)
 
         # Check which RNAseP columns are available
-        has_dna <- "Cq_median_RNAseP_DNA" %in% names(qpcr_summary)
-        has_rna <- "Cq_median_RNAseP_RNA" %in% names(qpcr_summary)
+        has_dna <- "Cq_median_RNAseP_DNA" %in% names(qpcr)
+        has_rna <- "Cq_median_RNAseP_RNA" %in% names(qpcr)
 
         if (has_dna || has_rna) {
+          # Build the summarise expression based on available columns
+          qpcr_summary <- qpcr %>%
+            group_by(barcode_norm)
+
+          if (has_dna && has_rna) {
+            qpcr_summary <- qpcr_summary %>%
+              summarise(
+                rnasep_dna_cq = mean(Cq_median_RNAseP_DNA, na.rm = TRUE),
+                rnasep_rna_cq = mean(Cq_median_RNAseP_RNA, na.rm = TRUE),
+                .groups = "drop"
+              )
+          } else if (has_dna) {
+            qpcr_summary <- qpcr_summary %>%
+              summarise(
+                rnasep_dna_cq = mean(Cq_median_RNAseP_DNA, na.rm = TRUE),
+                .groups = "drop"
+              ) %>%
+              mutate(rnasep_rna_cq = NA_real_)
+          } else {
+            qpcr_summary <- qpcr_summary %>%
+              summarise(
+                rnasep_rna_cq = mean(Cq_median_RNAseP_RNA, na.rm = TRUE),
+                .groups = "drop"
+              ) %>%
+              mutate(rnasep_dna_cq = NA_real_)
+          }
+
+          # Filter out infinite values
           qpcr_summary <- qpcr_summary %>%
-            group_by(barcode_norm) %>%
-            summarise(
-              rnasep_dna_cq = if (has_dna) mean(Cq_median_RNAseP_DNA, na.rm = TRUE) else NA_real_,
-              rnasep_rna_cq = if (has_rna) mean(Cq_median_RNAseP_RNA, na.rm = TRUE) else NA_real_,
-              .groups = "drop"
-            ) %>%
-            # Filter out infinite values
             mutate(
               rnasep_dna_cq = ifelse(is.infinite(rnasep_dna_cq), NA_real_, rnasep_dna_cq),
               rnasep_rna_cq = ifelse(is.infinite(rnasep_rna_cq), NA_real_, rnasep_rna_cq)
@@ -298,11 +359,34 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, biobank_df, fil
           names(biobank)
         )[1]
 
-        if (!is.na(biobank_barcode_col)) {
-          biobank_transport <- biobank %>%
-            mutate(barcode_norm = toupper(trimws(as.character(.data[[biobank_barcode_col]])))) %>%
+        # Also check for lab_id/numero columns for alternative matching
+        biobank_numero_col <- intersect(
+          c("lab_id", "numero"),
+          names(biobank)
+        )[1]
+
+        if (!is.na(biobank_barcode_col) || !is.na(biobank_numero_col)) {
+          # Prepare biobank transport data
+          biobank_transport <- biobank
+
+          # Add normalized barcode column
+          if (!is.na(biobank_barcode_col)) {
+            biobank_transport$barcode_norm <- normalize_barcode_for_match(biobank_transport[[biobank_barcode_col]])
+          } else {
+            biobank_transport$barcode_norm <- NA_character_
+          }
+
+          # Add normalized numero/lab_id column
+          if (!is.na(biobank_numero_col)) {
+            biobank_transport$numero_norm <- normalize_barcode_for_match(as.character(biobank_transport[[biobank_numero_col]]))
+          } else {
+            biobank_transport$numero_norm <- NA_character_
+          }
+
+          biobank_transport <- biobank_transport %>%
             select(
               barcode_norm,
+              numero_norm,
               any_of(c(
                 "date_sample",
                 "date_sent_cpltha",
@@ -311,11 +395,104 @@ mod_drs_rnasep_server <- function(id, extractions_df, qpcr_data, biobank_df, fil
                 "transport_temperature"
               ))
             ) %>%
-            distinct(barcode_norm, .keep_all = TRUE)
+            distinct(barcode_norm, numero_norm, .keep_all = TRUE)
 
+          # First try to join by barcode
           ext_data <- ext_data %>%
-            left_join(biobank_transport, by = "barcode_norm", suffix = c("", "_biobank"))
+            left_join(
+              biobank_transport %>%
+                filter(!is.na(barcode_norm)) %>%
+                select(-numero_norm) %>%
+                distinct(barcode_norm, .keep_all = TRUE),
+              by = "barcode_norm",
+              suffix = c("", "_biobank")
+            )
+
+          # For rows that didn't match by barcode, try matching by numero
+          unmatched_idx <- is.na(ext_data$date_sample) & !is.na(ext_data$numero_norm)
+          if (any(unmatched_idx)) {
+            numero_lookup <- biobank_transport %>%
+              filter(!is.na(numero_norm)) %>%
+              select(-barcode_norm) %>%
+              distinct(numero_norm, .keep_all = TRUE)
+
+            if (nrow(numero_lookup) > 0) {
+              # Get the fields we need to fill
+              fill_cols <- intersect(
+                c("date_sample", "date_sent_cpltha", "date_received_cpltha",
+                  "storage_before_cpltha", "transport_temperature"),
+                names(numero_lookup)
+              )
+
+              for (i in which(unmatched_idx)) {
+                match_row <- numero_lookup[numero_lookup$numero_norm == ext_data$numero_norm[i], ]
+                if (nrow(match_row) > 0) {
+                  for (col in fill_cols) {
+                    if (col %in% names(ext_data) && col %in% names(match_row)) {
+                      if (is.na(ext_data[[col]][i])) {
+                        ext_data[[col]][i] <- match_row[[col]][1]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          # Also try matching by alternative barcode (barcode column vs sample_id)
+          if ("barcode_alt_norm" %in% names(ext_data)) {
+            still_unmatched_idx <- is.na(ext_data$date_sample) & !is.na(ext_data$barcode_alt_norm) &
+                                   ext_data$barcode_alt_norm != ext_data$barcode_norm
+            if (any(still_unmatched_idx)) {
+              alt_lookup <- biobank_transport %>%
+                filter(!is.na(barcode_norm)) %>%
+                select(-numero_norm) %>%
+                distinct(barcode_norm, .keep_all = TRUE)
+
+              if (nrow(alt_lookup) > 0) {
+                fill_cols <- intersect(
+                  c("date_sample", "date_sent_cpltha", "date_received_cpltha",
+                    "storage_before_cpltha", "transport_temperature"),
+                  names(alt_lookup)
+                )
+
+                for (i in which(still_unmatched_idx)) {
+                  match_row <- alt_lookup[alt_lookup$barcode_norm == ext_data$barcode_alt_norm[i], ]
+                  if (nrow(match_row) > 0) {
+                    for (col in fill_cols) {
+                      if (col %in% names(ext_data) && col %in% names(match_row)) {
+                        if (is.na(ext_data[[col]][i])) {
+                          ext_data[[col]][i] <- match_row[[col]][1]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
+      }
+
+      # ----- Ensure required columns exist before calculating metrics -----
+      # These columns might not exist if no biobank join occurred
+      if (!"date_sample" %in% names(ext_data)) {
+        ext_data$date_sample <- as.Date(NA)
+      }
+      if (!"date_received_cpltha" %in% names(ext_data)) {
+        ext_data$date_received_cpltha <- as.Date(NA)
+      }
+      if (!"transport_temperature" %in% names(ext_data)) {
+        ext_data$transport_temperature <- NA_character_
+      }
+      if (!"storage_before_cpltha" %in% names(ext_data)) {
+        ext_data$storage_before_cpltha <- NA_character_
+      }
+      if (!"rnasep_dna_cq" %in% names(ext_data)) {
+        ext_data$rnasep_dna_cq <- NA_real_
+      }
+      if (!"rnasep_rna_cq" %in% names(ext_data)) {
+        ext_data$rnasep_rna_cq <- NA_real_
       }
 
       # ----- Calculate pre-analytical metrics -----

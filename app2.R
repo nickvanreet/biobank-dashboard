@@ -71,16 +71,7 @@ server <- function(input, output, session) {
     "overview_demographics",
     filtered_data = data$filtered_data
   )
-  
-  # Pass filtered data to transport module so visuals respect dashboard filters
-  mod_transport_server(
-    "transport",
-    filtered_data = data$filtered_data,
-    mic_data = data$mic_data,
-    elisa_data = data$elisa_data,
-    ielisa_data = data$ielisa_data
-  )
-  
+
   # Extraction quality module (uses shared data manager reactives)
   mod_extractions_server(
     "extractions",
@@ -113,6 +104,43 @@ server <- function(input, output, session) {
     "elisa_vsg",
     biobank_df = data$clean_data,
     filters = data$filters
+  )
+
+  # Wrap MIC data for transport module (expects $samples structure)
+  mic_data_for_transport <- reactive({
+    mic <- mic_data()
+    if (is.null(mic)) return(NULL)
+    # Transform qpcr_samples to samples for transport module
+    list(samples = mic$qpcr_samples)
+  })
+
+  # Wrap iELISA data for transport module (expects dataframe, not list)
+  ielisa_data_for_transport <- reactive({
+    ielisa <- ielisa_data()
+    if (is.null(ielisa)) return(NULL)
+    ielisa$samples  # Extract just the dataframe
+  })
+
+  # Combine ELISA data (PE + VSG) for transport module
+  combined_elisa_data <- reactive({
+    pe_data <- elisa_pe_data$samples()
+    vsg_data <- elisa_vsg_data$samples()
+
+    if (is.null(pe_data)) pe_data <- tibble::tibble()
+    if (is.null(vsg_data)) vsg_data <- tibble::tibble()
+
+    if (nrow(pe_data) == 0 && nrow(vsg_data) == 0) return(NULL)
+
+    dplyr::bind_rows(pe_data, vsg_data)
+  })
+
+  # Pass filtered data to transport module so visuals respect dashboard filters
+  mod_transport_server(
+    "transport",
+    filtered_data = data$filtered_data,
+    mic_data = mic_data_for_transport,
+    elisa_data = combined_elisa_data,
+    ielisa_data = ielisa_data_for_transport
   )
 
   # Geographic visualization module (map with test results)

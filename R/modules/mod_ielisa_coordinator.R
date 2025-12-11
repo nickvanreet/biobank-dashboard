@@ -105,6 +105,27 @@ mod_ielisa_coordinator_ui <- function(id, label = "iELISA") {
                 "% inhibition cutoff"
               )
             ),
+            # Borderline threshold (compact)
+            div(
+              class = "d-flex flex-column",
+              tags$label(
+                class = "form-label mb-1",
+                "Borderline Threshold"
+              ),
+              numericInput(
+                ns("borderline_threshold"),
+                label = NULL,
+                value = 25,
+                min = 0,
+                max = 100,
+                step = 5,
+                width = "100px"
+              ),
+              tags$small(
+                class = "text-muted",
+                "% inhibition lower bound"
+              )
+            ),
             # QC Settings button
             actionButton(
               ns("settings_btn"),
@@ -336,7 +357,7 @@ mod_ielisa_coordinator_server <- function(id, biobank_df = reactive(NULL), filte
           status_col = "status_final",
           include_all_runs = TRUE,
           positive_threshold = input$positivity_threshold,
-          borderline_threshold = max(input$positivity_threshold - 5, 20)
+          borderline_threshold = input$borderline_threshold
         )
       }, error = function(e) {
         message("Warning: iELISA consolidation failed: ", e$message)
@@ -372,10 +393,11 @@ mod_ielisa_coordinator_server <- function(id, biobank_df = reactive(NULL), filte
         }
       }
 
-      # Apply custom QC settings (threshold and formula)
+      # Apply custom QC settings (threshold, borderline, and formula)
       data <- apply_custom_qc(
         data,
         threshold = input$positivity_threshold,
+        borderline_threshold = input$borderline_threshold,
         formula = input$formula_choice
       )
 

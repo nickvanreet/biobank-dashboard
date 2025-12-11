@@ -120,16 +120,29 @@ classify_mic <- function(call, cutoffs) {
 }
 
 #' Classify individual MIC target markers (177T or 18S2)
+#'
+#' Maps MIC marker status strings to standardized status categories.
+#' Handles various output formats from the MIC qPCR pipeline.
 classify_mic_target <- function(marker_status) {
   if (is.null(marker_status) || is.na(marker_status) || marker_status == "") return("Missing")
   marker_norm <- tolower(as.character(marker_status))
 
+  # Positive calls
   if (marker_norm == "positive") return("Positive")
-  if (marker_norm == "latepositive") return("Borderline")
-  if (marker_norm == "indeterminate") return("Borderline")
-  if (marker_norm == "negative") return("Negative")
 
-  # Default to Missing for any unexpected values
+  # Borderline/suspect calls
+  if (marker_norm %in% c("latepositive", "late positive", "suspect")) return("Borderline")
+  if (marker_norm == "indeterminate") return("Borderline")
+
+
+  # Negative calls - includes "undetermined" (no Cq detected = negative for parasite)
+  if (marker_norm == "negative") return("Negative")
+  if (marker_norm %in% c("undetermined", "nd", "not detected", "notdetected")) return("Negative")
+
+  # Invalid calls
+  if (marker_norm %in% c("invalid", "failed", "error")) return("Invalid")
+
+  # Default to Missing for any truly unexpected values
   "Missing"
 }
 

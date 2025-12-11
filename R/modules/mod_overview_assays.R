@@ -1,52 +1,142 @@
-# Assay Overview Module
+# Sample Overview Module
 # Comprehensive prevalence and concordance analysis across MIC qPCR, ELISA, and iELISA assays
 
 mod_overview_assays_ui <- function(id) {
   ns <- NS(id)
 
   nav_panel(
-    title = "Overview",
+    title = "Sample Overview",
     icon = icon("dashboard"),
     page_fluid(
       layout_columns(
         col_widths = c(3, 9),
-        card(
-          card_header(icon("filter"), "Data Quality Controls"),
-          card_body(
-            tags$h6("Test Result Filters", class = "mb-3"),
-            tags$small(class = "text-muted mb-2",
-                       "Control which test results are included in the overview analysis"),
-            tags$hr(),
-            checkboxInput(
-              ns("include_borderline"),
-              label = tags$span(
-                icon("triangle-exclamation"),
-                " Include Borderline Results"
-              ),
-              value = TRUE
+        # Redesigned Quality Controls Panel
+        div(
+          # Data Quality Summary Card
+          card(
+            class = "mb-3",
+            card_header(
+              class = "bg-primary text-white",
+              div(class = "d-flex align-items-center",
+                  icon("chart-pie", class = "me-2"),
+                  tags$strong("Data Quality Summary")
+              )
             ),
-            tags$small(class = "text-muted mb-3",
-                       "Show tests with uncertain results (e.g., PP% 15-20, inhibition 25-30%)"),
-            checkboxInput(
-              ns("include_invalid"),
-              label = tags$span(
-                icon("ban"),
-                " Include Invalid Test Results"
-              ),
-              value = FALSE
+            card_body(
+              class = "p-3",
+              uiOutput(ns("quality_summary_stats"))
+            )
+          ),
+
+          # Filter Controls Card
+          card(
+            class = "mb-3",
+            card_header(
+              class = "bg-secondary text-white",
+              div(class = "d-flex align-items-center",
+                  icon("filter", class = "me-2"),
+                  tags$strong("Filter Controls")
+              )
             ),
-            tags$small(class = "text-muted mb-3",
-                       "Show tests with failed controls or invalid runs"),
-            tags$hr(),
-            tags$h6("Classification Cutoffs", class = "mb-2 mt-3"),
-            tags$small(class = "text-muted",
-                       "ELISA: PP% ≥20 or DOD ≥0.3 positive; PP% 15-20/DOD 0.2-0.3 borderline."),
-            tags$br(),
-            tags$small(class = "text-muted",
-                       "iELISA: ≥30% inhibition positive; 25-30% borderline."),
-            tags$br(),
-            tags$small(class = "text-muted",
-                       "MIC: Status based on final call string and confidence.")
+            card_body(
+              class = "p-3",
+              div(class = "mb-3",
+                  tags$label(class = "form-label fw-bold", icon("triangle-exclamation", class = "text-warning me-1"), "Borderline Results"),
+                  checkboxInput(
+                    ns("include_borderline"),
+                    label = "Include in analysis",
+                    value = TRUE
+                  )
+              ),
+              div(class = "mb-3",
+                  tags$label(class = "form-label fw-bold", icon("ban", class = "text-danger me-1"), "Invalid Results"),
+                  checkboxInput(
+                    ns("include_invalid"),
+                    label = "Include in analysis",
+                    value = FALSE
+                  )
+              ),
+              tags$hr(),
+              tags$small(class = "text-muted",
+                         icon("info-circle"), " Toggle filters to include/exclude results from all analyses")
+            )
+          ),
+
+          # Classification Thresholds Card
+          card(
+            card_header(
+              class = "bg-light",
+              div(class = "d-flex align-items-center",
+                  icon("sliders", class = "me-2"),
+                  tags$strong("Classification Thresholds")
+              )
+            ),
+            card_body(
+              class = "p-2",
+              # ELISA Section
+              tags$div(
+                class = "mb-3 p-2 border rounded bg-light",
+                tags$div(class = "fw-bold text-primary mb-2", icon("vial", class = "me-1"), "ELISA (PE/VSG)"),
+                tags$table(
+                  class = "table table-sm table-borderless mb-0",
+                  style = "font-size: 0.85em;",
+                  tags$tr(
+                    tags$td(class = "text-success fw-bold", "Positive"),
+                    tags$td("PP% ≥20 or DOD ≥0.3")
+                  ),
+                  tags$tr(
+                    tags$td(class = "text-warning fw-bold", "Borderline"),
+                    tags$td("PP% 15-20 or DOD 0.2-0.3")
+                  ),
+                  tags$tr(
+                    tags$td(class = "text-secondary fw-bold", "Negative"),
+                    tags$td("Below thresholds")
+                  )
+                )
+              ),
+              # iELISA Section
+              tags$div(
+                class = "mb-3 p-2 border rounded bg-light",
+                tags$div(class = "fw-bold text-success mb-2", icon("flask", class = "me-1"), "iELISA (LiTat 1.3/1.5)"),
+                tags$table(
+                  class = "table table-sm table-borderless mb-0",
+                  style = "font-size: 0.85em;",
+                  tags$tr(
+                    tags$td(class = "text-success fw-bold", "Positive"),
+                    tags$td("≥30% inhibition")
+                  ),
+                  tags$tr(
+                    tags$td(class = "text-warning fw-bold", "Borderline"),
+                    tags$td("25-30% inhibition")
+                  ),
+                  tags$tr(
+                    tags$td(class = "text-secondary fw-bold", "Negative"),
+                    tags$td("<25% inhibition")
+                  )
+                )
+              ),
+              # MIC Section
+              tags$div(
+                class = "p-2 border rounded bg-light",
+                tags$div(class = "fw-bold text-info mb-2", icon("dna", class = "me-1"), "MIC qPCR (177T/18S2)"),
+                tags$table(
+                  class = "table table-sm table-borderless mb-0",
+                  style = "font-size: 0.85em;",
+                  tags$tr(
+                    tags$td(class = "text-success fw-bold", "Positive"),
+                    tags$td("Cq ≤35 (strong signal)")
+                  ),
+                  tags$tr(
+                    tags$td(class = "text-warning fw-bold", "Borderline"),
+                    tags$td("Cq 35-40 (late positive)")
+                  ),
+                  tags$tr(
+                    tags$td(class = "text-secondary fw-bold", "Negative"),
+                    tags$td("Cq >40 or undetermined")
+                  )
+                )
+              )
+            )
           )
         ),
         div(
@@ -63,173 +153,266 @@ mod_overview_assays_ui <- function(id) {
             )
           ),
 
-          # Test Prevalence Section
+          # Test Prevalence Section - Clickable KPIs
           card(
             full_screen = TRUE,
             card_header(
               class = "d-flex justify-content-between align-items-center",
               div(icon("chart-pie"), "Test Prevalence & Overlaps"),
-              tags$small(class = "text-muted", "Click a test to view details in the sample table")
+              tags$span(
+                class = "badge bg-info",
+                icon("mouse-pointer", class = "me-1"),
+                "Click any KPI to filter sample table"
+              )
             ),
             card_body(
-              h5("MIC qPCR"),
+              # Custom CSS for clickable KPIs
+              tags$style(HTML("
+                .clickable-kpi {
+                  cursor: pointer;
+                  transition: transform 0.2s, box-shadow 0.2s;
+                }
+                .clickable-kpi:hover {
+                  transform: translateY(-2px);
+                  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                }
+                .clickable-kpi.active {
+                  border: 3px solid #0d6efd !important;
+                  box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.25);
+                }
+              ")),
+
+              h5(icon("dna", class = "text-info me-2"), "MIC qPCR"),
               layout_column_wrap(
                 width = 1/3,
                 # MIC-177T (DNA target)
-                value_box(
-                  title = "MIC-177T Positive",
-                  value = uiOutput(ns("kpi_mic_177t_positive")),
-                  showcase = icon("dna"),
-                  theme = "primary",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  id = ns("kpi_click_mic_177t"),
+                  onclick = sprintf("Shiny.setInputValue('%s', 'MIC-177T', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "MIC-177T Positive",
+                    value = uiOutput(ns("kpi_mic_177t_positive")),
+                    showcase = icon("dna"),
+                    theme = "primary",
+                    showcase_layout = "left center"
+                  )
                 ),
-                value_box(
-                  title = "177T Exclusive",
-                  value = uiOutput(ns("kpi_mic_177t_exclusive")),
-                  showcase = icon("circle"),
-                  theme = "secondary",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'MIC-177T_exclusive', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "177T Exclusive",
+                    value = uiOutput(ns("kpi_mic_177t_exclusive")),
+                    showcase = icon("circle"),
+                    theme = "secondary",
+                    showcase_layout = "left center"
+                  )
                 ),
-                value_box(
-                  title = "177T Shared",
-                  value = uiOutput(ns("kpi_mic_177t_shared")),
-                  showcase = icon("share-nodes"),
-                  theme = "dark",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'MIC-177T_shared', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "177T Shared",
+                    value = uiOutput(ns("kpi_mic_177t_shared")),
+                    showcase = icon("share-nodes"),
+                    theme = "dark",
+                    showcase_layout = "left center"
+                  )
                 )
               ),
 
               layout_column_wrap(
                 width = 1/3,
                 # MIC-18S2 (RNA target)
-                value_box(
-                  title = "MIC-18S2 Positive",
-                  value = uiOutput(ns("kpi_mic_18s2_positive")),
-                  showcase = icon("dna"),
-                  theme = "info",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'MIC-18S2', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "MIC-18S2 Positive",
+                    value = uiOutput(ns("kpi_mic_18s2_positive")),
+                    showcase = icon("dna"),
+                    theme = "info",
+                    showcase_layout = "left center"
+                  )
                 ),
-                value_box(
-                  title = "18S2 Exclusive",
-                  value = uiOutput(ns("kpi_mic_18s2_exclusive")),
-                  showcase = icon("circle"),
-                  theme = "secondary",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'MIC-18S2_exclusive', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "18S2 Exclusive",
+                    value = uiOutput(ns("kpi_mic_18s2_exclusive")),
+                    showcase = icon("circle"),
+                    theme = "secondary",
+                    showcase_layout = "left center"
+                  )
                 ),
-                value_box(
-                  title = "18S2 Shared",
-                  value = uiOutput(ns("kpi_mic_18s2_shared")),
-                  showcase = icon("share-nodes"),
-                  theme = "dark",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'MIC-18S2_shared', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "18S2 Shared",
+                    value = uiOutput(ns("kpi_mic_18s2_shared")),
+                    showcase = icon("share-nodes"),
+                    theme = "dark",
+                    showcase_layout = "left center"
+                  )
                 )
               ),
 
               tags$hr(),
-              h5("ELISA Tests"),
+              h5(icon("vial", class = "text-primary me-2"), "ELISA Tests"),
               layout_column_wrap(
                 width = 1/3,
                 # ELISA PE
-                value_box(
-                  title = "ELISA PE Positive",
-                  value = uiOutput(ns("kpi_pe_positive")),
-                  showcase = icon("vial"),
-                  theme = "info",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'ELISA PE', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "ELISA PE Positive",
+                    value = uiOutput(ns("kpi_pe_positive")),
+                    showcase = icon("vial"),
+                    theme = "info",
+                    showcase_layout = "left center"
+                  )
                 ),
-                value_box(
-                  title = "PE Exclusive",
-                  value = uiOutput(ns("kpi_pe_exclusive")),
-                  showcase = icon("circle"),
-                  theme = "secondary",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'ELISA PE_exclusive', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "PE Exclusive",
+                    value = uiOutput(ns("kpi_pe_exclusive")),
+                    showcase = icon("circle"),
+                    theme = "secondary",
+                    showcase_layout = "left center"
+                  )
                 ),
-                value_box(
-                  title = "PE Shared",
-                  value = uiOutput(ns("kpi_pe_shared")),
-                  showcase = icon("share-nodes"),
-                  theme = "dark",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'ELISA PE_shared', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "PE Shared",
+                    value = uiOutput(ns("kpi_pe_shared")),
+                    showcase = icon("share-nodes"),
+                    theme = "dark",
+                    showcase_layout = "left center"
+                  )
                 )
               ),
 
               layout_column_wrap(
                 width = 1/3,
                 # ELISA VSG
-                value_box(
-                  title = "ELISA VSG Positive",
-                  value = uiOutput(ns("kpi_vsg_positive")),
-                  showcase = icon("vials"),
-                  theme = "warning",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'ELISA VSG', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "ELISA VSG Positive",
+                    value = uiOutput(ns("kpi_vsg_positive")),
+                    showcase = icon("vials"),
+                    theme = "warning",
+                    showcase_layout = "left center"
+                  )
                 ),
-                value_box(
-                  title = "VSG Exclusive",
-                  value = uiOutput(ns("kpi_vsg_exclusive")),
-                  showcase = icon("circle"),
-                  theme = "secondary",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'ELISA VSG_exclusive', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "VSG Exclusive",
+                    value = uiOutput(ns("kpi_vsg_exclusive")),
+                    showcase = icon("circle"),
+                    theme = "secondary",
+                    showcase_layout = "left center"
+                  )
                 ),
-                value_box(
-                  title = "VSG Shared",
-                  value = uiOutput(ns("kpi_vsg_shared")),
-                  showcase = icon("share-nodes"),
-                  theme = "dark",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'ELISA VSG_shared', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "VSG Shared",
+                    value = uiOutput(ns("kpi_vsg_shared")),
+                    showcase = icon("share-nodes"),
+                    theme = "dark",
+                    showcase_layout = "left center"
+                  )
                 )
               ),
 
               tags$hr(),
-              h5("iELISA Tests"),
+              h5(icon("flask", class = "text-success me-2"), "iELISA Tests"),
               layout_column_wrap(
                 width = 1/3,
                 # iELISA L13
-                value_box(
-                  title = "iELISA LiTat 1.3 Positive",
-                  value = uiOutput(ns("kpi_l13_positive")),
-                  showcase = icon("flask"),
-                  theme = "success",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'iELISA LiTat 1.3', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "iELISA LiTat 1.3 Positive",
+                    value = uiOutput(ns("kpi_l13_positive")),
+                    showcase = icon("flask"),
+                    theme = "success",
+                    showcase_layout = "left center"
+                  )
                 ),
-                value_box(
-                  title = "L13 Exclusive",
-                  value = uiOutput(ns("kpi_l13_exclusive")),
-                  showcase = icon("circle"),
-                  theme = "secondary",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'iELISA LiTat 1.3_exclusive', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "L13 Exclusive",
+                    value = uiOutput(ns("kpi_l13_exclusive")),
+                    showcase = icon("circle"),
+                    theme = "secondary",
+                    showcase_layout = "left center"
+                  )
                 ),
-                value_box(
-                  title = "L13 Shared",
-                  value = uiOutput(ns("kpi_l13_shared")),
-                  showcase = icon("share-nodes"),
-                  theme = "dark",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'iELISA LiTat 1.3_shared', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "L13 Shared",
+                    value = uiOutput(ns("kpi_l13_shared")),
+                    showcase = icon("share-nodes"),
+                    theme = "dark",
+                    showcase_layout = "left center"
+                  )
                 )
               ),
 
               layout_column_wrap(
                 width = 1/3,
                 # iELISA L15
-                value_box(
-                  title = "iELISA LiTat 1.5 Positive",
-                  value = uiOutput(ns("kpi_l15_positive")),
-                  showcase = icon("flask-vial"),
-                  theme = "success",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'iELISA LiTat 1.5', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "iELISA LiTat 1.5 Positive",
+                    value = uiOutput(ns("kpi_l15_positive")),
+                    showcase = icon("flask-vial"),
+                    theme = "success",
+                    showcase_layout = "left center"
+                  )
                 ),
-                value_box(
-                  title = "L15 Exclusive",
-                  value = uiOutput(ns("kpi_l15_exclusive")),
-                  showcase = icon("circle"),
-                  theme = "secondary",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'iELISA LiTat 1.5_exclusive', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "L15 Exclusive",
+                    value = uiOutput(ns("kpi_l15_exclusive")),
+                    showcase = icon("circle"),
+                    theme = "secondary",
+                    showcase_layout = "left center"
+                  )
                 ),
-                value_box(
-                  title = "L15 Shared",
-                  value = uiOutput(ns("kpi_l15_shared")),
-                  showcase = icon("share-nodes"),
-                  theme = "dark",
-                  showcase_layout = "left center"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'iELISA LiTat 1.5_shared', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "L15 Shared",
+                    value = uiOutput(ns("kpi_l15_shared")),
+                    showcase = icon("share-nodes"),
+                    theme = "dark",
+                    showcase_layout = "left center"
+                  )
                 )
               )
             )
@@ -332,7 +515,12 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    drill_state <- reactiveValues(status = NULL, assay = NULL)
+    # Enhanced drill state with exclusive/shared filtering support
+    drill_state <- reactiveValues(
+      status = NULL,
+      assay = NULL,
+      filter_type = NULL  # "all", "exclusive", or "shared"
+    )
 
     assay_palette <- reactive({
       assay_cutoffs()$shared_palette
@@ -363,16 +551,189 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       })
     })
 
+    # Enhanced filtered_tidy with exclusive/shared support
     filtered_tidy <- reactive({
       req(prepared())
       df <- prepared()$tidy_assays
+
+      # Apply status filter
       if (!is.null(drill_state$status)) {
         df <- df %>% filter(status == drill_state$status)
       }
+
+      # Apply assay filter with exclusive/shared support
       if (!is.null(drill_state$assay)) {
-        df <- df %>% filter(as.character(assay) %in% drill_state$assay)
+        target_assay <- drill_state$assay
+        filter_type <- drill_state$filter_type
+
+        if (!is.null(filter_type) && filter_type %in% c("exclusive", "shared")) {
+          # Get samples positive on this assay
+          positive_samples <- df %>%
+            filter(as.character(assay) == target_assay, status == "Positive") %>%
+            pull(sample_id)
+
+          # Calculate how many positive tests each sample has
+          sample_positive_counts <- df %>%
+            filter(status == "Positive", sample_id %in% positive_samples) %>%
+            group_by(sample_id) %>%
+            summarise(n_positive = n(), .groups = "drop")
+
+          if (filter_type == "exclusive") {
+            # Exclusive: only positive on this test
+            exclusive_samples <- sample_positive_counts %>%
+              filter(n_positive == 1) %>%
+              pull(sample_id)
+            df <- df %>%
+              filter(sample_id %in% exclusive_samples, as.character(assay) == target_assay)
+          } else {
+            # Shared: positive on this test AND at least one other
+            shared_samples <- sample_positive_counts %>%
+              filter(n_positive > 1) %>%
+              pull(sample_id)
+            df <- df %>%
+              filter(sample_id %in% shared_samples, as.character(assay) == target_assay)
+          }
+        } else {
+          # Standard assay filter (all positive for this test)
+          df <- df %>% filter(as.character(assay) %in% target_assay)
+        }
       }
+
       df
+    })
+
+    # Data Quality Summary Stats (for the redesigned Quality Controls panel)
+    output$quality_summary_stats <- renderUI({
+      req(prepared())
+
+      tidy <- prepared()$tidy_assays
+      if (is.null(tidy) || nrow(tidy) == 0) {
+        return(tags$div(class = "text-muted text-center p-3", "No data available"))
+      }
+
+      # Calculate quality metrics
+      total_tests <- nrow(tidy)
+      total_samples <- n_distinct(tidy$sample_id)
+      n_positive <- sum(tidy$status == "Positive", na.rm = TRUE)
+      n_negative <- sum(tidy$status == "Negative", na.rm = TRUE)
+      n_borderline <- sum(tidy$status == "Borderline", na.rm = TRUE)
+      n_invalid <- sum(tidy$status == "Invalid", na.rm = TRUE)
+      n_missing <- sum(tidy$status == "Missing", na.rm = TRUE)
+
+      pct_positive <- round((n_positive / total_tests) * 100, 1)
+      pct_negative <- round((n_negative / total_tests) * 100, 1)
+      pct_borderline <- round((n_borderline / total_tests) * 100, 1)
+
+      # Count unique assays
+      assay_counts <- tidy %>% count(assay)
+      n_assays <- nrow(assay_counts)
+
+      # Create visual summary
+      tagList(
+        # Total counts row
+        tags$div(
+          class = "d-flex justify-content-between align-items-center mb-2",
+          tags$span(class = "fw-bold", icon("users", class = "me-1"), "Samples"),
+          tags$span(class = "badge bg-primary", total_samples)
+        ),
+        tags$div(
+          class = "d-flex justify-content-between align-items-center mb-2",
+          tags$span(class = "fw-bold", icon("vials", class = "me-1"), "Tests"),
+          tags$span(class = "badge bg-info", total_tests)
+        ),
+        tags$div(
+          class = "d-flex justify-content-between align-items-center mb-3",
+          tags$span(class = "fw-bold", icon("list-check", class = "me-1"), "Assay Types"),
+          tags$span(class = "badge bg-secondary", n_assays)
+        ),
+
+        tags$hr(class = "my-2"),
+
+        # Status breakdown with progress bars
+        tags$div(class = "mb-2 small fw-bold", "Status Distribution"),
+
+        # Positive bar
+        tags$div(
+          class = "d-flex align-items-center mb-1",
+          tags$span(class = "me-2", style = "width: 70px;", sprintf("%d (%.0f%%)", n_positive, pct_positive)),
+          tags$div(
+            class = "progress flex-grow-1",
+            style = "height: 8px;",
+            tags$div(
+              class = "progress-bar bg-primary",
+              style = sprintf("width: %.0f%%;", pct_positive),
+              role = "progressbar"
+            )
+          ),
+          tags$span(class = "ms-2 text-primary small", icon("check"))
+        ),
+
+        # Negative bar
+        tags$div(
+          class = "d-flex align-items-center mb-1",
+          tags$span(class = "me-2", style = "width: 70px;", sprintf("%d (%.0f%%)", n_negative, pct_negative)),
+          tags$div(
+            class = "progress flex-grow-1",
+            style = "height: 8px;",
+            tags$div(
+              class = "progress-bar bg-secondary",
+              style = sprintf("width: %.0f%%;", pct_negative),
+              role = "progressbar"
+            )
+          ),
+          tags$span(class = "ms-2 text-secondary small", icon("minus"))
+        ),
+
+        # Borderline bar (if any)
+        if (n_borderline > 0) {
+          tags$div(
+            class = "d-flex align-items-center mb-1",
+            tags$span(class = "me-2", style = "width: 70px;", sprintf("%d (%.0f%%)", n_borderline, pct_borderline)),
+            tags$div(
+              class = "progress flex-grow-1",
+              style = "height: 8px;",
+              tags$div(
+                class = "progress-bar bg-warning",
+                style = sprintf("width: %.0f%%;", pct_borderline),
+                role = "progressbar"
+              )
+            ),
+            tags$span(class = "ms-2 text-warning small", icon("triangle-exclamation"))
+          )
+        } else NULL,
+
+        # Invalid/Missing warning
+        if (n_invalid > 0 || n_missing > 0) {
+          tags$div(
+            class = "mt-2 p-2 bg-light rounded small",
+            if (n_invalid > 0) tags$div(class = "text-danger", icon("ban", class = "me-1"), sprintf("%d invalid", n_invalid)),
+            if (n_missing > 0) tags$div(class = "text-muted", icon("question", class = "me-1"), sprintf("%d missing", n_missing))
+          )
+        } else NULL
+      )
+    })
+
+    # KPI Click Handler
+    observeEvent(input$kpi_clicked, {
+      clicked_value <- input$kpi_clicked
+
+      # Parse the clicked value (format: "AssayName" or "AssayName_exclusive" or "AssayName_shared")
+      if (grepl("_exclusive$", clicked_value)) {
+        assay_name <- sub("_exclusive$", "", clicked_value)
+        drill_state$assay <- assay_name
+        drill_state$status <- "Positive"
+        drill_state$filter_type <- "exclusive"
+      } else if (grepl("_shared$", clicked_value)) {
+        assay_name <- sub("_shared$", "", clicked_value)
+        drill_state$assay <- assay_name
+        drill_state$status <- "Positive"
+        drill_state$filter_type <- "shared"
+      } else {
+        # Standard click - show all results for this assay
+        drill_state$assay <- clicked_value
+        drill_state$status <- NULL
+        drill_state$filter_type <- "all"
+      }
     })
 
     # Helper function to get stats for a specific test
@@ -903,7 +1264,7 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       )
     })
 
-    # Filter status display
+    # Filter status display with enhanced filter type support
     output$filter_status <- renderUI({
       if (!is.null(drill_state$status) || !is.null(drill_state$assay)) {
         filters_active <- c()
@@ -911,7 +1272,16 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
           filters_active <- c(filters_active, sprintf("Status: %s", drill_state$status))
         }
         if (!is.null(drill_state$assay)) {
-          filters_active <- c(filters_active, sprintf("Test: %s", paste(drill_state$assay, collapse = ", ")))
+          assay_label <- paste(drill_state$assay, collapse = ", ")
+          if (!is.null(drill_state$filter_type) && drill_state$filter_type != "all") {
+            filter_label <- switch(drill_state$filter_type,
+              "exclusive" = "Exclusive only",
+              "shared" = "Shared only",
+              ""
+            )
+            assay_label <- sprintf("%s (%s)", assay_label, filter_label)
+          }
+          filters_active <- c(filters_active, sprintf("Test: %s", assay_label))
         }
         tags$span(
           class = "badge bg-info me-2",
@@ -928,6 +1298,7 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
     observeEvent(input$clear_filter, {
       drill_state$status <- NULL
       drill_state$assay <- NULL
+      drill_state$filter_type <- NULL
     })
 
     # Make KPIs clickable by detecting table row clicks

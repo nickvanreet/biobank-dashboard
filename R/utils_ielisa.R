@@ -198,12 +198,14 @@ add_duplicate_detection <- function(ielisa_data) {
 #' Recalculate sample positivity with custom threshold and formula
 #'
 #' Applies user-selected threshold and formula to determine sample positivity
+#' with support for borderline classification.
 #'
 #' @param ielisa_data iELISA data frame with both formulas calculated
 #' @param threshold Positivity threshold (% inhibition, default 30)
+#' @param borderline_threshold Borderline threshold (% inhibition, default 25)
 #' @param formula Formula to use ("f1" or "f2", default "f1")
-#' @return Data frame with updated positive_L13 and positive_L15 columns
-apply_custom_qc <- function(ielisa_data, threshold = 30, formula = "f1") {
+#' @return Data frame with updated positive_L13, positive_L15, and status columns
+apply_custom_qc <- function(ielisa_data, threshold = 30, borderline_threshold = 25, formula = "f1") {
   if (nrow(ielisa_data) == 0) {
     return(ielisa_data)
   }
@@ -214,10 +216,14 @@ apply_custom_qc <- function(ielisa_data, threshold = 30, formula = "f1") {
       mutate(
         positive_L13 = pct_inh_f1_13 >= threshold,
         positive_L15 = pct_inh_f1_15 >= threshold,
+        borderline_L13 = pct_inh_f1_13 >= borderline_threshold & pct_inh_f1_13 < threshold,
+        borderline_L15 = pct_inh_f1_15 >= borderline_threshold & pct_inh_f1_15 < threshold,
         sample_positive = positive_L13 | positive_L15,
+        sample_borderline = !sample_positive & (borderline_L13 | borderline_L15),
         status_final = case_when(
           is.na(positive_L13) & is.na(positive_L15) ~ "Invalid",
           sample_positive ~ "Positive",
+          sample_borderline ~ "Borderline",
           TRUE ~ "Negative"
         )
       )
@@ -226,10 +232,14 @@ apply_custom_qc <- function(ielisa_data, threshold = 30, formula = "f1") {
       mutate(
         positive_L13 = pct_inh_f2_13 >= threshold,
         positive_L15 = pct_inh_f2_15 >= threshold,
+        borderline_L13 = pct_inh_f2_13 >= borderline_threshold & pct_inh_f2_13 < threshold,
+        borderline_L15 = pct_inh_f2_15 >= borderline_threshold & pct_inh_f2_15 < threshold,
         sample_positive = positive_L13 | positive_L15,
+        sample_borderline = !sample_positive & (borderline_L13 | borderline_L15),
         status_final = case_when(
           is.na(positive_L13) & is.na(positive_L15) ~ "Invalid",
           sample_positive ~ "Positive",
+          sample_borderline ~ "Borderline",
           TRUE ~ "Negative"
         )
       )

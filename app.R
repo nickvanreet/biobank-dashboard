@@ -36,7 +36,7 @@ ui <- do.call(
       mod_sample_journey_ui("sample_journey"),
       mod_sample_processing_ui("sample_processing"),
       mod_overview_assays_ui("overview_assays"),  # Sample Overview (second-to-last)
-      mod_concordance_ui("concordance_analysis")
+      mod_predictive_analytics_ui("predictive_analytics")  # Predictive Analytics (renamed from Concordance)
     )
   )
 )
@@ -165,9 +165,9 @@ server <- function(input, output, session) {
     filters = data$filters
   )
 
-  # Concordance Analysis module (comprehensive statistical analysis)
-  mod_concordance_server(
-    "concordance_analysis",
+  # Predictive Analytics module (epidemiological forecasting and risk prediction)
+  mod_predictive_analytics_server(
+    "predictive_analytics",
     biobank_df = data$clean_data,
     mic_df = mic_data$qpcr_samples,
     elisa_pe_df = elisa_pe_data$samples,

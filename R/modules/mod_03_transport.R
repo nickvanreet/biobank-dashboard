@@ -1,10 +1,11 @@
 # R/modules/mod_03_transport.R
-# Transport Command Center - Redesigned Transport Module
+# Transport & Processing Command Center - Redesigned Transport Module
 # ============================================================================
-# A comprehensive transport monitoring dashboard with:
+# A comprehensive transport and lab processing monitoring dashboard with:
 # - Hero KPI section with trends
 # - Sankey flow diagram for pipeline visualization
 # - Gauge charts with SLA targets
+# - Lab processing time indicators (MIC, ELISA-PE, ELISA-VSG, iELISA)
 # - Tabbed attention dashboard
 # - Week-over-week comparisons
 # - Enhanced temperature monitoring
@@ -21,7 +22,7 @@ mod_transport_ui <- function(id) {
   ns <- NS(id)
 
   nav_panel(
-    title = "Transport",
+    title = "Transport & Processing",
     icon = icon("truck"),
 
     div(class = "container-fluid transport-panel",
@@ -131,6 +132,41 @@ mod_transport_ui <- function(id) {
             border-bottom: 1px solid #E5E7EB;
             font-weight: 600;
           }
+
+          .processing-metric {
+            text-align: center;
+            padding: 1rem;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+            transition: transform 0.2s;
+          }
+
+          .processing-metric:hover {
+            transform: translateY(-2px);
+          }
+
+          .processing-metric .metric-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            line-height: 1.2;
+          }
+
+          .processing-metric .metric-label {
+            font-size: 0.8rem;
+            color: #64748B;
+            margin-top: 0.25rem;
+          }
+
+          .processing-metric .metric-samples {
+            font-size: 0.75rem;
+            color: #94A3B8;
+            margin-top: 0.5rem;
+          }
+
+          .processing-metric.mic { border-left: 4px solid #8B5CF6; }
+          .processing-metric.elisa-pe { border-left: 4px solid #EC4899; }
+          .processing-metric.elisa-vsg { border-left: 4px solid #F97316; }
+          .processing-metric.ielisa { border-left: 4px solid #06B6D4; }
         ")),
 
         # ==== HERO KPI SECTION ================================================
@@ -265,6 +301,61 @@ mod_transport_ui <- function(id) {
             )
         ),
 
+        # ==== LAB PROCESSING TIMES =============================================
+        div(style = "margin-top: 1.5rem;",
+            h5(class = "section-title", icon("flask"), " Lab Processing Times"),
+            p(class = "text-muted small", "Time from sample reception at CPLTHA to test completion"),
+            layout_columns(
+              col_widths = c(3, 3, 3, 3), gap = "16px",
+
+              # MIC qPCR
+              div(class = "processing-metric mic",
+                  div(class = "metric-value", style = "color: #8B5CF6;",
+                      textOutput(ns("proc_mic_days"), inline = TRUE)),
+                  div(class = "metric-label", "MIC qPCR"),
+                  div(class = "metric-samples",
+                      textOutput(ns("proc_mic_samples"), inline = TRUE))
+              ),
+
+              # ELISA-PE
+              div(class = "processing-metric elisa-pe",
+                  div(class = "metric-value", style = "color: #EC4899;",
+                      textOutput(ns("proc_elisa_pe_days"), inline = TRUE)),
+                  div(class = "metric-label", "ELISA-PE"),
+                  div(class = "metric-samples",
+                      textOutput(ns("proc_elisa_pe_samples"), inline = TRUE))
+              ),
+
+              # ELISA-VSG
+              div(class = "processing-metric elisa-vsg",
+                  div(class = "metric-value", style = "color: #F97316;",
+                      textOutput(ns("proc_elisa_vsg_days"), inline = TRUE)),
+                  div(class = "metric-label", "ELISA-VSG"),
+                  div(class = "metric-samples",
+                      textOutput(ns("proc_elisa_vsg_samples"), inline = TRUE))
+              ),
+
+              # iELISA
+              div(class = "processing-metric ielisa",
+                  div(class = "metric-value", style = "color: #06B6D4;",
+                      textOutput(ns("proc_ielisa_days"), inline = TRUE)),
+                  div(class = "metric-label", "iELISA"),
+                  div(class = "metric-samples",
+                      textOutput(ns("proc_ielisa_samples"), inline = TRUE))
+              )
+            ),
+
+            # Processing timeline chart
+            card(
+              class = "transport-card",
+              style = "margin-top: 1rem;",
+              card_header("Processing Time Distribution by Test Type"),
+              card_body_fill(
+                plotly::plotlyOutput(ns("processing_boxplot"), height = "280px")
+              )
+            )
+        ),
+
         # ==== TEMPERATURE MONITORING ==========================================
         div(style = "margin-top: 1.5rem;",
             h5(class = "section-title", icon("temperature-half"), " Temperature Monitoring"),
@@ -369,8 +460,11 @@ mod_transport_ui <- function(id) {
 #' Transport Module Server
 #' @param id Module namespace ID
 #' @param filtered_data Reactive expression containing filtered biobank data
+#' @param mic_data Reactive expression containing MIC qPCR data (optional)
+#' @param elisa_data Reactive expression containing ELISA PE/VSG data (optional)
+#' @param ielisa_data Reactive expression containing iELISA data (optional)
 #' @export
-mod_transport_server <- function(id, filtered_data) {
+mod_transport_server <- function(id, filtered_data, mic_data = NULL, elisa_data = NULL, ielisa_data = NULL) {
   moduleServer(id, function(input, output, session) {
 
     # ========================================================================
@@ -543,6 +637,191 @@ mod_transport_server <- function(id, filtered_data) {
           samples = dplyr::n(),
           .groups = "drop"
         )
+    })
+
+    # ========================================================================
+    # LAB PROCESSING TIME CALCULATIONS
+    # ========================================================================
+
+    # Helper to normalize sample identifiers for matching
+    normalize_sample_id <- function(x) {
+      if (is.null(x)) return(NA_character_)
+      x %>%
+        as.character() %>%
+        stringr::str_trim() %>%
+        stringr::str_to_upper() %>%
+        stringr::str_remove_all("^KPS[_-]?") %>%
+        stringr::str_remove_all("[^A-Z0-9]")
+    }
+
+    # Calculate processing times for MIC data
+    mic_processing_times <- reactive({
+      biobank <- filtered_data()
+      mic <- if (!is.null(mic_data)) mic_data() else NULL
+
+      if (is.null(biobank) || !nrow(biobank)) return(NULL)
+      if (is.null(mic) || !is.list(mic)) return(NULL)
+
+      # MIC data has samples in $samples
+      mic_samples <- mic$samples
+      if (is.null(mic_samples) || !nrow(mic_samples)) return(NULL)
+
+      # Check for required columns
+      if (!"RunDate" %in% names(mic_samples) && !"RunDateTime" %in% names(mic_samples)) return(NULL)
+
+      # Get run date
+      mic_samples <- mic_samples %>%
+        dplyr::mutate(
+          test_date = if ("RunDate" %in% names(.)) {
+            suppressWarnings(as.Date(RunDate))
+          } else if ("RunDateTime" %in% names(.)) {
+            suppressWarnings(as.Date(RunDateTime))
+          } else {
+            NA
+          }
+        )
+
+      # Normalize sample IDs for matching
+      mic_samples <- mic_samples %>%
+        dplyr::mutate(
+          norm_id = normalize_sample_id(if ("SampleName" %in% names(.)) SampleName else SampleID)
+        )
+
+      biobank <- biobank %>%
+        dplyr::mutate(
+          norm_barcode = normalize_sample_id(barcode),
+          norm_labid = normalize_sample_id(lab_id)
+        )
+
+      # Join on normalized IDs
+      matched <- mic_samples %>%
+        dplyr::left_join(
+          biobank %>% dplyr::select(norm_barcode, norm_labid, date_received_cpltha),
+          by = c("norm_id" = "norm_barcode")
+        ) %>%
+        dplyr::filter(!is.na(date_received_cpltha), !is.na(test_date)) %>%
+        dplyr::mutate(
+          processing_days = as.numeric(test_date - date_received_cpltha)
+        ) %>%
+        dplyr::filter(processing_days >= 0, processing_days <= 365)
+
+      if (nrow(matched) == 0) return(NULL)
+
+      list(
+        median_days = safe_median(matched$processing_days),
+        n_samples = nrow(matched),
+        data = matched
+      )
+    })
+
+    # Calculate processing times for ELISA data
+    elisa_processing_times <- reactive({
+      biobank <- filtered_data()
+      elisa <- if (!is.null(elisa_data)) elisa_data() else NULL
+
+      if (is.null(biobank) || !nrow(biobank)) return(list(pe = NULL, vsg = NULL))
+      if (is.null(elisa) || !nrow(elisa)) return(list(pe = NULL, vsg = NULL))
+
+      # Check for plate_date column
+      if (!"plate_date" %in% names(elisa)) return(list(pe = NULL, vsg = NULL))
+
+      # Normalize sample IDs
+      elisa <- elisa %>%
+        dplyr::mutate(
+          test_date = suppressWarnings(as.Date(plate_date)),
+          norm_id = normalize_sample_id(if ("code_barres_kps" %in% names(.)) code_barres_kps else barcode)
+        )
+
+      biobank <- biobank %>%
+        dplyr::mutate(
+          norm_barcode = normalize_sample_id(barcode)
+        )
+
+      # Join and calculate
+      matched <- elisa %>%
+        dplyr::left_join(
+          biobank %>% dplyr::select(norm_barcode, date_received_cpltha),
+          by = c("norm_id" = "norm_barcode")
+        ) %>%
+        dplyr::filter(!is.na(date_received_cpltha), !is.na(test_date)) %>%
+        dplyr::mutate(
+          processing_days = as.numeric(test_date - date_received_cpltha)
+        ) %>%
+        dplyr::filter(processing_days >= 0, processing_days <= 365)
+
+      # Split by test type if available
+      pe_data <- if ("test_type" %in% names(matched)) {
+        matched %>% dplyr::filter(stringr::str_detect(tolower(test_type), "pe|plasmodium"))
+      } else if ("plate_id" %in% names(matched)) {
+        matched %>% dplyr::filter(stringr::str_detect(tolower(plate_id), "pe"))
+      } else {
+        matched
+      }
+
+      vsg_data <- if ("test_type" %in% names(matched)) {
+        matched %>% dplyr::filter(stringr::str_detect(tolower(test_type), "vsg"))
+      } else if ("plate_id" %in% names(matched)) {
+        matched %>% dplyr::filter(stringr::str_detect(tolower(plate_id), "vsg"))
+      } else {
+        tibble::tibble()
+      }
+
+      list(
+        pe = if (nrow(pe_data) > 0) list(
+          median_days = safe_median(pe_data$processing_days),
+          n_samples = nrow(pe_data),
+          data = pe_data
+        ) else NULL,
+        vsg = if (nrow(vsg_data) > 0) list(
+          median_days = safe_median(vsg_data$processing_days),
+          n_samples = nrow(vsg_data),
+          data = vsg_data
+        ) else NULL
+      )
+    })
+
+    # Calculate processing times for iELISA data
+    ielisa_processing_times <- reactive({
+      biobank <- filtered_data()
+      ielisa <- if (!is.null(ielisa_data)) ielisa_data() else NULL
+
+      if (is.null(biobank) || !nrow(biobank)) return(NULL)
+      if (is.null(ielisa) || !nrow(ielisa)) return(NULL)
+
+      # Check for plate_date column
+      if (!"plate_date" %in% names(ielisa)) return(NULL)
+
+      # Normalize sample IDs
+      ielisa <- ielisa %>%
+        dplyr::mutate(
+          test_date = suppressWarnings(as.Date(plate_date)),
+          norm_id = normalize_sample_id(if ("code_barres_kps" %in% names(.)) code_barres_kps else barcode)
+        )
+
+      biobank <- biobank %>%
+        dplyr::mutate(
+          norm_barcode = normalize_sample_id(barcode)
+        )
+
+      # Join and calculate
+      matched <- ielisa %>%
+        dplyr::left_join(
+          biobank %>% dplyr::select(norm_barcode, date_received_cpltha),
+          by = c("norm_id" = "norm_barcode")
+        ) %>%
+        dplyr::filter(!is.na(date_received_cpltha), !is.na(test_date)) %>%
+        dplyr::mutate(
+          processing_days = as.numeric(test_date - date_received_cpltha)
+        ) %>%
+        dplyr::filter(processing_days >= 0, processing_days <= 365)
+
+      if (nrow(matched) == 0) return(NULL)
+
+      list(
+        median_days = safe_median(matched$processing_days),
+        n_samples = nrow(matched),
+        data = matched
+      )
     })
 
     # Table data reactives
@@ -1278,6 +1557,122 @@ mod_transport_server <- function(id, filtered_data) {
           dom = 'frtip'
         )
       )
+    })
+
+    # ========================================================================
+    # LAB PROCESSING TIME OUTPUTS
+    # ========================================================================
+
+    output$proc_mic_days <- renderText({
+      mic <- mic_processing_times()
+      if (is.null(mic)) return("N/A")
+      fmt_days(mic$median_days)
+    })
+
+    output$proc_mic_samples <- renderText({
+      mic <- mic_processing_times()
+      if (is.null(mic)) return("No data")
+      paste(scales::comma(mic$n_samples), "samples")
+    })
+
+    output$proc_elisa_pe_days <- renderText({
+      elisa <- elisa_processing_times()
+      if (is.null(elisa$pe)) return("N/A")
+      fmt_days(elisa$pe$median_days)
+    })
+
+    output$proc_elisa_pe_samples <- renderText({
+      elisa <- elisa_processing_times()
+      if (is.null(elisa$pe)) return("No data")
+      paste(scales::comma(elisa$pe$n_samples), "samples")
+    })
+
+    output$proc_elisa_vsg_days <- renderText({
+      elisa <- elisa_processing_times()
+      if (is.null(elisa$vsg)) return("N/A")
+      fmt_days(elisa$vsg$median_days)
+    })
+
+    output$proc_elisa_vsg_samples <- renderText({
+      elisa <- elisa_processing_times()
+      if (is.null(elisa$vsg)) return("No data")
+      paste(scales::comma(elisa$vsg$n_samples), "samples")
+    })
+
+    output$proc_ielisa_days <- renderText({
+      ielisa <- ielisa_processing_times()
+      if (is.null(ielisa)) return("N/A")
+      fmt_days(ielisa$median_days)
+    })
+
+    output$proc_ielisa_samples <- renderText({
+      ielisa <- ielisa_processing_times()
+      if (is.null(ielisa)) return("No data")
+      paste(scales::comma(ielisa$n_samples), "samples")
+    })
+
+    # Processing boxplot
+    output$processing_boxplot <- plotly::renderPlotly({
+      # Collect all processing data
+      mic <- mic_processing_times()
+      elisa <- elisa_processing_times()
+      ielisa <- ielisa_processing_times()
+
+      all_data <- list()
+
+      if (!is.null(mic) && !is.null(mic$data) && nrow(mic$data) > 0) {
+        all_data$MIC <- mic$data %>%
+          dplyr::mutate(test_type = "MIC qPCR")
+      }
+
+      if (!is.null(elisa$pe) && !is.null(elisa$pe$data) && nrow(elisa$pe$data) > 0) {
+        all_data$PE <- elisa$pe$data %>%
+          dplyr::mutate(test_type = "ELISA-PE")
+      }
+
+      if (!is.null(elisa$vsg) && !is.null(elisa$vsg$data) && nrow(elisa$vsg$data) > 0) {
+        all_data$VSG <- elisa$vsg$data %>%
+          dplyr::mutate(test_type = "ELISA-VSG")
+      }
+
+      if (!is.null(ielisa) && !is.null(ielisa$data) && nrow(ielisa$data) > 0) {
+        all_data$iELISA <- ielisa$data %>%
+          dplyr::mutate(test_type = "iELISA")
+      }
+
+      if (length(all_data) == 0) {
+        return(plotly::plotly_empty() %>%
+                 plotly::layout(title = list(text = "No processing data available")))
+      }
+
+      # Combine all data
+      combined <- dplyr::bind_rows(all_data)
+
+      # Define colors for each test type
+      colors <- c(
+        "MIC qPCR" = "#8B5CF6",
+        "ELISA-PE" = "#EC4899",
+        "ELISA-VSG" = "#F97316",
+        "iELISA" = "#06B6D4"
+      )
+
+      plotly::plot_ly(
+        combined,
+        x = ~test_type,
+        y = ~processing_days,
+        type = "box",
+        color = ~test_type,
+        colors = colors,
+        boxpoints = "outliers",
+        hoverinfo = "y"
+      ) %>%
+        plotly::layout(
+          xaxis = list(title = ""),
+          yaxis = list(title = "Days from Reception to Test"),
+          showlegend = FALSE,
+          margin = list(t = 20, b = 40)
+        ) %>%
+        plotly::config(displayModeBar = FALSE)
     })
 
     # ========================================================================

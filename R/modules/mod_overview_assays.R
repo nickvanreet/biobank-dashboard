@@ -1,11 +1,11 @@
-# Assay Overview Module
+# Sample Overview Module
 # Comprehensive prevalence and concordance analysis across MIC qPCR, ELISA, and iELISA assays
 
 mod_overview_assays_ui <- function(id) {
   ns <- NS(id)
 
   nav_panel(
-    title = "Overview",
+    title = "Sample Overview",
     icon = icon("dashboard"),
     page_fluid(
       layout_columns(

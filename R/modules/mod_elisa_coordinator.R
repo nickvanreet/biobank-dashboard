@@ -115,13 +115,15 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
     # THRESHOLD SETTINGS
     # ========================================================================
 
-    # Store threshold settings
+    # Store threshold settings (including borderline thresholds)
     thresholds <- reactiveValues(
       pos_control_min = 0.5,
       pos_control_max = 1.5,
       neg_control_max = 0.5,
       sample_pp_cutoff = 20,
-      sample_od_cutoff = 0.3
+      sample_pp_borderline = 15,  # Borderline starts at PP% 15
+      sample_od_cutoff = 0.3,
+      sample_od_borderline = 0.2  # Borderline starts at DOD 0.2
     )
 
     # Show settings modal when button is clicked
@@ -198,12 +200,52 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
         # Sample OD cutoff
         numericInput(
           ns("sample_od_cutoff_input"),
-          "OD Cutoff",
+          "DOD Cutoff",
           value = thresholds$sample_od_cutoff,
           min = 0,
           max = 3,
           step = 0.05,
           width = "100%"
+        ),
+
+        hr(),
+
+        h5("Borderline Classification Thresholds"),
+        p(class = "text-muted", "Set lower bounds for borderline (uncertain) results"),
+
+        div(
+          class = "row mb-3",
+          div(
+            class = "col-6",
+            numericInput(
+              ns("sample_pp_borderline_input"),
+              "PP% Borderline Min",
+              value = thresholds$sample_pp_borderline,
+              min = 0,
+              max = 100,
+              step = 1,
+              width = "100%"
+            ),
+            tags$small(class = "text-muted", "Borderline: 15-20%")
+          ),
+          div(
+            class = "col-6",
+            numericInput(
+              ns("sample_od_borderline_input"),
+              "DOD Borderline Min",
+              value = thresholds$sample_od_borderline,
+              min = 0,
+              max = 3,
+              step = 0.05,
+              width = "100%"
+            ),
+            tags$small(class = "text-muted", "Borderline: 0.2-0.3")
+          )
+        ),
+        tags$div(
+          class = "alert alert-info small",
+          icon("info-circle"),
+          " Samples with PP% or DOD between borderline minimum and positive cutoff will be classified as Borderline."
         )
       ))
     })
@@ -214,7 +256,9 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
       updateNumericInput(session, "pos_control_max_input", value = 1.5)
       updateNumericInput(session, "neg_control_max_input", value = 0.5)
       updateNumericInput(session, "sample_pp_cutoff_input", value = 20)
+      updateNumericInput(session, "sample_pp_borderline_input", value = 15)
       updateNumericInput(session, "sample_od_cutoff_input", value = 0.3)
+      updateNumericInput(session, "sample_od_borderline_input", value = 0.2)
     })
 
     # Apply settings
@@ -223,12 +267,14 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
       thresholds$pos_control_max <- input$pos_control_max_input
       thresholds$neg_control_max <- input$neg_control_max_input
       thresholds$sample_pp_cutoff <- input$sample_pp_cutoff_input
+      thresholds$sample_pp_borderline <- input$sample_pp_borderline_input
       thresholds$sample_od_cutoff <- input$sample_od_cutoff_input
+      thresholds$sample_od_borderline <- input$sample_od_borderline_input
 
       removeModal()
 
       showNotification(
-        "Settings updated successfully. Plate validation will be recalculated.",
+        "Settings updated successfully. Sample classification will be recalculated.",
         type = "message",
         duration = 3
       )
@@ -260,7 +306,9 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
       pos_max <- thresholds$pos_control_max
       neg_max <- thresholds$neg_control_max
       pp_cutoff <- thresholds$sample_pp_cutoff
+      pp_borderline <- thresholds$sample_pp_borderline
       od_cutoff <- thresholds$sample_od_cutoff
+      od_borderline <- thresholds$sample_od_borderline
 
       data <- raw_elisa_data()
       if (is.null(data) || !nrow(data)) {
@@ -299,16 +347,26 @@ mod_elisa_coordinator_server <- function(id, elisa_type = "ELISA_pe", biobank_df
           message("DEBUG: Recalculated plate validation with custom thresholds")
         }
 
-        # Add sample positivity classification based on thresholds
+        # Add sample positivity classification based on thresholds (including borderline)
         if ("PP_percent" %in% names(filtered) && "DOD" %in% names(filtered)) {
           filtered <- filtered %>%
             mutate(
               sample_positive_by_pp = PP_percent >= pp_cutoff,
+              sample_borderline_by_pp = PP_percent >= pp_borderline & PP_percent < pp_cutoff,
               sample_positive_by_od = DOD >= od_cutoff,
+              sample_borderline_by_od = DOD >= od_borderline & DOD < od_cutoff,
               # Sample is positive if either criterion is met
-              sample_positive = sample_positive_by_pp | sample_positive_by_od
+              sample_positive = sample_positive_by_pp | sample_positive_by_od,
+              # Sample is borderline if either criterion is in borderline range (and not positive)
+              sample_borderline = !sample_positive & (sample_borderline_by_pp | sample_borderline_by_od),
+              # Final status classification
+              status_final = case_when(
+                sample_positive ~ "Positive",
+                sample_borderline ~ "Borderline",
+                TRUE ~ "Negative"
+              )
             )
-          message("DEBUG: Added sample positivity classification")
+          message("DEBUG: Added sample positivity/borderline classification")
         }
 
         return(filtered)

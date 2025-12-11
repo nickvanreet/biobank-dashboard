@@ -22,7 +22,6 @@ ui <- do.call(
     # Navigation panels
     list(
       mod_data_quality_ui("data_quality"),
-      mod_overview_assays_ui("overview_assays"),
       mod_overview_demographics_ui("overview_demographics"),
       mod_geographic_ui("geographic"),
       mod_transport_ui("transport"),
@@ -33,9 +32,10 @@ ui <- do.call(
       mod_elisa_vsg_ui("elisa_vsg"),
       mod_elisa_concordance_ui("concordance"),
       mod_drs_rnasep_ui("drs_rnasep"),
-      # New comprehensive analysis modules
+      # Comprehensive analysis modules
       mod_sample_journey_ui("sample_journey"),
       mod_sample_processing_ui("sample_processing"),
+      mod_overview_assays_ui("overview_assays"),  # Sample Overview (second-to-last)
       mod_concordance_ui("concordance_analysis")
     )
   )

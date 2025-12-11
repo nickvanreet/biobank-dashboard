@@ -108,17 +108,28 @@ server <- function(input, output, session) {
 
   # Wrap MIC data for transport module (expects $samples structure)
   mic_data_for_transport <- reactive({
-    if (is.null(mic_data)) return(NULL)
-    # Transform qpcr_samples to samples for transport module
-    # mic_data is a list containing reactive expressions, not a function
-    list(samples = mic_data$qpcr_samples())
+    tryCatch({
+      if (is.null(mic_data) || is.null(mic_data$qpcr_samples)) return(NULL)
+      samples <- mic_data$qpcr_samples()
+      if (is.null(samples) || !nrow(samples)) return(NULL)
+      list(samples = samples)
+    }, error = function(e) {
+      message("Warning: Could not get MIC data for transport: ", e$message)
+      NULL
+    })
   })
 
   # Wrap iELISA data for transport module (expects dataframe, not list)
   ielisa_data_for_transport <- reactive({
-    if (is.null(ielisa_data)) return(NULL)
-    # ielisa_data is a list containing reactive expressions, not a function
-    ielisa_data$samples()  # Call the reactive to get the dataframe
+    tryCatch({
+      if (is.null(ielisa_data) || is.null(ielisa_data$samples)) return(NULL)
+      samples <- ielisa_data$samples()
+      if (is.null(samples) || !nrow(samples)) return(NULL)
+      samples
+    }, error = function(e) {
+      message("Warning: Could not get iELISA data for transport: ", e$message)
+      NULL
+    })
   })
 
   # Combine ELISA data (PE + VSG) for transport module

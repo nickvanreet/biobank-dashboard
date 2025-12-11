@@ -656,62 +656,67 @@ mod_transport_server <- function(id, filtered_data, mic_data = NULL, elisa_data 
 
     # Calculate processing times for MIC data
     mic_processing_times <- reactive({
-      biobank <- filtered_data()
-      mic <- if (!is.null(mic_data)) mic_data() else NULL
+      tryCatch({
+        biobank <- filtered_data()
+        mic <- if (!is.null(mic_data)) mic_data() else NULL
 
-      if (is.null(biobank) || !nrow(biobank)) return(NULL)
-      if (is.null(mic) || !is.list(mic)) return(NULL)
+        if (is.null(biobank) || !nrow(biobank)) return(NULL)
+        if (is.null(mic) || !is.list(mic)) return(NULL)
 
-      # MIC data has samples in $samples
-      mic_samples <- mic$samples
-      if (is.null(mic_samples) || !nrow(mic_samples)) return(NULL)
+        # MIC data has samples in $samples
+        mic_samples <- mic$samples
+        if (is.null(mic_samples) || !nrow(mic_samples)) return(NULL)
 
-      # Check for required columns
-      if (!"RunDate" %in% names(mic_samples) && !"RunDateTime" %in% names(mic_samples)) return(NULL)
+        # Check for required columns
+        if (!"RunDate" %in% names(mic_samples) && !"RunDateTime" %in% names(mic_samples)) return(NULL)
 
-      # Get run date
-      mic_samples <- mic_samples %>%
-        dplyr::mutate(
-          test_date = if ("RunDate" %in% names(.)) {
-            suppressWarnings(as.Date(RunDate))
-          } else if ("RunDateTime" %in% names(.)) {
-            suppressWarnings(as.Date(RunDateTime))
-          } else {
-            NA
-          }
+        # Get run date
+        mic_samples <- mic_samples %>%
+          dplyr::mutate(
+            test_date = if ("RunDate" %in% names(.)) {
+              suppressWarnings(as.Date(RunDate))
+            } else if ("RunDateTime" %in% names(.)) {
+              suppressWarnings(as.Date(RunDateTime))
+            } else {
+              NA
+            }
+          )
+
+        # Normalize sample IDs for matching
+        mic_samples <- mic_samples %>%
+          dplyr::mutate(
+            norm_id = normalize_sample_id(if ("SampleName" %in% names(.)) SampleName else SampleID)
+          )
+
+        biobank <- biobank %>%
+          dplyr::mutate(
+            norm_barcode = normalize_sample_id(barcode),
+            norm_labid = normalize_sample_id(lab_id)
+          )
+
+        # Join on normalized IDs
+        matched <- mic_samples %>%
+          dplyr::left_join(
+            biobank %>% dplyr::select(norm_barcode, norm_labid, date_received_cpltha),
+            by = c("norm_id" = "norm_barcode")
+          ) %>%
+          dplyr::filter(!is.na(date_received_cpltha), !is.na(test_date)) %>%
+          dplyr::mutate(
+            processing_days = as.numeric(test_date - date_received_cpltha)
+          ) %>%
+          dplyr::filter(processing_days >= 0, processing_days <= 365)
+
+        if (nrow(matched) == 0) return(NULL)
+
+        list(
+          median_days = safe_median(matched$processing_days),
+          n_samples = nrow(matched),
+          data = matched
         )
-
-      # Normalize sample IDs for matching
-      mic_samples <- mic_samples %>%
-        dplyr::mutate(
-          norm_id = normalize_sample_id(if ("SampleName" %in% names(.)) SampleName else SampleID)
-        )
-
-      biobank <- biobank %>%
-        dplyr::mutate(
-          norm_barcode = normalize_sample_id(barcode),
-          norm_labid = normalize_sample_id(lab_id)
-        )
-
-      # Join on normalized IDs
-      matched <- mic_samples %>%
-        dplyr::left_join(
-          biobank %>% dplyr::select(norm_barcode, norm_labid, date_received_cpltha),
-          by = c("norm_id" = "norm_barcode")
-        ) %>%
-        dplyr::filter(!is.na(date_received_cpltha), !is.na(test_date)) %>%
-        dplyr::mutate(
-          processing_days = as.numeric(test_date - date_received_cpltha)
-        ) %>%
-        dplyr::filter(processing_days >= 0, processing_days <= 365)
-
-      if (nrow(matched) == 0) return(NULL)
-
-      list(
-        median_days = safe_median(matched$processing_days),
-        n_samples = nrow(matched),
-        data = matched
-      )
+      }, error = function(e) {
+        message("Warning: Error calculating MIC processing times: ", e$message)
+        NULL
+      })
     })
 
     # Calculate processing times for ELISA data
@@ -782,46 +787,51 @@ mod_transport_server <- function(id, filtered_data, mic_data = NULL, elisa_data 
 
     # Calculate processing times for iELISA data
     ielisa_processing_times <- reactive({
-      biobank <- filtered_data()
-      ielisa <- if (!is.null(ielisa_data)) ielisa_data() else NULL
+      tryCatch({
+        biobank <- filtered_data()
+        ielisa <- if (!is.null(ielisa_data)) ielisa_data() else NULL
 
-      if (is.null(biobank) || !nrow(biobank)) return(NULL)
-      if (is.null(ielisa) || !nrow(ielisa)) return(NULL)
+        if (is.null(biobank) || !nrow(biobank)) return(NULL)
+        if (is.null(ielisa) || !nrow(ielisa)) return(NULL)
 
-      # Check for plate_date column
-      if (!"plate_date" %in% names(ielisa)) return(NULL)
+        # Check for plate_date column
+        if (!"plate_date" %in% names(ielisa)) return(NULL)
 
-      # Normalize sample IDs
-      ielisa <- ielisa %>%
-        dplyr::mutate(
-          test_date = suppressWarnings(as.Date(plate_date)),
-          norm_id = normalize_sample_id(if ("code_barres_kps" %in% names(.)) code_barres_kps else barcode)
+        # Normalize sample IDs
+        ielisa <- ielisa %>%
+          dplyr::mutate(
+            test_date = suppressWarnings(as.Date(plate_date)),
+            norm_id = normalize_sample_id(if ("code_barres_kps" %in% names(.)) code_barres_kps else barcode)
+          )
+
+        biobank <- biobank %>%
+          dplyr::mutate(
+            norm_barcode = normalize_sample_id(barcode)
+          )
+
+        # Join and calculate
+        matched <- ielisa %>%
+          dplyr::left_join(
+            biobank %>% dplyr::select(norm_barcode, date_received_cpltha),
+            by = c("norm_id" = "norm_barcode")
+          ) %>%
+          dplyr::filter(!is.na(date_received_cpltha), !is.na(test_date)) %>%
+          dplyr::mutate(
+            processing_days = as.numeric(test_date - date_received_cpltha)
+          ) %>%
+          dplyr::filter(processing_days >= 0, processing_days <= 365)
+
+        if (nrow(matched) == 0) return(NULL)
+
+        list(
+          median_days = safe_median(matched$processing_days),
+          n_samples = nrow(matched),
+          data = matched
         )
-
-      biobank <- biobank %>%
-        dplyr::mutate(
-          norm_barcode = normalize_sample_id(barcode)
-        )
-
-      # Join and calculate
-      matched <- ielisa %>%
-        dplyr::left_join(
-          biobank %>% dplyr::select(norm_barcode, date_received_cpltha),
-          by = c("norm_id" = "norm_barcode")
-        ) %>%
-        dplyr::filter(!is.na(date_received_cpltha), !is.na(test_date)) %>%
-        dplyr::mutate(
-          processing_days = as.numeric(test_date - date_received_cpltha)
-        ) %>%
-        dplyr::filter(processing_days >= 0, processing_days <= 365)
-
-      if (nrow(matched) == 0) return(NULL)
-
-      list(
-        median_days = safe_median(matched$processing_days),
-        n_samples = nrow(matched),
-        data = matched
-      )
+      }, error = function(e) {
+        message("Warning: Error calculating iELISA processing times: ", e$message)
+        NULL
+      })
     })
 
     # Table data reactives
@@ -1324,12 +1334,21 @@ mod_transport_server <- function(id, filtered_data, mic_data = NULL, elisa_data 
     output$temp_distribution <- plotly::renderPlotly({
       req(filtered_data())
       temps <- filtered_data()$transport_temperature
-      temps <- temps[!is.na(temps)]
+
+      # Ensure temps is numeric and remove NA/non-finite values
+      if (!is.numeric(temps)) {
+        temps <- suppressWarnings(as.numeric(temps))
+      }
+      temps <- temps[!is.na(temps) & is.finite(temps)]
 
       if (length(temps) == 0) {
         return(plotly::plotly_empty() %>%
                  plotly::layout(title = list(text = "No temperature data")))
       }
+
+      # Pre-calculate histogram for reference lines
+      hist_data <- hist(temps, breaks = 25, plot = FALSE)
+      y_max <- max(hist_data$counts) * 1.1
 
       plotly::plot_ly(x = temps, type = "histogram", nbinsx = 25,
                       marker = list(
@@ -1337,12 +1356,12 @@ mod_transport_server <- function(id, filtered_data, mic_data = NULL, elisa_data 
                         line = list(color = "white", width = 1)
                       )) %>%
         plotly::add_segments(
-          x = 2, xend = 2, y = 0, yend = max(hist(temps, breaks = 25, plot = FALSE)$counts) * 1.1,
+          x = 2, xend = 2, y = 0, yend = y_max,
           line = list(color = "#10B981", width = 2, dash = "dash"),
           name = "Min (2°C)"
         ) %>%
         plotly::add_segments(
-          x = 8, xend = 8, y = 0, yend = max(hist(temps, breaks = 25, plot = FALSE)$counts) * 1.1,
+          x = 8, xend = 8, y = 0, yend = y_max,
           line = list(color = "#10B981", width = 2, dash = "dash"),
           name = "Max (8°C)"
         ) %>%

@@ -142,6 +142,14 @@ server <- function(input, output, session) {
 
     if (nrow(pe_data) == 0 && nrow(vsg_data) == 0) return(NULL)
 
+    # Add test_type column to distinguish PE from VSG in transport module
+    if (nrow(pe_data) > 0) {
+      pe_data <- pe_data %>% dplyr::mutate(test_type = "PE")
+    }
+    if (nrow(vsg_data) > 0) {
+      vsg_data <- vsg_data %>% dplyr::mutate(test_type = "VSG")
+    }
+
     dplyr::bind_rows(pe_data, vsg_data)
   })
 

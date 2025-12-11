@@ -694,13 +694,35 @@ mod_transport_server <- function(id, filtered_data, mic_data = NULL, elisa_data 
             norm_labid = normalize_sample_id(lab_id)
           )
 
-        # Join on normalized IDs
-        matched <- mic_samples %>%
+        # Join on normalized IDs - try barcode first, then lab_id for unmatched
+        biobank_lookup <- biobank %>%
+          dplyr::select(norm_barcode, norm_labid, date_received_cpltha) %>%
+          dplyr::filter(!is.na(date_received_cpltha))
+
+        # First try matching on barcode
+        matched_barcode <- mic_samples %>%
           dplyr::left_join(
-            biobank %>% dplyr::select(norm_barcode, norm_labid, date_received_cpltha),
+            biobank_lookup %>% dplyr::select(norm_barcode, date_received_cpltha),
             by = c("norm_id" = "norm_barcode")
           ) %>%
-          dplyr::filter(!is.na(date_received_cpltha), !is.na(test_date)) %>%
+          dplyr::filter(!is.na(date_received_cpltha))
+
+        # For unmatched samples, try matching on lab_id
+        unmatched_ids <- mic_samples %>%
+          dplyr::anti_join(matched_barcode, by = "norm_id") %>%
+          dplyr::pull(norm_id)
+
+        matched_labid <- mic_samples %>%
+          dplyr::filter(norm_id %in% unmatched_ids) %>%
+          dplyr::left_join(
+            biobank_lookup %>% dplyr::select(norm_labid, date_received_cpltha),
+            by = c("norm_id" = "norm_labid")
+          ) %>%
+          dplyr::filter(!is.na(date_received_cpltha))
+
+        # Combine matched results
+        matched <- dplyr::bind_rows(matched_barcode, matched_labid) %>%
+          dplyr::filter(!is.na(test_date)) %>%
           dplyr::mutate(
             processing_days = as.numeric(test_date - date_received_cpltha)
           ) %>%
@@ -739,16 +761,39 @@ mod_transport_server <- function(id, filtered_data, mic_data = NULL, elisa_data 
 
       biobank <- biobank %>%
         dplyr::mutate(
-          norm_barcode = normalize_sample_id(barcode)
+          norm_barcode = normalize_sample_id(barcode),
+          norm_labid = normalize_sample_id(lab_id)
         )
 
-      # Join and calculate
-      matched <- elisa %>%
+      # Join and calculate - try barcode first, then lab_id for unmatched
+      biobank_lookup <- biobank %>%
+        dplyr::select(norm_barcode, norm_labid, date_received_cpltha) %>%
+        dplyr::filter(!is.na(date_received_cpltha))
+
+      # First try matching on barcode
+      matched_barcode <- elisa %>%
         dplyr::left_join(
-          biobank %>% dplyr::select(norm_barcode, date_received_cpltha),
+          biobank_lookup %>% dplyr::select(norm_barcode, date_received_cpltha),
           by = c("norm_id" = "norm_barcode")
         ) %>%
-        dplyr::filter(!is.na(date_received_cpltha), !is.na(test_date)) %>%
+        dplyr::filter(!is.na(date_received_cpltha))
+
+      # For unmatched samples, try matching on lab_id
+      unmatched_ids <- elisa %>%
+        dplyr::anti_join(matched_barcode, by = "norm_id") %>%
+        dplyr::pull(norm_id)
+
+      matched_labid <- elisa %>%
+        dplyr::filter(norm_id %in% unmatched_ids) %>%
+        dplyr::left_join(
+          biobank_lookup %>% dplyr::select(norm_labid, date_received_cpltha),
+          by = c("norm_id" = "norm_labid")
+        ) %>%
+        dplyr::filter(!is.na(date_received_cpltha))
+
+      # Combine matched results
+      matched <- dplyr::bind_rows(matched_barcode, matched_labid) %>%
+        dplyr::filter(!is.na(test_date)) %>%
         dplyr::mutate(
           processing_days = as.numeric(test_date - date_received_cpltha)
         ) %>%
@@ -806,16 +851,39 @@ mod_transport_server <- function(id, filtered_data, mic_data = NULL, elisa_data 
 
         biobank <- biobank %>%
           dplyr::mutate(
-            norm_barcode = normalize_sample_id(barcode)
+            norm_barcode = normalize_sample_id(barcode),
+            norm_labid = normalize_sample_id(lab_id)
           )
 
-        # Join and calculate
-        matched <- ielisa %>%
+        # Join and calculate - try barcode first, then lab_id for unmatched
+        biobank_lookup <- biobank %>%
+          dplyr::select(norm_barcode, norm_labid, date_received_cpltha) %>%
+          dplyr::filter(!is.na(date_received_cpltha))
+
+        # First try matching on barcode
+        matched_barcode <- ielisa %>%
           dplyr::left_join(
-            biobank %>% dplyr::select(norm_barcode, date_received_cpltha),
+            biobank_lookup %>% dplyr::select(norm_barcode, date_received_cpltha),
             by = c("norm_id" = "norm_barcode")
           ) %>%
-          dplyr::filter(!is.na(date_received_cpltha), !is.na(test_date)) %>%
+          dplyr::filter(!is.na(date_received_cpltha))
+
+        # For unmatched samples, try matching on lab_id
+        unmatched_ids <- ielisa %>%
+          dplyr::anti_join(matched_barcode, by = "norm_id") %>%
+          dplyr::pull(norm_id)
+
+        matched_labid <- ielisa %>%
+          dplyr::filter(norm_id %in% unmatched_ids) %>%
+          dplyr::left_join(
+            biobank_lookup %>% dplyr::select(norm_labid, date_received_cpltha),
+            by = c("norm_id" = "norm_labid")
+          ) %>%
+          dplyr::filter(!is.na(date_received_cpltha))
+
+        # Combine matched results
+        matched <- dplyr::bind_rows(matched_barcode, matched_labid) %>%
+          dplyr::filter(!is.na(test_date)) %>%
           dplyr::mutate(
             processing_days = as.numeric(test_date - date_received_cpltha)
           ) %>%

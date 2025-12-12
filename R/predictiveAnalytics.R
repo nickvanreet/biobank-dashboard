@@ -91,11 +91,13 @@ calculate_mic_weight <- function(final_call_values) {
 #' @param elisa_vsg_df Data frame with ELISA-VSG results
 #' @param ielisa_df Data frame with iELISA results
 #' @param lookback_months Number of months to consider for trend analysis
+#' @param weights Named list with weight values: molecular, serological, density, recency (should sum to 1)
 #' @return Data frame with risk scores per health zone
 #' @export
 calculate_healthzone_risk <- function(biobank_df, mic_df = NULL,
                                        elisa_pe_df = NULL, elisa_vsg_df = NULL,
-                                       ielisa_df = NULL, lookback_months = 6) {
+                                       ielisa_df = NULL, lookback_months = 6,
+                                       weights = list(molecular = 0.35, serological = 0.30, density = 0.20, recency = 0.15)) {
   tryCatch({
     # Standardize column names
     biobank_df <- standardize_columns(biobank_df)
@@ -248,32 +250,54 @@ calculate_healthzone_risk <- function(biobank_df, mic_df = NULL,
       hz_col <- get_col_name(ielisa_df, c("health_zone", "HealthZone"))
 
       if (!is.null(hz_col)) {
-        # iELISA uses positive_L13 and positive_L15 boolean columns OR status_final
+        # iELISA can use: positive_L13/positive_L15 boolean columns, OR status_final, OR positive column
         has_l13 <- "positive_L13" %in% names(ielisa_df)
         has_l15 <- "positive_L15" %in% names(ielisa_df)
-        status_col <- get_col_name(ielisa_df, c("status_final", "status"))
+        status_col <- get_col_name(ielisa_df, c("status_final", "status", "Result", "result"))
+        positive_col <- get_col_name(ielisa_df, c("positive", "Positive", "is_positive"))
 
-        if (has_l13 || has_l15 || !is.null(status_col)) {
-          ielisa_positivity <- ielisa_df %>%
-            dplyr::rename(health_zone = !!rlang::sym(hz_col)) %>%
-            dplyr::filter(!is.na(health_zone)) %>%
-            dplyr::group_by(health_zone) %>%
-            dplyr::summarise(
-              ielisa_tested = dplyr::n(),
-              ielisa_positive = if (has_l13 || has_l15) {
-                sum(
-                  (if (has_l13) tidyr::replace_na(positive_L13, FALSE) else FALSE) |
-                  (if (has_l15) tidyr::replace_na(positive_L15, FALSE) else FALSE),
-                  na.rm = TRUE
-                )
-              } else if (!is.null(status_col)) {
-                sum(.data[[status_col]] %in% c("Positive", "POSITIVE", "positive"), na.rm = TRUE)
-              } else {
-                0
-              },
-              .groups = "drop"
+        # Determine how to count positives
+        ielisa_positivity <- ielisa_df %>%
+          dplyr::rename(health_zone = !!rlang::sym(hz_col)) %>%
+          dplyr::filter(!is.na(health_zone))
+
+        if (has_l13 || has_l15) {
+          # Use L13/L15 columns
+          ielisa_positivity <- ielisa_positivity %>%
+            dplyr::mutate(
+              is_positive = {
+                l13_pos <- if (has_l13) tidyr::replace_na(positive_L13, FALSE) else FALSE
+                l15_pos <- if (has_l15) tidyr::replace_na(positive_L15, FALSE) else FALSE
+                l13_pos | l15_pos
+              }
             )
+        } else if (!is.null(positive_col)) {
+          # Use positive column (boolean or string)
+          ielisa_positivity <- ielisa_positivity %>%
+            dplyr::mutate(
+              is_positive = .data[[positive_col]] %in% c(TRUE, "TRUE", "true", "Positive", "POSITIVE", "positive", 1, "1")
+            )
+        } else if (!is.null(status_col)) {
+          # Use status column
+          ielisa_positivity <- ielisa_positivity %>%
+            dplyr::mutate(
+              is_positive = .data[[status_col]] %in% c("Positive", "POSITIVE", "positive")
+            )
+        } else {
+          # No way to determine positives - count all as tested but 0 positive
+          ielisa_positivity <- ielisa_positivity %>%
+            dplyr::mutate(is_positive = FALSE)
+        }
 
+        ielisa_positivity <- ielisa_positivity %>%
+          dplyr::group_by(health_zone) %>%
+          dplyr::summarise(
+            ielisa_tested = dplyr::n(),
+            ielisa_positive = sum(is_positive, na.rm = TRUE),
+            .groups = "drop"
+          )
+
+        if (nrow(ielisa_positivity) > 0) {
           if (!is.null(sero_by_zone)) {
             sero_by_zone <- dplyr::full_join(sero_by_zone, ielisa_positivity, by = "health_zone")
           } else {
@@ -329,6 +353,12 @@ calculate_healthzone_risk <- function(biobank_df, mic_df = NULL,
       }
     }
 
+    # Get weights with defaults
+    w_mol <- weights$molecular %||% 0.35
+    w_sero <- weights$serological %||% 0.30
+    w_dens <- weights$density %||% 0.20
+    w_rec <- weights$recency %||% 0.15
+
     # Calculate composite risk score with weighted positivity
     zone_summary <- zone_summary %>%
       dplyr::mutate(
@@ -344,12 +374,12 @@ calculate_healthzone_risk <- function(biobank_df, mic_df = NULL,
         # Recency factor - more recent activity = higher monitoring priority
         days_since_last = as.numeric(Sys.Date() - last_sample_date),
         recency_score = pmax(0, 100 - days_since_last / 2),
-        # Composite risk score (weighted average)
+        # Composite risk score (weighted average using custom weights)
         risk_score = (
-          molecular_risk * 0.35 +
-          serological_risk * 0.30 +
-          sample_density_score * 0.20 +
-          recency_score * 0.15
+          molecular_risk * w_mol +
+          serological_risk * w_sero +
+          sample_density_score * w_dens +
+          recency_score * w_rec
         ),
         # Risk category
         risk_category = dplyr::case_when(
@@ -512,20 +542,45 @@ calculate_structure_risk <- function(biobank_df, mic_df = NULL,
       if ("structure" %in% names(ielisa_df) && "health_zone" %in% names(ielisa_df)) {
         has_l13 <- "positive_L13" %in% names(ielisa_df)
         has_l15 <- "positive_L15" %in% names(ielisa_df)
+        status_col <- get_col_name(ielisa_df, c("status_final", "status", "Result", "result"))
+        positive_col <- get_col_name(ielisa_df, c("positive", "Positive", "is_positive"))
+
+        ielisa_struct <- ielisa_df %>%
+          dplyr::filter(!is.na(structure))
 
         if (has_l13 || has_l15) {
-          ielisa_struct <- ielisa_df %>%
-            dplyr::filter(!is.na(structure)) %>%
-            dplyr::group_by(health_zone, structure) %>%
-            dplyr::summarise(
-              ielisa_tested = dplyr::n(),
-              ielisa_positive = sum(
-                (if (has_l13) tidyr::replace_na(positive_L13, FALSE) else FALSE) |
-                (if (has_l15) tidyr::replace_na(positive_L15, FALSE) else FALSE),
-                na.rm = TRUE
-              ),
-              .groups = "drop"
+          ielisa_struct <- ielisa_struct %>%
+            dplyr::mutate(
+              is_positive = {
+                l13_pos <- if (has_l13) tidyr::replace_na(positive_L13, FALSE) else FALSE
+                l15_pos <- if (has_l15) tidyr::replace_na(positive_L15, FALSE) else FALSE
+                l13_pos | l15_pos
+              }
             )
+        } else if (!is.null(positive_col)) {
+          ielisa_struct <- ielisa_struct %>%
+            dplyr::mutate(
+              is_positive = .data[[positive_col]] %in% c(TRUE, "TRUE", "true", "Positive", "POSITIVE", "positive", 1, "1")
+            )
+        } else if (!is.null(status_col)) {
+          ielisa_struct <- ielisa_struct %>%
+            dplyr::mutate(
+              is_positive = .data[[status_col]] %in% c("Positive", "POSITIVE", "positive")
+            )
+        } else {
+          ielisa_struct <- ielisa_struct %>%
+            dplyr::mutate(is_positive = FALSE)
+        }
+
+        ielisa_struct <- ielisa_struct %>%
+          dplyr::group_by(health_zone, structure) %>%
+          dplyr::summarise(
+            ielisa_tested = dplyr::n(),
+            ielisa_positive = sum(is_positive, na.rm = TRUE),
+            .groups = "drop"
+          )
+
+        if (nrow(ielisa_struct) > 0) {
           if (!is.null(sero_structure)) {
             sero_structure <- dplyr::full_join(sero_structure, ielisa_struct, by = c("health_zone", "structure"))
           } else {
@@ -916,11 +971,14 @@ calculate_demographic_risk <- function(biobank_df, mic_df = NULL,
 #' @param biobank_df Data frame with biobank data
 #' @param mic_df Data frame with MIC qPCR results
 #' @param elisa_pe_df Data frame with ELISA-PE results
+#' @param elisa_vsg_df Data frame with ELISA-VSG results
+#' @param ielisa_df Data frame with iELISA results
 #' @param forecast_months Number of months to forecast
 #' @return List with temporal predictions
 #' @export
 calculate_temporal_predictions <- function(biobank_df, mic_df = NULL,
-                                            elisa_pe_df = NULL, forecast_months = 3) {
+                                            elisa_pe_df = NULL, elisa_vsg_df = NULL,
+                                            ielisa_df = NULL, forecast_months = 3) {
   tryCatch({
     results <- list()
 
@@ -1026,22 +1084,81 @@ calculate_temporal_predictions <- function(biobank_df, mic_df = NULL,
     }
 
     # Also try serological temporal data if MIC not available
-    if (is.null(results$positivity_trend) && !is.null(elisa_pe_df) && nrow(elisa_pe_df) > 0) {
-      elisa_pe_df <- standardize_columns(elisa_pe_df)
-      pe_date_col <- get_col_name(elisa_pe_df, c("date_prel", "plate_date", "assay_date"))
-      status_col <- get_col_name(elisa_pe_df, c("status_final", "status"))
+    if (is.null(results$positivity_trend)) {
+      # Combine all serological data sources
+      sero_combined <- NULL
 
-      if (!is.null(pe_date_col) && !is.null(status_col)) {
-        elisa_pe_df$date_prel <- as.Date(elisa_pe_df[[pe_date_col]])
+      # Process ELISA-PE
+      if (!is.null(elisa_pe_df) && nrow(elisa_pe_df) > 0) {
+        pe_df <- standardize_columns(elisa_pe_df)
+        pe_date_col <- get_col_name(pe_df, c("date_prel", "plate_date", "assay_date"))
+        status_col <- get_col_name(pe_df, c("status_final", "status"))
 
-        sero_monthly <- elisa_pe_df %>%
+        if (!is.null(pe_date_col) && !is.null(status_col)) {
+          pe_df$date_prel <- as.Date(pe_df[[pe_date_col]])
+          pe_df$is_positive <- pe_df[[status_col]] %in% c("Positive", "POSITIVE", "positive")
+          sero_combined <- pe_df %>% dplyr::select(date_prel, is_positive)
+        }
+      }
+
+      # Process ELISA-VSG
+      if (!is.null(elisa_vsg_df) && nrow(elisa_vsg_df) > 0) {
+        vsg_df <- standardize_columns(elisa_vsg_df)
+        vsg_date_col <- get_col_name(vsg_df, c("date_prel", "plate_date", "assay_date"))
+        status_col <- get_col_name(vsg_df, c("status_final", "status"))
+
+        if (!is.null(vsg_date_col) && !is.null(status_col)) {
+          vsg_df$date_prel <- as.Date(vsg_df[[vsg_date_col]])
+          vsg_df$is_positive <- vsg_df[[status_col]] %in% c("Positive", "POSITIVE", "positive")
+          vsg_data <- vsg_df %>% dplyr::select(date_prel, is_positive)
+          if (!is.null(sero_combined)) {
+            sero_combined <- dplyr::bind_rows(sero_combined, vsg_data)
+          } else {
+            sero_combined <- vsg_data
+          }
+        }
+      }
+
+      # Process iELISA
+      if (!is.null(ielisa_df) && nrow(ielisa_df) > 0) {
+        ie_df <- standardize_columns(ielisa_df)
+        ie_date_col <- get_col_name(ie_df, c("date_prel", "plate_date", "assay_date"))
+        has_l13 <- "positive_L13" %in% names(ie_df)
+        has_l15 <- "positive_L15" %in% names(ie_df)
+        status_col <- get_col_name(ie_df, c("status_final", "status", "Result"))
+        positive_col <- get_col_name(ie_df, c("positive", "Positive"))
+
+        if (!is.null(ie_date_col)) {
+          ie_df$date_prel <- as.Date(ie_df[[ie_date_col]])
+          if (has_l13 || has_l15) {
+            ie_df$is_positive <- (if (has_l13) tidyr::replace_na(ie_df$positive_L13, FALSE) else FALSE) |
+                                  (if (has_l15) tidyr::replace_na(ie_df$positive_L15, FALSE) else FALSE)
+          } else if (!is.null(positive_col)) {
+            ie_df$is_positive <- ie_df[[positive_col]] %in% c(TRUE, "TRUE", "Positive", "POSITIVE", 1)
+          } else if (!is.null(status_col)) {
+            ie_df$is_positive <- ie_df[[status_col]] %in% c("Positive", "POSITIVE", "positive")
+          } else {
+            ie_df$is_positive <- FALSE
+          }
+          ie_data <- ie_df %>% dplyr::select(date_prel, is_positive)
+          if (!is.null(sero_combined)) {
+            sero_combined <- dplyr::bind_rows(sero_combined, ie_data)
+          } else {
+            sero_combined <- ie_data
+          }
+        }
+      }
+
+      # Calculate monthly serological trend
+      if (!is.null(sero_combined) && nrow(sero_combined) > 0) {
+        sero_monthly <- sero_combined %>%
           dplyr::filter(!is.na(date_prel)) %>%
           dplyr::mutate(sample_month = lubridate::floor_date(date_prel, "month")) %>%
           dplyr::filter(!is.na(sample_month)) %>%
           dplyr::group_by(sample_month) %>%
           dplyr::summarise(
             mic_tested = dplyr::n(),
-            mic_positive = sum(.data[[status_col]] %in% c("Positive", "POSITIVE"), na.rm = TRUE),
+            mic_positive = sum(is_positive, na.rm = TRUE),
             .groups = "drop"
           ) %>%
           dplyr::mutate(positivity_rate = dplyr::if_else(mic_tested > 0, mic_positive / mic_tested * 100, 0)) %>%

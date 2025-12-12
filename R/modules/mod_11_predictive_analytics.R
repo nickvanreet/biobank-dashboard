@@ -587,7 +587,7 @@ mod_predictive_analytics_server <- function(id,
 
       DT::datatable(
         wl$priority_structures %>%
-          dplyr::select(HealthZone, Structure, risk_score, risk_category, prediction),
+          dplyr::select(health_zone, structure, risk_score, risk_category, prediction),
         rownames = FALSE,
         options = list(
           pageLength = 10,
@@ -615,7 +615,7 @@ mod_predictive_analytics_server <- function(id,
 
       DT::datatable(
         wl$emerging_hotspots %>%
-          dplyr::select(HealthZone, Structure, risk_score, historical_positivity, days_since_last, prediction),
+          dplyr::select(health_zone, structure, risk_score, historical_positivity, days_since_last, prediction),
         rownames = FALSE,
         options = list(
           pageLength = 10,
@@ -681,7 +681,7 @@ mod_predictive_analytics_server <- function(id,
 
       plotly::plot_ly(
         data = zr_top,
-        x = ~reorder(HealthZone, risk_score),
+        x = ~reorder(health_zone, risk_score),
         y = ~risk_score,
         color = ~risk_category,
         colors = color_palette,
@@ -736,7 +736,7 @@ mod_predictive_analytics_server <- function(id,
         return(DT::datatable(data.frame(Message = "No data available")))
       }
 
-      display_cols <- c("HealthZone", "risk_score", "risk_category", "total_samples")
+      display_cols <- c("health_zone", "risk_score", "risk_category", "total_samples")
       if ("mic_any_positive" %in% names(zr)) display_cols <- c(display_cols, "mic_any_positive", "mic_positivity_rate")
       if ("elisa_positive" %in% names(zr)) display_cols <- c(display_cols, "elisa_positive", "elisa_positivity_rate")
 
@@ -785,7 +785,7 @@ mod_predictive_analytics_server <- function(id,
 
       plotly::plot_ly(
         data = sr_top,
-        x = ~reorder(paste(Structure, "(", HealthZone, ")"), risk_score),
+        x = ~reorder(paste(structure, "(", health_zone, ")"), risk_score),
         y = ~risk_score,
         color = ~risk_category,
         colors = color_palette,
@@ -812,15 +812,15 @@ mod_predictive_analytics_server <- function(id,
 
       # Get top zones and structures for heatmap
       top_zones <- sr %>%
-        dplyr::group_by(HealthZone) %>%
+        dplyr::group_by(health_zone) %>%
         dplyr::summarise(max_risk = max(risk_score, na.rm = TRUE), .groups = "drop") %>%
         dplyr::arrange(dplyr::desc(max_risk)) %>%
         dplyr::slice_head(n = 8) %>%
-        dplyr::pull(HealthZone)
+        dplyr::pull(health_zone)
 
       sr_filtered <- sr %>%
-        dplyr::filter(HealthZone %in% top_zones) %>%
-        dplyr::group_by(HealthZone) %>%
+        dplyr::filter(health_zone %in% top_zones) %>%
+        dplyr::group_by(health_zone) %>%
         dplyr::slice_max(order_by = risk_score, n = 5) %>%
         dplyr::ungroup()
 
@@ -830,8 +830,8 @@ mod_predictive_analytics_server <- function(id,
 
       plotly::plot_ly(
         data = sr_filtered,
-        x = ~HealthZone,
-        y = ~Structure,
+        x = ~health_zone,
+        y = ~structure,
         z = ~risk_score,
         type = "heatmap",
         colorscale = list(c(0, "#28a745"), c(0.5, "#ffc107"), c(1, "#dc3545")),
@@ -856,7 +856,7 @@ mod_predictive_analytics_server <- function(id,
 
       DT::datatable(
         sr %>%
-          dplyr::select(HealthZone, Structure, risk_score, risk_category, prediction,
+          dplyr::select(health_zone, structure, risk_score, risk_category, prediction,
                         total_samples, dplyr::any_of(c("historical_positivity", "days_since_last"))),
         rownames = FALSE,
         filter = "top",

@@ -2,6 +2,46 @@
 # Epidemiological forecasting and risk prediction for HAT surveillance
 # ============================================================================
 
+#' Get column name flexibly (handles both CamelCase and snake_case)
+#'
+#' @param df Data frame
+#' @param possible_names Character vector of possible column names
+#' @return Actual column name found or NULL
+get_col_name <- function(df, possible_names) {
+  for (name in possible_names) {
+    if (name %in% names(df)) return(name)
+  }
+  return(NULL)
+}
+
+#' Standardize column names for analysis
+#'
+#' @param df Data frame
+#' @return Data frame with standardized column names
+standardize_columns <- function(df) {
+  if (is.null(df) || nrow(df) == 0) return(df)
+
+  # Create mapping of standardized names to possible original names
+  mappings <- list(
+    health_zone = c("health_zone", "HealthZone", "healthzone", "Health_Zone", "zone_sante"),
+    structure = c("structure", "Structure", "health_structure", "Structure_Sante"),
+    province = c("province", "Province"),
+    sex = c("sex", "Sex", "sexe", "Sexe", "gender", "Gender"),
+    age = c("age", "Age", "AGE"),
+    date_prel = c("date_prel", "DatePrel", "date_prelevement", "DatePrelevement", "sample_date", "SampleDate")
+  )
+
+  for (std_name in names(mappings)) {
+    found_col <- get_col_name(df, mappings[[std_name]])
+    if (!is.null(found_col) && found_col != std_name) {
+      df[[std_name]] <- df[[found_col]]
+    }
+  }
+
+  return(df)
+}
+
+
 #' Calculate Health Zone Risk Scores
 #'
 #' Analyzes historical data to predict which health zones are at highest risk
@@ -17,74 +57,107 @@
 calculate_healthzone_risk <- function(biobank_df, mic_df = NULL, elisa_df = NULL,
                                        ielisa_df = NULL, lookback_months = 6) {
   tryCatch({
+    # Standardize column names
+    biobank_df <- standardize_columns(biobank_df)
+
+    # Check for health_zone column
+    if (!"health_zone" %in% names(biobank_df)) {
+      warning("No health_zone column found in biobank data")
+      return(data.frame(
+        health_zone = character(),
+        risk_score = numeric(),
+        risk_category = character()
+      ))
+    }
+
+    # Check for date column
+    date_col <- get_col_name(biobank_df, c("date_prel", "DatePrel", "sample_date"))
+    if (is.null(date_col)) {
+      biobank_df$date_prel <- Sys.Date()
+    } else {
+      biobank_df$date_prel <- as.Date(biobank_df[[date_col]])
+    }
+
     # Get health zone data from biobank
     zone_data <- biobank_df %>%
-      dplyr::filter(!is.na(HealthZone)) %>%
+      dplyr::filter(!is.na(health_zone)) %>%
       dplyr::mutate(
-        collection_month = floor_date(as.Date(DatePrel), "month")
+        collection_month = lubridate::floor_date(date_prel, "month")
       )
+
+    if (nrow(zone_data) == 0) {
+      return(data.frame(
+        health_zone = character(),
+        risk_score = numeric(),
+        risk_category = character()
+      ))
+    }
+
+    # Get structure column name
+    structure_col <- get_col_name(zone_data, c("structure", "Structure"))
 
     # Calculate base metrics per zone
     zone_summary <- zone_data %>%
-      dplyr::group_by(HealthZone) %>%
+      dplyr::group_by(health_zone) %>%
       dplyr::summarise(
         total_samples = dplyr::n(),
-        unique_structures = dplyr::n_distinct(Structure, na.rm = TRUE),
-        date_range_days = as.numeric(difftime(max(DatePrel, na.rm = TRUE),
-                                               min(DatePrel, na.rm = TRUE), units = "days")),
-        last_sample_date = max(DatePrel, na.rm = TRUE),
+        unique_structures = if (!is.null(structure_col)) dplyr::n_distinct(.data[[structure_col]], na.rm = TRUE) else 0,
+        date_range_days = as.numeric(difftime(max(date_prel, na.rm = TRUE),
+                                               min(date_prel, na.rm = TRUE), units = "days")),
+        last_sample_date = max(date_prel, na.rm = TRUE),
         .groups = "drop"
       )
 
     # Calculate molecular positivity if MIC data available
     if (!is.null(mic_df) && nrow(mic_df) > 0) {
-      mic_positivity <- mic_df %>%
-        dplyr::group_by(HealthZone) %>%
-        dplyr::summarise(
-          mic_tested = dplyr::n(),
-          mic_dna_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos"), na.rm = TRUE),
-          mic_rna_positive = sum(RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos"), na.rm = TRUE),
-          mic_any_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos") |
-                                   RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos"), na.rm = TRUE),
-          .groups = "drop"
-        ) %>%
-        dplyr::mutate(
-          mic_positivity_rate = mic_any_positive / mic_tested * 100
-        )
-      zone_summary <- dplyr::left_join(zone_summary, mic_positivity, by = "HealthZone")
+      mic_df <- standardize_columns(mic_df)
+      hz_col <- get_col_name(mic_df, c("health_zone", "HealthZone"))
+
+      if (!is.null(hz_col)) {
+        mic_positivity <- mic_df %>%
+          dplyr::rename(health_zone = !!rlang::sym(hz_col)) %>%
+          dplyr::filter(!is.na(health_zone)) %>%
+          dplyr::group_by(health_zone) %>%
+          dplyr::summarise(
+            mic_tested = dplyr::n(),
+            mic_dna_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "DNA+"), na.rm = TRUE),
+            mic_rna_positive = sum(RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "RNA+"), na.rm = TRUE),
+            mic_any_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "DNA+") |
+                                     RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "RNA+"), na.rm = TRUE),
+            .groups = "drop"
+          ) %>%
+          dplyr::mutate(
+            mic_positivity_rate = dplyr::if_else(mic_tested > 0, mic_any_positive / mic_tested * 100, 0)
+          )
+        zone_summary <- dplyr::left_join(zone_summary, mic_positivity, by = "health_zone")
+      }
     }
 
     # Calculate serological positivity if ELISA data available
     if (!is.null(elisa_df) && nrow(elisa_df) > 0) {
-      elisa_positivity <- elisa_df %>%
-        dplyr::group_by(HealthZone) %>%
-        dplyr::summarise(
-          elisa_tested = dplyr::n(),
-          elisa_positive = sum(Result %in% c("Positive", "POSITIVE", "POS", "Pos"), na.rm = TRUE),
-          .groups = "drop"
-        ) %>%
-        dplyr::mutate(
-          elisa_positivity_rate = elisa_positive / elisa_tested * 100
-        )
-      zone_summary <- dplyr::left_join(zone_summary, elisa_positivity, by = "HealthZone")
-    }
+      elisa_df <- standardize_columns(elisa_df)
+      hz_col <- get_col_name(elisa_df, c("health_zone", "HealthZone"))
 
-    # Calculate iELISA positivity if available
-    if (!is.null(ielisa_df) && nrow(ielisa_df) > 0) {
-      ielisa_positivity <- ielisa_df %>%
-        dplyr::group_by(HealthZone) %>%
-        dplyr::summarise(
-          ielisa_tested = dplyr::n(),
-          ielisa_l13_positive = sum(L13_Result %in% c("Positive", "POSITIVE", "POS", "Pos"), na.rm = TRUE),
-          ielisa_l15_positive = sum(L15_Result %in% c("Positive", "POSITIVE", "POS", "Pos"), na.rm = TRUE),
-          ielisa_any_positive = sum(L13_Result %in% c("Positive", "POSITIVE", "POS", "Pos") |
-                                      L15_Result %in% c("Positive", "POSITIVE", "POS", "Pos"), na.rm = TRUE),
-          .groups = "drop"
-        ) %>%
-        dplyr::mutate(
-          ielisa_positivity_rate = ielisa_any_positive / ielisa_tested * 100
-        )
-      zone_summary <- dplyr::left_join(zone_summary, ielisa_positivity, by = "HealthZone")
+      if (!is.null(hz_col)) {
+        # Check for result column
+        result_col <- get_col_name(elisa_df, c("Result", "result", "positive", "Positive"))
+
+        if (!is.null(result_col)) {
+          elisa_positivity <- elisa_df %>%
+            dplyr::rename(health_zone = !!rlang::sym(hz_col)) %>%
+            dplyr::filter(!is.na(health_zone)) %>%
+            dplyr::group_by(health_zone) %>%
+            dplyr::summarise(
+              elisa_tested = dplyr::n(),
+              elisa_positive = sum(.data[[result_col]] %in% c("Positive", "POSITIVE", "POS", "Pos", TRUE, 1), na.rm = TRUE),
+              .groups = "drop"
+            ) %>%
+            dplyr::mutate(
+              elisa_positivity_rate = dplyr::if_else(elisa_tested > 0, elisa_positive / elisa_tested * 100, 0)
+            )
+          zone_summary <- dplyr::left_join(zone_summary, elisa_positivity, by = "health_zone")
+        }
+      }
     }
 
     # Replace NAs with 0 for numeric columns
@@ -95,23 +168,25 @@ calculate_healthzone_risk <- function(biobank_df, mic_df = NULL, elisa_df = NULL
     zone_summary <- zone_summary %>%
       dplyr::mutate(
         # Normalize metrics to 0-100 scale
-        sample_density_score = scales::rescale(total_samples, to = c(0, 100)),
+        sample_density_score = if (max(total_samples) > min(total_samples)) {
+          scales::rescale(total_samples, to = c(0, 100))
+        } else {
+          50
+        },
         # Higher positivity = higher risk
         molecular_risk = dplyr::if_else(
-          "mic_positivity_rate" %in% names(.),
-          scales::rescale(mic_positivity_rate, to = c(0, 100)),
+          "mic_positivity_rate" %in% names(.) & !is.na(mic_positivity_rate),
+          pmin(100, mic_positivity_rate * 10),  # Scale up for visibility
           0
         ),
-        serological_risk = dplyr::case_when(
-          "elisa_positivity_rate" %in% names(.) & "ielisa_positivity_rate" %in% names(.) ~
-            scales::rescale((elisa_positivity_rate + ielisa_positivity_rate) / 2, to = c(0, 100)),
-          "elisa_positivity_rate" %in% names(.) ~ scales::rescale(elisa_positivity_rate, to = c(0, 100)),
-          "ielisa_positivity_rate" %in% names(.) ~ scales::rescale(ielisa_positivity_rate, to = c(0, 100)),
-          TRUE ~ 0
+        serological_risk = dplyr::if_else(
+          "elisa_positivity_rate" %in% names(.) & !is.na(elisa_positivity_rate),
+          pmin(100, elisa_positivity_rate * 10),
+          0
         ),
         # Recency factor - more recent activity = higher monitoring priority
         days_since_last = as.numeric(Sys.Date() - last_sample_date),
-        recency_score = scales::rescale(pmax(0, 180 - days_since_last), to = c(0, 100)),
+        recency_score = pmax(0, 100 - days_since_last / 2),  # Decays over ~200 days
         # Composite risk score (weighted average)
         risk_score = (
           molecular_risk * 0.35 +
@@ -135,7 +210,7 @@ calculate_healthzone_risk <- function(biobank_df, mic_df = NULL, elisa_df = NULL
   }, error = function(e) {
     warning(paste("Error in calculate_healthzone_risk:", e$message))
     data.frame(
-      HealthZone = character(),
+      health_zone = character(),
       risk_score = numeric(),
       risk_category = character()
     )
@@ -157,50 +232,97 @@ calculate_healthzone_risk <- function(biobank_df, mic_df = NULL, elisa_df = NULL
 calculate_structure_risk <- function(biobank_df, mic_df = NULL, elisa_df = NULL,
                                       ielisa_df = NULL) {
   tryCatch({
+    # Standardize column names
+    biobank_df <- standardize_columns(biobank_df)
+
+    # Check for required columns
+    if (!"structure" %in% names(biobank_df) || !"health_zone" %in% names(biobank_df)) {
+      warning("Missing structure or health_zone column in biobank data")
+      return(data.frame(
+        health_zone = character(),
+        structure = character(),
+        risk_score = numeric(),
+        risk_category = character()
+      ))
+    }
+
+    # Get date column
+    date_col <- get_col_name(biobank_df, c("date_prel", "DatePrel", "sample_date"))
+    if (is.null(date_col)) {
+      biobank_df$date_prel <- Sys.Date()
+    } else {
+      biobank_df$date_prel <- as.Date(biobank_df[[date_col]])
+    }
+
     # Get structure data from biobank
     structure_data <- biobank_df %>%
-      dplyr::filter(!is.na(Structure), !is.na(HealthZone)) %>%
-      dplyr::group_by(HealthZone, Structure) %>%
+      dplyr::filter(!is.na(structure), !is.na(health_zone)) %>%
+      dplyr::group_by(health_zone, structure) %>%
       dplyr::summarise(
         total_samples = dplyr::n(),
-        first_sample = min(DatePrel, na.rm = TRUE),
-        last_sample = max(DatePrel, na.rm = TRUE),
-        unique_dates = dplyr::n_distinct(as.Date(DatePrel)),
+        first_sample = min(date_prel, na.rm = TRUE),
+        last_sample = max(date_prel, na.rm = TRUE),
+        unique_dates = dplyr::n_distinct(date_prel),
         .groups = "drop"
       )
 
+    if (nrow(structure_data) == 0) {
+      return(data.frame(
+        health_zone = character(),
+        structure = character(),
+        risk_score = numeric(),
+        risk_category = character()
+      ))
+    }
+
     # Add MIC positivity by structure
     if (!is.null(mic_df) && nrow(mic_df) > 0) {
-      mic_structure <- mic_df %>%
-        dplyr::filter(!is.na(Structure)) %>%
-        dplyr::group_by(HealthZone, Structure) %>%
-        dplyr::summarise(
-          mic_tested = dplyr::n(),
-          mic_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos") |
-                               RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos"), na.rm = TRUE),
-          .groups = "drop"
-        ) %>%
-        dplyr::mutate(mic_positivity = mic_positive / mic_tested * 100)
+      mic_df <- standardize_columns(mic_df)
 
-      structure_data <- dplyr::left_join(structure_data, mic_structure,
-                                          by = c("HealthZone", "Structure"))
+      if ("structure" %in% names(mic_df) && "health_zone" %in% names(mic_df)) {
+        mic_structure <- mic_df %>%
+          dplyr::filter(!is.na(structure)) %>%
+          dplyr::group_by(health_zone, structure) %>%
+          dplyr::summarise(
+            mic_tested = dplyr::n(),
+            mic_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "DNA+") |
+                                 RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "RNA+"), na.rm = TRUE),
+            .groups = "drop"
+          ) %>%
+          dplyr::mutate(mic_positivity = dplyr::if_else(mic_tested > 0, mic_positive / mic_tested * 100, 0))
+
+        structure_data <- dplyr::left_join(structure_data, mic_structure,
+                                            by = c("health_zone", "structure"))
+      }
     }
 
     # Add serological positivity by structure
     if (!is.null(elisa_df) && nrow(elisa_df) > 0) {
-      elisa_structure <- elisa_df %>%
-        dplyr::filter(!is.na(Structure)) %>%
-        dplyr::group_by(HealthZone, Structure) %>%
-        dplyr::summarise(
-          elisa_tested = dplyr::n(),
-          elisa_positive = sum(Result %in% c("Positive", "POSITIVE", "POS", "Pos"), na.rm = TRUE),
-          .groups = "drop"
-        ) %>%
-        dplyr::mutate(elisa_positivity = elisa_positive / elisa_tested * 100)
+      elisa_df <- standardize_columns(elisa_df)
 
-      structure_data <- dplyr::left_join(structure_data, elisa_structure,
-                                          by = c("HealthZone", "Structure"))
+      if ("structure" %in% names(elisa_df) && "health_zone" %in% names(elisa_df)) {
+        result_col <- get_col_name(elisa_df, c("Result", "result", "positive"))
+
+        if (!is.null(result_col)) {
+          elisa_structure <- elisa_df %>%
+            dplyr::filter(!is.na(structure)) %>%
+            dplyr::group_by(health_zone, structure) %>%
+            dplyr::summarise(
+              elisa_tested = dplyr::n(),
+              elisa_positive = sum(.data[[result_col]] %in% c("Positive", "POSITIVE", "POS", "Pos", TRUE, 1), na.rm = TRUE),
+              .groups = "drop"
+            ) %>%
+            dplyr::mutate(elisa_positivity = dplyr::if_else(elisa_tested > 0, elisa_positive / elisa_tested * 100, 0))
+
+          structure_data <- dplyr::left_join(structure_data, elisa_structure,
+                                              by = c("health_zone", "structure"))
+        }
+      }
     }
+
+    # Initialize missing columns with 0
+    if (!"mic_positivity" %in% names(structure_data)) structure_data$mic_positivity <- 0
+    if (!"elisa_positivity" %in% names(structure_data)) structure_data$elisa_positivity <- 0
 
     # Replace NAs and calculate risk score
     structure_data <- structure_data %>%
@@ -258,8 +380,8 @@ calculate_structure_risk <- function(biobank_df, mic_df = NULL, elisa_df = NULL,
   }, error = function(e) {
     warning(paste("Error in calculate_structure_risk:", e$message))
     data.frame(
-      HealthZone = character(),
-      Structure = character(),
+      health_zone = character(),
+      structure = character(),
       risk_score = numeric(),
       risk_category = character()
     )
@@ -283,85 +405,80 @@ calculate_demographic_risk <- function(biobank_df, mic_df = NULL, elisa_df = NUL
   tryCatch({
     results <- list()
 
-    # Sex-based risk analysis
-    sex_risk <- biobank_df %>%
-      dplyr::filter(!is.na(Sex), Sex %in% c("M", "F", "Male", "Female", "Homme", "Femme")) %>%
-      dplyr::mutate(
-        Sex = dplyr::case_when(
-          Sex %in% c("M", "Male", "Homme") ~ "Male",
-          Sex %in% c("F", "Female", "Femme") ~ "Female",
-          TRUE ~ NA_character_
-        )
-      ) %>%
-      dplyr::filter(!is.na(Sex)) %>%
-      dplyr::group_by(Sex) %>%
-      dplyr::summarise(
-        total_samples = dplyr::n(),
-        .groups = "drop"
-      )
+    # Standardize column names
+    biobank_df <- standardize_columns(biobank_df)
 
-    # Add positivity data by sex if available
-    if (!is.null(mic_df) && nrow(mic_df) > 0 && "Sex" %in% names(mic_df)) {
-      mic_sex <- mic_df %>%
+    # Sex-based risk analysis
+    sex_col <- get_col_name(biobank_df, c("sex", "Sex", "sexe", "Sexe"))
+
+    if (!is.null(sex_col)) {
+      sex_risk <- biobank_df %>%
+        dplyr::rename(sex = !!rlang::sym(sex_col)) %>%
+        dplyr::filter(!is.na(sex), sex %in% c("M", "F", "Male", "Female", "Homme", "Femme")) %>%
         dplyr::mutate(
           Sex = dplyr::case_when(
-            Sex %in% c("M", "Male", "Homme") ~ "Male",
-            Sex %in% c("F", "Female", "Femme") ~ "Female",
+            sex %in% c("M", "Male", "Homme") ~ "Male",
+            sex %in% c("F", "Female", "Femme") ~ "Female",
             TRUE ~ NA_character_
           )
         ) %>%
         dplyr::filter(!is.na(Sex)) %>%
         dplyr::group_by(Sex) %>%
         dplyr::summarise(
-          mic_tested = dplyr::n(),
-          mic_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos") |
-                               RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos"), na.rm = TRUE),
+          total_samples = dplyr::n(),
           .groups = "drop"
-        ) %>%
-        dplyr::mutate(mic_positivity = mic_positive / mic_tested * 100)
+        )
 
-      sex_risk <- dplyr::left_join(sex_risk, mic_sex, by = "Sex")
+      # Add positivity data by sex if available
+      if (!is.null(mic_df) && nrow(mic_df) > 0) {
+        mic_df <- standardize_columns(mic_df)
+        mic_sex_col <- get_col_name(mic_df, c("sex", "Sex", "sexe"))
+
+        if (!is.null(mic_sex_col)) {
+          mic_sex <- mic_df %>%
+            dplyr::rename(sex = !!rlang::sym(mic_sex_col)) %>%
+            dplyr::mutate(
+              Sex = dplyr::case_when(
+                sex %in% c("M", "Male", "Homme") ~ "Male",
+                sex %in% c("F", "Female", "Femme") ~ "Female",
+                TRUE ~ NA_character_
+              )
+            ) %>%
+            dplyr::filter(!is.na(Sex)) %>%
+            dplyr::group_by(Sex) %>%
+            dplyr::summarise(
+              mic_tested = dplyr::n(),
+              mic_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "DNA+") |
+                                   RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "RNA+"), na.rm = TRUE),
+              .groups = "drop"
+            ) %>%
+            dplyr::mutate(mic_positivity = dplyr::if_else(mic_tested > 0, mic_positive / mic_tested * 100, 0))
+
+          sex_risk <- dplyr::left_join(sex_risk, mic_sex, by = "Sex")
+        }
+      }
+
+      results$sex_risk <- sex_risk
+    } else {
+      results$sex_risk <- data.frame(Sex = character(), total_samples = numeric())
     }
 
-    results$sex_risk <- sex_risk
-
     # Age group risk analysis
-    age_risk <- biobank_df %>%
-      dplyr::filter(!is.na(Age), Age >= 0, Age <= 120) %>%
-      dplyr::mutate(
-        age_group = dplyr::case_when(
-          Age < 5 ~ "0-4",
-          Age < 15 ~ "5-14",
-          Age < 25 ~ "15-24",
-          Age < 35 ~ "25-34",
-          Age < 45 ~ "35-44",
-          Age < 55 ~ "45-54",
-          Age < 65 ~ "55-64",
-          TRUE ~ "65+"
-        ),
-        age_group = factor(age_group, levels = c("0-4", "5-14", "15-24", "25-34",
-                                                   "35-44", "45-54", "55-64", "65+"))
-      ) %>%
-      dplyr::group_by(age_group) %>%
-      dplyr::summarise(
-        total_samples = dplyr::n(),
-        mean_age = mean(Age, na.rm = TRUE),
-        .groups = "drop"
-      )
+    age_col <- get_col_name(biobank_df, c("age", "Age", "AGE"))
 
-    # Add positivity data by age if available
-    if (!is.null(mic_df) && nrow(mic_df) > 0 && "Age" %in% names(mic_df)) {
-      mic_age <- mic_df %>%
-        dplyr::filter(!is.na(Age), Age >= 0, Age <= 120) %>%
+    if (!is.null(age_col)) {
+      age_risk <- biobank_df %>%
+        dplyr::rename(age = !!rlang::sym(age_col)) %>%
+        dplyr::filter(!is.na(age), age >= 0, age <= 120) %>%
         dplyr::mutate(
           age_group = dplyr::case_when(
-            Age < 5 ~ "0-4",
-            Age < 15 ~ "5-14",
-            Age < 25 ~ "15-24",
-            Age < 35 ~ "25-34",
-            Age < 45 ~ "35-44",
-            Age < 55 ~ "45-54",
-            Age < 65 ~ "55-64",
+            age < 5 ~ "0-4",
+            age < 15 ~ "5-14",
+            age < 25 ~ "15-24",
+            age < 35 ~ "25-34",
+            age < 45 ~ "35-44",
+            age < 55 ~ "45-54",
+            age < 65 ~ "55-64",
             TRUE ~ "65+"
           ),
           age_group = factor(age_group, levels = c("0-4", "5-14", "15-24", "25-34",
@@ -369,47 +486,86 @@ calculate_demographic_risk <- function(biobank_df, mic_df = NULL, elisa_df = NUL
         ) %>%
         dplyr::group_by(age_group) %>%
         dplyr::summarise(
-          mic_tested = dplyr::n(),
-          mic_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos") |
-                               RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos"), na.rm = TRUE),
+          total_samples = dplyr::n(),
+          mean_age = mean(age, na.rm = TRUE),
           .groups = "drop"
-        ) %>%
-        dplyr::mutate(mic_positivity = mic_positive / mic_tested * 100)
+        )
 
-      age_risk <- dplyr::left_join(age_risk, mic_age, by = "age_group")
+      # Add positivity data by age if available
+      if (!is.null(mic_df) && nrow(mic_df) > 0) {
+        mic_df <- standardize_columns(mic_df)
+        mic_age_col <- get_col_name(mic_df, c("age", "Age"))
+
+        if (!is.null(mic_age_col)) {
+          mic_age <- mic_df %>%
+            dplyr::rename(age = !!rlang::sym(mic_age_col)) %>%
+            dplyr::filter(!is.na(age), age >= 0, age <= 120) %>%
+            dplyr::mutate(
+              age_group = dplyr::case_when(
+                age < 5 ~ "0-4",
+                age < 15 ~ "5-14",
+                age < 25 ~ "15-24",
+                age < 35 ~ "25-34",
+                age < 45 ~ "35-44",
+                age < 55 ~ "45-54",
+                age < 65 ~ "55-64",
+                TRUE ~ "65+"
+              ),
+              age_group = factor(age_group, levels = c("0-4", "5-14", "15-24", "25-34",
+                                                         "35-44", "45-54", "55-64", "65+"))
+            ) %>%
+            dplyr::group_by(age_group) %>%
+            dplyr::summarise(
+              mic_tested = dplyr::n(),
+              mic_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "DNA+") |
+                                   RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "RNA+"), na.rm = TRUE),
+              .groups = "drop"
+            ) %>%
+            dplyr::mutate(mic_positivity = dplyr::if_else(mic_tested > 0, mic_positive / mic_tested * 100, 0))
+
+          age_risk <- dplyr::left_join(age_risk, mic_age, by = "age_group")
+        }
+      }
+
+      results$age_risk <- age_risk
+    } else {
+      results$age_risk <- data.frame(age_group = character(), total_samples = numeric())
     }
 
-    results$age_risk <- age_risk
-
     # Combined sex + age analysis
-    combined_risk <- biobank_df %>%
-      dplyr::filter(
-        !is.na(Sex), Sex %in% c("M", "F", "Male", "Female", "Homme", "Femme"),
-        !is.na(Age), Age >= 0, Age <= 120
-      ) %>%
-      dplyr::mutate(
-        Sex = dplyr::case_when(
-          Sex %in% c("M", "Male", "Homme") ~ "Male",
-          Sex %in% c("F", "Female", "Femme") ~ "Female",
-          TRUE ~ NA_character_
-        ),
-        age_group = dplyr::case_when(
-          Age < 15 ~ "0-14",
-          Age < 30 ~ "15-29",
-          Age < 45 ~ "30-44",
-          Age < 60 ~ "45-59",
-          TRUE ~ "60+"
-        ),
-        age_group = factor(age_group, levels = c("0-14", "15-29", "30-44", "45-59", "60+"))
-      ) %>%
-      dplyr::filter(!is.na(Sex)) %>%
-      dplyr::group_by(Sex, age_group) %>%
-      dplyr::summarise(
-        total_samples = dplyr::n(),
-        .groups = "drop"
-      )
+    if (!is.null(sex_col) && !is.null(age_col)) {
+      combined_risk <- biobank_df %>%
+        dplyr::rename(sex = !!rlang::sym(sex_col), age = !!rlang::sym(age_col)) %>%
+        dplyr::filter(
+          !is.na(sex), sex %in% c("M", "F", "Male", "Female", "Homme", "Femme"),
+          !is.na(age), age >= 0, age <= 120
+        ) %>%
+        dplyr::mutate(
+          Sex = dplyr::case_when(
+            sex %in% c("M", "Male", "Homme") ~ "Male",
+            sex %in% c("F", "Female", "Femme") ~ "Female",
+            TRUE ~ NA_character_
+          ),
+          age_group = dplyr::case_when(
+            age < 15 ~ "0-14",
+            age < 30 ~ "15-29",
+            age < 45 ~ "30-44",
+            age < 60 ~ "45-59",
+            TRUE ~ "60+"
+          ),
+          age_group = factor(age_group, levels = c("0-14", "15-29", "30-44", "45-59", "60+"))
+        ) %>%
+        dplyr::filter(!is.na(Sex)) %>%
+        dplyr::group_by(Sex, age_group) %>%
+        dplyr::summarise(
+          total_samples = dplyr::n(),
+          .groups = "drop"
+        )
 
-    results$combined_risk <- combined_risk
+      results$combined_risk <- combined_risk
+    } else {
+      results$combined_risk <- data.frame(Sex = character(), age_group = character(), total_samples = numeric())
+    }
 
     results
 
@@ -437,17 +593,34 @@ calculate_temporal_predictions <- function(biobank_df, mic_df = NULL, forecast_m
   tryCatch({
     results <- list()
 
+    # Standardize column names
+    biobank_df <- standardize_columns(biobank_df)
+
+    # Get date column
+    date_col <- get_col_name(biobank_df, c("date_prel", "DatePrel", "sample_date"))
+
+    if (is.null(date_col)) {
+      warning("No date column found for temporal predictions")
+      return(list(
+        monthly_trend = data.frame(),
+        error = "No date column found"
+      ))
+    }
+
+    biobank_df$date_prel <- as.Date(biobank_df[[date_col]])
+
     # Monthly sampling trends
     monthly_trend <- biobank_df %>%
+      dplyr::filter(!is.na(date_prel)) %>%
       dplyr::mutate(
-        sample_month = lubridate::floor_date(as.Date(DatePrel), "month")
+        sample_month = lubridate::floor_date(date_prel, "month")
       ) %>%
       dplyr::filter(!is.na(sample_month)) %>%
       dplyr::group_by(sample_month) %>%
       dplyr::summarise(
         total_samples = dplyr::n(),
-        unique_zones = dplyr::n_distinct(HealthZone, na.rm = TRUE),
-        unique_structures = dplyr::n_distinct(Structure, na.rm = TRUE),
+        unique_zones = if ("health_zone" %in% names(.)) dplyr::n_distinct(health_zone, na.rm = TRUE) else 0,
+        unique_structures = if ("structure" %in% names(.)) dplyr::n_distinct(structure, na.rm = TRUE) else 0,
         .groups = "drop"
       ) %>%
       dplyr::arrange(sample_month)
@@ -456,60 +629,75 @@ calculate_temporal_predictions <- function(biobank_df, mic_df = NULL, forecast_m
 
     # Monthly positivity trend if MIC data available
     if (!is.null(mic_df) && nrow(mic_df) > 0) {
-      monthly_positivity <- mic_df %>%
-        dplyr::mutate(
-          sample_month = lubridate::floor_date(as.Date(DatePrel), "month")
-        ) %>%
-        dplyr::filter(!is.na(sample_month)) %>%
-        dplyr::group_by(sample_month) %>%
-        dplyr::summarise(
-          mic_tested = dplyr::n(),
-          mic_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos") |
-                               RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos"), na.rm = TRUE),
-          .groups = "drop"
-        ) %>%
-        dplyr::mutate(
-          positivity_rate = mic_positive / mic_tested * 100,
-          # Moving average for trend
-          positivity_ma = zoo::rollmean(positivity_rate, k = 3, fill = NA, align = "right")
-        ) %>%
-        dplyr::arrange(sample_month)
+      mic_df <- standardize_columns(mic_df)
+      mic_date_col <- get_col_name(mic_df, c("date_prel", "DatePrel", "sample_date", "plate_date"))
 
-      results$positivity_trend <- monthly_positivity
+      if (!is.null(mic_date_col)) {
+        mic_df$date_prel <- as.Date(mic_df[[mic_date_col]])
 
-      # Simple trend-based forecast
-      if (nrow(monthly_positivity) >= 6) {
-        recent_data <- tail(monthly_positivity, 6)
-        avg_positivity <- mean(recent_data$positivity_rate, na.rm = TRUE)
-        trend_direction <- (tail(recent_data$positivity_rate, 1) - head(recent_data$positivity_rate, 1)) / 6
+        monthly_positivity <- mic_df %>%
+          dplyr::filter(!is.na(date_prel)) %>%
+          dplyr::mutate(
+            sample_month = lubridate::floor_date(date_prel, "month")
+          ) %>%
+          dplyr::filter(!is.na(sample_month)) %>%
+          dplyr::group_by(sample_month) %>%
+          dplyr::summarise(
+            mic_tested = dplyr::n(),
+            mic_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "DNA+") |
+                                 RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "RNA+"), na.rm = TRUE),
+            .groups = "drop"
+          ) %>%
+          dplyr::mutate(
+            positivity_rate = dplyr::if_else(mic_tested > 0, mic_positive / mic_tested * 100, 0)
+          ) %>%
+          dplyr::arrange(sample_month)
 
-        # Generate forecast
-        last_month <- max(monthly_positivity$sample_month)
-        forecast_months_seq <- seq(last_month, by = "month", length.out = forecast_months + 1)[-1]
+        # Add moving average if enough data
+        if (nrow(monthly_positivity) >= 3) {
+          monthly_positivity <- monthly_positivity %>%
+            dplyr::mutate(
+              positivity_ma = zoo::rollmean(positivity_rate, k = 3, fill = NA, align = "right")
+            )
+        }
 
-        forecast_data <- data.frame(
-          sample_month = forecast_months_seq,
-          predicted_positivity = pmax(0, avg_positivity + trend_direction * seq_len(forecast_months)),
-          type = "Forecast"
-        )
+        results$positivity_trend <- monthly_positivity
 
-        results$forecast <- forecast_data
-        results$trend_summary <- list(
-          recent_avg_positivity = round(avg_positivity, 2),
-          trend_direction = dplyr::case_when(
-            trend_direction > 0.5 ~ "Increasing",
-            trend_direction < -0.5 ~ "Decreasing",
-            TRUE ~ "Stable"
-          ),
-          confidence = ifelse(nrow(monthly_positivity) >= 12, "High", "Moderate")
-        )
+        # Simple trend-based forecast
+        if (nrow(monthly_positivity) >= 6) {
+          recent_data <- tail(monthly_positivity, 6)
+          avg_positivity <- mean(recent_data$positivity_rate, na.rm = TRUE)
+          trend_direction <- (tail(recent_data$positivity_rate, 1) - head(recent_data$positivity_rate, 1)) / 6
+
+          # Generate forecast
+          last_month <- max(monthly_positivity$sample_month)
+          forecast_months_seq <- seq(last_month, by = "month", length.out = forecast_months + 1)[-1]
+
+          forecast_data <- data.frame(
+            sample_month = forecast_months_seq,
+            predicted_positivity = pmax(0, avg_positivity + trend_direction * seq_len(forecast_months)),
+            type = "Forecast"
+          )
+
+          results$forecast <- forecast_data
+          results$trend_summary <- list(
+            recent_avg_positivity = round(avg_positivity, 2),
+            trend_direction = dplyr::case_when(
+              trend_direction > 0.5 ~ "Increasing",
+              trend_direction < -0.5 ~ "Decreasing",
+              TRUE ~ "Stable"
+            ),
+            confidence = ifelse(nrow(monthly_positivity) >= 12, "High", "Moderate")
+          )
+        }
       }
     }
 
     # Seasonal patterns (by month of year)
     seasonal_pattern <- biobank_df %>%
+      dplyr::filter(!is.na(date_prel)) %>%
       dplyr::mutate(
-        month_of_year = lubridate::month(as.Date(DatePrel), label = TRUE)
+        month_of_year = lubridate::month(date_prel, label = TRUE)
       ) %>%
       dplyr::filter(!is.na(month_of_year)) %>%
       dplyr::group_by(month_of_year) %>%
@@ -532,61 +720,6 @@ calculate_temporal_predictions <- function(biobank_df, mic_df = NULL, forecast_m
 }
 
 
-#' Build Predictive Model for Positivity
-#'
-#' Uses machine learning to predict which samples are likely to be positive
-#' based on geographic, demographic, and temporal features.
-#'
-#' @param training_data Data frame with known outcomes
-#' @param feature_cols Character vector of feature column names
-#' @param outcome_col Character name of outcome column
-#' @param model_type Character type of model ("rf" or "xgboost")
-#' @return List with model and predictions
-#' @export
-build_positivity_predictor <- function(training_data, feature_cols, outcome_col,
-                                        model_type = "rf") {
-  tryCatch({
-    # Use existing ML infrastructure from concordancePredictive.R
-    model_result <- build_predictive_model(
-      data = training_data,
-      outcome_col = outcome_col,
-      feature_cols = feature_cols,
-      model_type = model_type,
-      train_fraction = 0.75,
-      cv_folds = 5
-    )
-
-    if (is.null(model_result$model)) {
-      return(list(
-        model = NULL,
-        error = model_result$error
-      ))
-    }
-
-    # Add prediction summary
-    model_result$prediction_summary <- list(
-      model_type = toupper(model_type),
-      features_used = feature_cols,
-      outcome_variable = outcome_col,
-      training_samples = nrow(model_result$train_predictions),
-      test_samples = nrow(model_result$test_predictions),
-      test_accuracy = model_result$test_performance %>%
-        dplyr::filter(metric == "Accuracy") %>%
-        dplyr::pull(value),
-      test_auc = model_result$test_performance %>%
-        dplyr::filter(metric == "AUC") %>%
-        dplyr::pull(value)
-    )
-
-    model_result
-
-  }, error = function(e) {
-    warning(paste("Error in build_positivity_predictor:", e$message))
-    list(model = NULL, error = e$message)
-  })
-}
-
-
 #' Generate Watchlist Report
 #'
 #' Creates a prioritized watchlist of health zones and structures
@@ -603,11 +736,32 @@ generate_watchlist <- function(zone_risk, structure_risk, demographic_risk = NUL
   tryCatch({
     watchlist <- list()
 
+    # Check for valid data
+    if (is.null(zone_risk) || nrow(zone_risk) == 0) {
+      zone_risk <- data.frame(
+        health_zone = character(),
+        risk_score = numeric(),
+        risk_category = factor(levels = c("Low", "Medium", "High", "Very High"))
+      )
+    }
+
+    if (is.null(structure_risk) || nrow(structure_risk) == 0) {
+      structure_risk <- data.frame(
+        health_zone = character(),
+        structure = character(),
+        risk_score = numeric(),
+        risk_category = factor(levels = c("Low", "Medium", "High", "Very High")),
+        prediction = character(),
+        historical_positivity = numeric(),
+        days_since_last = numeric()
+      )
+    }
+
     # Top risk health zones
     watchlist$priority_zones <- zone_risk %>%
       dplyr::slice_head(n = top_n) %>%
       dplyr::select(
-        HealthZone, risk_score, risk_category,
+        health_zone, risk_score, risk_category,
         dplyr::any_of(c("total_samples", "mic_any_positive", "mic_positivity_rate",
                         "elisa_positive", "elisa_positivity_rate"))
       )
@@ -616,32 +770,42 @@ generate_watchlist <- function(zone_risk, structure_risk, demographic_risk = NUL
     watchlist$priority_structures <- structure_risk %>%
       dplyr::slice_head(n = top_n) %>%
       dplyr::select(
-        HealthZone, Structure, risk_score, risk_category, prediction,
+        health_zone, structure, risk_score, risk_category, prediction,
         dplyr::any_of(c("total_samples", "historical_positivity", "days_since_last"))
       )
 
     # Structures with recent positives (high alert)
-    watchlist$recent_positives <- structure_risk %>%
-      dplyr::filter(historical_positivity > 0, days_since_last <= 90) %>%
-      dplyr::arrange(dplyr::desc(historical_positivity)) %>%
-      dplyr::slice_head(n = top_n)
+    if ("historical_positivity" %in% names(structure_risk) && "days_since_last" %in% names(structure_risk)) {
+      watchlist$recent_positives <- structure_risk %>%
+        dplyr::filter(historical_positivity > 0, days_since_last <= 90) %>%
+        dplyr::arrange(dplyr::desc(historical_positivity)) %>%
+        dplyr::slice_head(n = top_n)
+    } else {
+      watchlist$recent_positives <- data.frame()
+    }
 
     # Emerging hotspots (structures with increasing activity)
-    watchlist$emerging_hotspots <- structure_risk %>%
-      dplyr::filter(
-        risk_category %in% c("High", "Very High"),
-        days_since_last <= 60
-      ) %>%
-      dplyr::arrange(dplyr::desc(risk_score)) %>%
-      dplyr::slice_head(n = top_n)
+    if ("days_since_last" %in% names(structure_risk)) {
+      watchlist$emerging_hotspots <- structure_risk %>%
+        dplyr::filter(
+          risk_category %in% c("High", "Very High"),
+          days_since_last <= 60
+        ) %>%
+        dplyr::arrange(dplyr::desc(risk_score)) %>%
+        dplyr::slice_head(n = top_n)
+    } else {
+      watchlist$emerging_hotspots <- data.frame()
+    }
 
     # Summary statistics
     watchlist$summary <- list(
       total_zones_monitored = nrow(zone_risk),
-      high_risk_zones = sum(zone_risk$risk_category %in% c("High", "Very High")),
+      high_risk_zones = sum(zone_risk$risk_category %in% c("High", "Very High"), na.rm = TRUE),
       total_structures_monitored = nrow(structure_risk),
-      high_risk_structures = sum(structure_risk$risk_category %in% c("High", "Very High")),
-      structures_with_positives = sum(structure_risk$historical_positivity > 0, na.rm = TRUE)
+      high_risk_structures = sum(structure_risk$risk_category %in% c("High", "Very High"), na.rm = TRUE),
+      structures_with_positives = if ("historical_positivity" %in% names(structure_risk)) {
+        sum(structure_risk$historical_positivity > 0, na.rm = TRUE)
+      } else 0
     )
 
     # Add demographic insights if available
@@ -657,6 +821,7 @@ generate_watchlist <- function(zone_risk, structure_risk, demographic_risk = NUL
       }
 
       if (!is.null(demographic_risk$age_risk) && "mic_positivity" %in% names(demographic_risk$age_risk)) {
+        if (is.null(watchlist$demographic_focus)) watchlist$demographic_focus <- list()
         watchlist$demographic_focus$highest_risk_age <- demographic_risk$age_risk %>%
           dplyr::filter(mic_positivity == max(mic_positivity, na.rm = TRUE)) %>%
           dplyr::pull(age_group)
@@ -669,105 +834,19 @@ generate_watchlist <- function(zone_risk, structure_risk, demographic_risk = NUL
 
   }, error = function(e) {
     warning(paste("Error in generate_watchlist:", e$message))
-    list(error = e$message)
-  })
-}
-
-
-#' Create Risk Prediction Visualizations
-#'
-#' Generates plotly visualizations for the predictive analytics module.
-#'
-#' @param zone_risk Data frame from calculate_healthzone_risk()
-#' @param color_palette Character vector of colors for risk categories
-#' @return List of plotly objects
-#' @export
-create_risk_visualizations <- function(zone_risk,
-                                        color_palette = c("Low" = "#28a745",
-                                                          "Medium" = "#ffc107",
-                                                          "High" = "#fd7e14",
-                                                          "Very High" = "#dc3545")) {
-  tryCatch({
-    plots <- list()
-
-    # Risk score bar chart
-    plots$risk_bar <- plotly::plot_ly(
-      data = zone_risk %>% dplyr::slice_head(n = 15),
-      x = ~reorder(HealthZone, risk_score),
-      y = ~risk_score,
-      color = ~risk_category,
-      colors = color_palette,
-      type = "bar",
-      hovertemplate = paste(
-        "<b>%{x}</b><br>",
-        "Risk Score: %{y:.1f}<br>",
-        "<extra></extra>"
-      )
-    ) %>%
-      plotly::layout(
-        title = "Health Zone Risk Ranking",
-        xaxis = list(title = "", tickangle = -45),
-        yaxis = list(title = "Risk Score (0-100)"),
-        showlegend = TRUE,
-        legend = list(title = list(text = "Risk Level"))
-      )
-
-    # Risk distribution pie
-    risk_dist <- zone_risk %>%
-      dplyr::count(risk_category) %>%
-      dplyr::mutate(pct = n / sum(n) * 100)
-
-    plots$risk_pie <- plotly::plot_ly(
-      data = risk_dist,
-      labels = ~risk_category,
-      values = ~n,
-      type = "pie",
-      marker = list(colors = color_palette[risk_dist$risk_category]),
-      hovertemplate = paste(
-        "<b>%{label}</b><br>",
-        "Zones: %{value}<br>",
-        "Percentage: %{percent}<br>",
-        "<extra></extra>"
-      )
-    ) %>%
-      plotly::layout(
-        title = "Risk Distribution",
-        showlegend = TRUE
-      )
-
-    # Risk score gauge for top zone
-    if (nrow(zone_risk) > 0) {
-      top_zone <- zone_risk[1, ]
-      plots$top_zone_gauge <- plotly::plot_ly(
-        type = "indicator",
-        mode = "gauge+number+delta",
-        value = top_zone$risk_score,
-        title = list(text = paste("Highest Risk:", top_zone$HealthZone)),
-        gauge = list(
-          axis = list(range = list(0, 100)),
-          bar = list(color = color_palette[as.character(top_zone$risk_category)]),
-          steps = list(
-            list(range = c(0, 25), color = "#e8f5e9"),
-            list(range = c(25, 50), color = "#fff3e0"),
-            list(range = c(50, 75), color = "#ffe0b2"),
-            list(range = c(75, 100), color = "#ffcdd2")
-          ),
-          threshold = list(
-            line = list(color = "red", width = 4),
-            thickness = 0.75,
-            value = 75
-          )
-        )
-      ) %>%
-        plotly::layout(
-          margin = list(l = 20, r = 20, t = 60, b = 20)
-        )
-    }
-
-    plots
-
-  }, error = function(e) {
-    warning(paste("Error in create_risk_visualizations:", e$message))
-    list()
+    list(
+      priority_zones = data.frame(),
+      priority_structures = data.frame(),
+      recent_positives = data.frame(),
+      emerging_hotspots = data.frame(),
+      summary = list(
+        total_zones_monitored = 0,
+        high_risk_zones = 0,
+        total_structures_monitored = 0,
+        high_risk_structures = 0,
+        structures_with_positives = 0
+      ),
+      error = e$message
+    )
   })
 }

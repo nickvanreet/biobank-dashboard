@@ -135,14 +135,19 @@ calculate_healthzone_risk <- function(biobank_df, mic_df = NULL, elisa_df = NULL
       }
     }
 
-    # Calculate serological positivity if ELISA data available
+    # Calculate serological positivity from all sources (ELISA-PE, ELISA-VSG, iELISA)
+    sero_tested <- 0
+    sero_positive <- 0
+    sero_by_zone <- NULL
+
+    # Process ELISA data (PE + VSG combined)
     if (!is.null(elisa_df) && nrow(elisa_df) > 0) {
       elisa_df <- standardize_columns(elisa_df)
       hz_col <- get_col_name(elisa_df, c("health_zone", "HealthZone"))
 
       if (!is.null(hz_col)) {
-        # Check for result column
-        result_col <- get_col_name(elisa_df, c("Result", "result", "positive", "Positive"))
+        # Check for result column - ELISA uses "positive" boolean or "Result" string
+        result_col <- get_col_name(elisa_df, c("positive", "Positive", "Result", "result"))
 
         if (!is.null(result_col)) {
           elisa_positivity <- elisa_df %>%
@@ -151,15 +156,72 @@ calculate_healthzone_risk <- function(biobank_df, mic_df = NULL, elisa_df = NULL
             dplyr::group_by(health_zone) %>%
             dplyr::summarise(
               elisa_tested = dplyr::n(),
-              elisa_positive = sum(.data[[result_col]] %in% c("Positive", "POSITIVE", "POS", "Pos", TRUE, 1), na.rm = TRUE),
+              elisa_positive = sum(
+                .data[[result_col]] %in% c("Positive", "POSITIVE", "POS", "Pos", TRUE, 1) |
+                .data[[result_col]] == TRUE,
+                na.rm = TRUE
+              ),
               .groups = "drop"
-            ) %>%
-            dplyr::mutate(
-              elisa_positivity_rate = dplyr::if_else(elisa_tested > 0, elisa_positive / elisa_tested * 100, 0)
             )
-          zone_summary <- dplyr::left_join(zone_summary, elisa_positivity, by = "health_zone")
+          sero_by_zone <- elisa_positivity
         }
       }
+    }
+
+    # Process iELISA data (L13 + L15 antigens)
+    if (!is.null(ielisa_df) && nrow(ielisa_df) > 0) {
+      ielisa_df <- standardize_columns(ielisa_df)
+      hz_col <- get_col_name(ielisa_df, c("health_zone", "HealthZone"))
+
+      if (!is.null(hz_col)) {
+        # iELISA uses positive_L13 and positive_L15 boolean columns
+        has_l13 <- "positive_L13" %in% names(ielisa_df)
+        has_l15 <- "positive_L15" %in% names(ielisa_df)
+
+        if (has_l13 || has_l15) {
+          ielisa_positivity <- ielisa_df %>%
+            dplyr::rename(health_zone = !!rlang::sym(hz_col)) %>%
+            dplyr::filter(!is.na(health_zone)) %>%
+            dplyr::group_by(health_zone) %>%
+            dplyr::summarise(
+              ielisa_tested = dplyr::n(),
+              ielisa_positive = sum(
+                (if (has_l13) positive_L13 else FALSE) |
+                (if (has_l15) positive_L15 else FALSE),
+                na.rm = TRUE
+              ),
+              .groups = "drop"
+            )
+
+          # Combine with ELISA data
+          if (!is.null(sero_by_zone)) {
+            sero_by_zone <- dplyr::full_join(sero_by_zone, ielisa_positivity, by = "health_zone") %>%
+              dplyr::mutate(
+                elisa_tested = tidyr::replace_na(elisa_tested, 0),
+                elisa_positive = tidyr::replace_na(elisa_positive, 0),
+                ielisa_tested = tidyr::replace_na(ielisa_tested, 0),
+                ielisa_positive = tidyr::replace_na(ielisa_positive, 0)
+              )
+          } else {
+            sero_by_zone <- ielisa_positivity %>%
+              dplyr::rename(elisa_tested = ielisa_tested, elisa_positive = ielisa_positive)
+          }
+        }
+      }
+    }
+
+    # Add serological positivity to zone summary
+    if (!is.null(sero_by_zone) && nrow(sero_by_zone) > 0) {
+      # Calculate combined serological positivity rate
+      sero_by_zone <- sero_by_zone %>%
+        dplyr::mutate(
+          sero_tested = elisa_tested + tidyr::replace_na(ielisa_tested, 0),
+          sero_positive = elisa_positive + tidyr::replace_na(ielisa_positive, 0),
+          sero_positivity_rate = dplyr::if_else(sero_tested > 0, sero_positive / sero_tested * 100, 0)
+        ) %>%
+        dplyr::select(health_zone, sero_tested, sero_positive, sero_positivity_rate)
+
+      zone_summary <- dplyr::left_join(zone_summary, sero_by_zone, by = "health_zone")
     }
 
     # Replace NAs with 0 for numeric columns
@@ -170,8 +232,8 @@ calculate_healthzone_risk <- function(biobank_df, mic_df = NULL, elisa_df = NULL
     if (!"mic_positivity_rate" %in% names(zone_summary)) {
       zone_summary$mic_positivity_rate <- 0
     }
-    if (!"elisa_positivity_rate" %in% names(zone_summary)) {
-      zone_summary$elisa_positivity_rate <- 0
+    if (!"sero_positivity_rate" %in% names(zone_summary)) {
+      zone_summary$sero_positivity_rate <- 0
     }
 
     # Calculate composite risk score
@@ -185,7 +247,7 @@ calculate_healthzone_risk <- function(biobank_df, mic_df = NULL, elisa_df = NULL
         },
         # Higher positivity = higher risk (scale up for visibility)
         molecular_risk = pmin(100, mic_positivity_rate * 10),
-        serological_risk = pmin(100, elisa_positivity_rate * 10),
+        serological_risk = pmin(100, sero_positivity_rate * 10),
         # Recency factor - more recent activity = higher monitoring priority
         days_since_last = as.numeric(Sys.Date() - last_sample_date),
         recency_score = pmax(0, 100 - days_since_last / 2),  # Decays over ~200 days
@@ -302,43 +364,99 @@ calculate_structure_risk <- function(biobank_df, mic_df = NULL, elisa_df = NULL,
       }
     }
 
-    # Add serological positivity by structure
+    # Add serological positivity by structure (ELISA-PE, ELISA-VSG, iELISA combined)
+    sero_structure <- NULL
+
+    # Process ELISA data (PE + VSG)
     if (!is.null(elisa_df) && nrow(elisa_df) > 0) {
       elisa_df <- standardize_columns(elisa_df)
 
       if ("structure" %in% names(elisa_df) && "health_zone" %in% names(elisa_df)) {
-        result_col <- get_col_name(elisa_df, c("Result", "result", "positive"))
+        result_col <- get_col_name(elisa_df, c("positive", "Positive", "Result", "result"))
 
         if (!is.null(result_col)) {
-          elisa_structure <- elisa_df %>%
+          sero_structure <- elisa_df %>%
             dplyr::filter(!is.na(structure)) %>%
             dplyr::group_by(health_zone, structure) %>%
             dplyr::summarise(
               elisa_tested = dplyr::n(),
-              elisa_positive = sum(.data[[result_col]] %in% c("Positive", "POSITIVE", "POS", "Pos", TRUE, 1), na.rm = TRUE),
+              elisa_positive = sum(
+                .data[[result_col]] %in% c("Positive", "POSITIVE", "POS", "Pos", TRUE, 1) |
+                .data[[result_col]] == TRUE,
+                na.rm = TRUE
+              ),
               .groups = "drop"
-            ) %>%
-            dplyr::mutate(elisa_positivity = dplyr::if_else(elisa_tested > 0, elisa_positive / elisa_tested * 100, 0))
-
-          structure_data <- dplyr::left_join(structure_data, elisa_structure,
-                                              by = c("health_zone", "structure"))
+            )
         }
       }
     }
 
+    # Process iELISA data (L13 + L15)
+    if (!is.null(ielisa_df) && nrow(ielisa_df) > 0) {
+      ielisa_df <- standardize_columns(ielisa_df)
+
+      if ("structure" %in% names(ielisa_df) && "health_zone" %in% names(ielisa_df)) {
+        has_l13 <- "positive_L13" %in% names(ielisa_df)
+        has_l15 <- "positive_L15" %in% names(ielisa_df)
+
+        if (has_l13 || has_l15) {
+          ielisa_structure <- ielisa_df %>%
+            dplyr::filter(!is.na(structure)) %>%
+            dplyr::group_by(health_zone, structure) %>%
+            dplyr::summarise(
+              ielisa_tested = dplyr::n(),
+              ielisa_positive = sum(
+                (if (has_l13) positive_L13 else FALSE) |
+                (if (has_l15) positive_L15 else FALSE),
+                na.rm = TRUE
+              ),
+              .groups = "drop"
+            )
+
+          # Combine with ELISA data
+          if (!is.null(sero_structure)) {
+            sero_structure <- dplyr::full_join(sero_structure, ielisa_structure, by = c("health_zone", "structure")) %>%
+              dplyr::mutate(
+                elisa_tested = tidyr::replace_na(elisa_tested, 0),
+                elisa_positive = tidyr::replace_na(elisa_positive, 0),
+                ielisa_tested = tidyr::replace_na(ielisa_tested, 0),
+                ielisa_positive = tidyr::replace_na(ielisa_positive, 0)
+              )
+          } else {
+            sero_structure <- ielisa_structure %>%
+              dplyr::rename(elisa_tested = ielisa_tested, elisa_positive = ielisa_positive)
+          }
+        }
+      }
+    }
+
+    # Add serological positivity to structure data
+    if (!is.null(sero_structure) && nrow(sero_structure) > 0) {
+      sero_structure <- sero_structure %>%
+        dplyr::mutate(
+          sero_tested = elisa_tested + tidyr::replace_na(ielisa_tested, 0),
+          sero_positive = elisa_positive + tidyr::replace_na(ielisa_positive, 0),
+          sero_positivity = dplyr::if_else(sero_tested > 0, sero_positive / sero_tested * 100, 0)
+        ) %>%
+        dplyr::select(health_zone, structure, sero_tested, sero_positive, sero_positivity)
+
+      structure_data <- dplyr::left_join(structure_data, sero_structure,
+                                          by = c("health_zone", "structure"))
+    }
+
     # Initialize missing columns with 0
     if (!"mic_positivity" %in% names(structure_data)) structure_data$mic_positivity <- 0
-    if (!"elisa_positivity" %in% names(structure_data)) structure_data$elisa_positivity <- 0
+    if (!"sero_positivity" %in% names(structure_data)) structure_data$sero_positivity <- 0
 
     # Replace NAs and calculate risk score
     structure_data <- structure_data %>%
       dplyr::mutate(dplyr::across(where(is.numeric), ~tidyr::replace_na(., 0))) %>%
       dplyr::mutate(
-        # Historical positivity rate (combined)
+        # Historical positivity rate (combined molecular + serological)
         historical_positivity = dplyr::case_when(
-          mic_positivity > 0 & elisa_positivity > 0 ~ (mic_positivity + elisa_positivity) / 2,
+          mic_positivity > 0 & sero_positivity > 0 ~ (mic_positivity + sero_positivity) / 2,
           mic_positivity > 0 ~ mic_positivity,
-          elisa_positivity > 0 ~ elisa_positivity,
+          sero_positivity > 0 ~ sero_positivity,
           TRUE ~ 0
         ),
         # Activity level
@@ -781,7 +899,7 @@ generate_watchlist <- function(zone_risk, structure_risk, demographic_risk = NUL
       dplyr::select(
         health_zone, risk_score, risk_category,
         dplyr::any_of(c("total_samples", "mic_any_positive", "mic_positivity_rate",
-                        "elisa_positive", "elisa_positivity_rate"))
+                        "sero_tested", "sero_positive", "sero_positivity_rate"))
       )
 
     # Top risk structures

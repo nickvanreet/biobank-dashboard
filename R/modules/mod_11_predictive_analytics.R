@@ -597,6 +597,17 @@ mod_predictive_analytics_server <- function(id,
     # REACTIVE DATA PROCESSING
     # ========================================================================
 
+    # Helper to check if risk factor is selected (default to TRUE if input not initialized)
+    include_molecular <- reactive({
+      is.null(input$risk_factors) || "molecular" %in% input$risk_factors
+    })
+    include_serological <- reactive({
+      is.null(input$risk_factors) || "serological" %in% input$risk_factors
+    })
+    include_ielisa <- reactive({
+      is.null(input$risk_factors) || "ielisa" %in% input$risk_factors
+    })
+
     # Calculate health zone risk
     zone_risk <- reactive({
       req(biobank_df())
@@ -604,10 +615,10 @@ mod_predictive_analytics_server <- function(id,
       tryCatch({
         calculate_healthzone_risk(
           biobank_df = biobank_df(),
-          mic_df = if ("molecular" %in% input$risk_factors) mic_df() else NULL,
-          elisa_pe_df = if ("serological" %in% input$risk_factors) elisa_pe_df() else NULL,
-          elisa_vsg_df = if ("serological" %in% input$risk_factors) elisa_vsg_df() else NULL,
-          ielisa_df = if ("ielisa" %in% input$risk_factors) ielisa_df() else NULL
+          mic_df = if (include_molecular()) mic_df() else NULL,
+          elisa_pe_df = if (include_serological()) elisa_pe_df() else NULL,
+          elisa_vsg_df = if (include_serological()) elisa_vsg_df() else NULL,
+          ielisa_df = if (include_ielisa()) ielisa_df() else NULL
         )
       }, error = function(e) {
         warning(paste("Error calculating zone risk:", e$message))
@@ -622,10 +633,10 @@ mod_predictive_analytics_server <- function(id,
       tryCatch({
         calculate_structure_risk(
           biobank_df = biobank_df(),
-          mic_df = if ("molecular" %in% input$risk_factors) mic_df() else NULL,
-          elisa_pe_df = if ("serological" %in% input$risk_factors) elisa_pe_df() else NULL,
-          elisa_vsg_df = if ("serological" %in% input$risk_factors) elisa_vsg_df() else NULL,
-          ielisa_df = if ("ielisa" %in% input$risk_factors) ielisa_df() else NULL
+          mic_df = if (include_molecular()) mic_df() else NULL,
+          elisa_pe_df = if (include_serological()) elisa_pe_df() else NULL,
+          elisa_vsg_df = if (include_serological()) elisa_vsg_df() else NULL,
+          ielisa_df = if (include_ielisa()) ielisa_df() else NULL
         )
       }, error = function(e) {
         warning(paste("Error calculating structure risk:", e$message))
@@ -640,10 +651,10 @@ mod_predictive_analytics_server <- function(id,
       tryCatch({
         calculate_demographic_risk(
           biobank_df = biobank_df(),
-          mic_df = if ("molecular" %in% input$risk_factors) mic_df() else NULL,
-          elisa_pe_df = if ("serological" %in% input$risk_factors) elisa_pe_df() else NULL,
-          elisa_vsg_df = if ("serological" %in% input$risk_factors) elisa_vsg_df() else NULL,
-          ielisa_df = if ("ielisa" %in% input$risk_factors) ielisa_df() else NULL
+          mic_df = if (include_molecular()) mic_df() else NULL,
+          elisa_pe_df = if (include_serological()) elisa_pe_df() else NULL,
+          elisa_vsg_df = if (include_serological()) elisa_vsg_df() else NULL,
+          ielisa_df = if (include_ielisa()) ielisa_df() else NULL
         )
       }, error = function(e) {
         warning(paste("Error calculating demographic risk:", e$message))
@@ -658,9 +669,9 @@ mod_predictive_analytics_server <- function(id,
       tryCatch({
         calculate_temporal_predictions(
           biobank_df = biobank_df(),
-          mic_df = if ("molecular" %in% input$risk_factors) mic_df() else NULL,
-          elisa_pe_df = if ("serological" %in% input$risk_factors) elisa_pe_df() else NULL,
-          forecast_months = input$forecast_months
+          mic_df = if (include_molecular()) mic_df() else NULL,
+          elisa_pe_df = if (include_serological()) elisa_pe_df() else NULL,
+          forecast_months = if (is.null(input$forecast_months)) 3 else input$forecast_months
         )
       }, error = function(e) {
         warning(paste("Error calculating temporal predictions:", e$message))
@@ -677,7 +688,7 @@ mod_predictive_analytics_server <- function(id,
           zone_risk = zone_risk(),
           structure_risk = structure_risk(),
           demographic_risk = demographic_risk(),
-          top_n = input$top_n
+          top_n = if (is.null(input$top_n)) 15 else input$top_n
         )
       }, error = function(e) {
         warning(paste("Error generating watchlist:", e$message))

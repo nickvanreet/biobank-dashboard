@@ -738,7 +738,7 @@ mod_predictive_analytics_server <- function(id,
 
       display_cols <- c("health_zone", "risk_score", "risk_category", "total_samples")
       if ("mic_any_positive" %in% names(zr)) display_cols <- c(display_cols, "mic_any_positive", "mic_positivity_rate")
-      if ("elisa_positive" %in% names(zr)) display_cols <- c(display_cols, "elisa_positive", "elisa_positivity_rate")
+      if ("sero_positive" %in% names(zr)) display_cols <- c(display_cols, "sero_tested", "sero_positive", "sero_positivity_rate")
 
       display_cols <- display_cols[display_cols %in% names(zr)]
 

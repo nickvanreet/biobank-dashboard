@@ -109,6 +109,36 @@ mod_predictive_analytics_ui <- function(id) {
         )
       ),
 
+      # Settings panel for customizable weights
+      card(
+        card_header(
+          class = "bg-secondary text-white",
+          icon("sliders-h"), " Risk Score Weights (must sum to 100%)"
+        ),
+        card_body(
+          layout_columns(
+            col_widths = c(3, 3, 3, 3),
+            sliderInput(ns("weight_molecular"), "Molecular (MIC)", min = 0, max = 100, value = 35, step = 5, post = "%"),
+            sliderInput(ns("weight_serological"), "Serological", min = 0, max = 100, value = 30, step = 5, post = "%"),
+            sliderInput(ns("weight_density"), "Sample Density", min = 0, max = 100, value = 20, step = 5, post = "%"),
+            sliderInput(ns("weight_recency"), "Recency", min = 0, max = 100, value = 15, step = 5, post = "%")
+          ),
+          div(
+            class = "d-flex justify-content-between align-items-center",
+            uiOutput(ns("weight_total_indicator")),
+            actionButton(ns("reset_weights"), "Reset to Default", class = "btn-sm btn-outline-secondary")
+          )
+        )
+      ),
+
+      # Active data sources indicator
+      card(
+        card_header(icon("database"), " Active Data Sources"),
+        card_body(
+          uiOutput(ns("data_sources_status"))
+        )
+      ),
+
       # Main content tabs
       navset_card_tab(
         id = ns("main_tabs"),
@@ -597,15 +627,99 @@ mod_predictive_analytics_server <- function(id,
     # REACTIVE DATA PROCESSING
     # ========================================================================
 
-    # Helper to check if risk factor is selected (default to TRUE if input not initialized)
+    # Helper to check if risk factor is selected
+    # On first load, input$risk_factors is NULL - default to all selected
+    # After user interaction, it can be character(0) if nothing selected - that means nothing included
     include_molecular <- reactive({
-      is.null(input$risk_factors) || "molecular" %in% input$risk_factors
+      rf <- input$risk_factors
+      if (is.null(rf)) return(TRUE)  # Initial load - default all selected
+      "molecular" %in% rf
     })
     include_serological <- reactive({
-      is.null(input$risk_factors) || "serological" %in% input$risk_factors
+      rf <- input$risk_factors
+      if (is.null(rf)) return(TRUE)
+      "serological" %in% rf
     })
     include_ielisa <- reactive({
-      is.null(input$risk_factors) || "ielisa" %in% input$risk_factors
+      rf <- input$risk_factors
+      if (is.null(rf)) return(TRUE)
+      "ielisa" %in% rf
+    })
+
+    # Get current weights
+    get_weights <- reactive({
+      list(
+        molecular = (input$weight_molecular %||% 35) / 100,
+        serological = (input$weight_serological %||% 30) / 100,
+        density = (input$weight_density %||% 20) / 100,
+        recency = (input$weight_recency %||% 15) / 100
+      )
+    })
+
+    # Reset weights button
+    observeEvent(input$reset_weights, {
+      updateSliderInput(session, "weight_molecular", value = 35)
+      updateSliderInput(session, "weight_serological", value = 30)
+      updateSliderInput(session, "weight_density", value = 20)
+      updateSliderInput(session, "weight_recency", value = 15)
+    })
+
+    # Weight total indicator
+    output$weight_total_indicator <- renderUI({
+      total <- (input$weight_molecular %||% 35) + (input$weight_serological %||% 30) +
+               (input$weight_density %||% 20) + (input$weight_recency %||% 15)
+      if (total == 100) {
+        span(class = "badge bg-success", icon("check"), paste0(" Total: ", total, "%"))
+      } else {
+        span(class = "badge bg-danger", icon("exclamation-triangle"), paste0(" Total: ", total, "% (should be 100%)"))
+      }
+    })
+
+    # Data sources status indicator
+    output$data_sources_status <- renderUI({
+      mic_count <- tryCatch({
+        df <- mic_df()
+        if (!is.null(df) && nrow(df) > 0) nrow(df) else 0
+      }, error = function(e) 0)
+
+      pe_count <- tryCatch({
+        df <- elisa_pe_df()
+        if (!is.null(df) && nrow(df) > 0) nrow(df) else 0
+      }, error = function(e) 0)
+
+      vsg_count <- tryCatch({
+        df <- elisa_vsg_df()
+        if (!is.null(df) && nrow(df) > 0) nrow(df) else 0
+      }, error = function(e) 0)
+
+      ielisa_count <- tryCatch({
+        df <- ielisa_df()
+        if (!is.null(df) && nrow(df) > 0) nrow(df) else 0
+      }, error = function(e) 0)
+
+      bio_count <- tryCatch({
+        df <- biobank_df()
+        if (!is.null(df) && nrow(df) > 0) nrow(df) else 0
+      }, error = function(e) 0)
+
+      make_badge <- function(name, count, selected) {
+        cls <- if (count > 0 && selected) "bg-success" else if (count > 0) "bg-secondary" else "bg-danger"
+        icon_name <- if (count > 0 && selected) "check" else if (count > 0) "minus" else "times"
+        span(class = paste("badge me-2 mb-1", cls),
+             icon(icon_name), paste0(" ", name, ": ", scales::comma(count)))
+      }
+
+      tagList(
+        make_badge("Biobank", bio_count, TRUE),
+        make_badge("MIC qPCR", mic_count, include_molecular()),
+        make_badge("ELISA-PE", pe_count, include_serological()),
+        make_badge("ELISA-VSG", vsg_count, include_serological()),
+        make_badge("iELISA", ielisa_count, include_ielisa()),
+        if (!include_molecular() && !include_serological() && !include_ielisa()) {
+          div(class = "alert alert-warning mt-2 mb-0 p-2",
+              icon("exclamation-triangle"), " No risk factors selected. Risk scores will be based on sample density and recency only.")
+        }
+      )
     })
 
     # Calculate health zone risk
@@ -618,7 +732,8 @@ mod_predictive_analytics_server <- function(id,
           mic_df = if (include_molecular()) mic_df() else NULL,
           elisa_pe_df = if (include_serological()) elisa_pe_df() else NULL,
           elisa_vsg_df = if (include_serological()) elisa_vsg_df() else NULL,
-          ielisa_df = if (include_ielisa()) ielisa_df() else NULL
+          ielisa_df = if (include_ielisa()) ielisa_df() else NULL,
+          weights = get_weights()
         )
       }, error = function(e) {
         warning(paste("Error calculating zone risk:", e$message))
@@ -671,6 +786,8 @@ mod_predictive_analytics_server <- function(id,
           biobank_df = biobank_df(),
           mic_df = if (include_molecular()) mic_df() else NULL,
           elisa_pe_df = if (include_serological()) elisa_pe_df() else NULL,
+          elisa_vsg_df = if (include_serological()) elisa_vsg_df() else NULL,
+          ielisa_df = if (include_ielisa()) ielisa_df() else NULL,
           forecast_months = if (is.null(input$forecast_months)) 3 else input$forecast_months
         )
       }, error = function(e) {

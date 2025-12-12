@@ -28,7 +28,7 @@ mod_predictive_analytics_ui <- function(id) {
         card_body(
           p("Predict which health zones, structures, and demographic groups are at highest risk for HAT cases based on historical patterns."),
           p(class = "text-muted mb-0 small",
-            "Uses molecular and serological testing data to forecast where to focus surveillance efforts.")
+            "Uses molecular (MIC qPCR) and serological (ELISA-PE, ELISA-VSG, iELISA) testing data to forecast where to focus surveillance efforts.")
         )
       ),
 
@@ -68,7 +68,7 @@ mod_predictive_analytics_ui <- function(id) {
               "Include in Analysis",
               choices = c(
                 "Molecular (MIC qPCR)" = "molecular",
-                "Serological (ELISA)" = "serological",
+                "Serological (ELISA-PE/VSG)" = "serological",
                 "Serological (iELISA)" = "ielisa"
               ),
               selected = c("molecular", "serological", "ielisa")
@@ -118,7 +118,6 @@ mod_predictive_analytics_ui <- function(id) {
           title = "Watchlist",
           icon = icon("exclamation-triangle"),
 
-          # Alert summary
           layout_column_wrap(
             width = 1/4,
             value_box(
@@ -147,7 +146,6 @@ mod_predictive_analytics_ui <- function(id) {
             )
           ),
 
-          # Priority lists
           layout_columns(
             col_widths = c(6, 6),
             card(
@@ -170,7 +168,6 @@ mod_predictive_analytics_ui <- function(id) {
             )
           ),
 
-          # Emerging hotspots
           card(
             card_header(
               icon("fire"), " Emerging Hotspots (High Activity + Recent Positives)"
@@ -186,7 +183,6 @@ mod_predictive_analytics_ui <- function(id) {
           title = "Zone Risk",
           icon = icon("map"),
 
-          # Risk KPIs
           layout_column_wrap(
             width = 1/5,
             value_box(
@@ -221,7 +217,6 @@ mod_predictive_analytics_ui <- function(id) {
             )
           ),
 
-          # Visualizations
           layout_columns(
             col_widths = c(8, 4),
             card(
@@ -238,9 +233,8 @@ mod_predictive_analytics_ui <- function(id) {
             )
           ),
 
-          # Risk table
           card(
-            card_header("Detailed Zone Risk Analysis"),
+            card_header("Detailed Zone Risk Analysis (Molecular + Serological)"),
             card_body(
               DT::DTOutput(ns("zone_risk_table"))
             )
@@ -251,6 +245,41 @@ mod_predictive_analytics_ui <- function(id) {
         nav_panel(
           title = "Structure Risk",
           icon = icon("hospital"),
+
+          # KPIs for Structure Risk
+          layout_column_wrap(
+            width = 1/5,
+            value_box(
+              title = "Structures Analyzed",
+              value = textOutput(ns("kpi_structures_total")),
+              showcase = icon("hospital"),
+              theme = "primary"
+            ),
+            value_box(
+              title = "Very High Risk",
+              value = textOutput(ns("kpi_structures_very_high")),
+              showcase = icon("exclamation-circle"),
+              theme = "danger"
+            ),
+            value_box(
+              title = "High Risk",
+              value = textOutput(ns("kpi_structures_high")),
+              showcase = icon("exclamation-triangle"),
+              theme = "warning"
+            ),
+            value_box(
+              title = "With Positives",
+              value = textOutput(ns("kpi_structures_with_pos")),
+              showcase = icon("virus"),
+              theme = "info"
+            ),
+            value_box(
+              title = "Active (30d)",
+              value = textOutput(ns("kpi_structures_active")),
+              showcase = icon("clock"),
+              theme = "success"
+            )
+          ),
 
           layout_columns(
             col_widths = c(6, 6),
@@ -272,7 +301,7 @@ mod_predictive_analytics_ui <- function(id) {
             card_header("Structure-Level Predictions"),
             card_body(
               p(class = "text-muted small mb-3",
-                "Predictions based on historical positivity rates, sampling frequency, and recency of activity."),
+                "Predictions based on historical positivity rates (molecular + serological), sampling frequency, and recency of activity."),
               DT::DTOutput(ns("structure_risk_table"))
             )
           )
@@ -283,7 +312,6 @@ mod_predictive_analytics_ui <- function(id) {
           title = "Demographics",
           icon = icon("users"),
 
-          # Demographic KPIs
           layout_column_wrap(
             width = 1/4,
             value_box(
@@ -312,17 +340,16 @@ mod_predictive_analytics_ui <- function(id) {
             )
           ),
 
-          # Demographics visualizations
           layout_columns(
             col_widths = c(6, 6),
             card(
-              card_header("Positivity Rate by Sex"),
+              card_header("Sample Distribution by Sex"),
               card_body_fill(
                 plotly::plotlyOutput(ns("sex_risk_plot"), height = "400px")
               )
             ),
             card(
-              card_header("Positivity Rate by Age Group"),
+              card_header("Sample Distribution by Age Group"),
               card_body_fill(
                 plotly::plotlyOutput(ns("age_risk_plot"), height = "400px")
               )
@@ -330,13 +357,12 @@ mod_predictive_analytics_ui <- function(id) {
           ),
 
           card(
-            card_header("Combined Demographic Risk Profile"),
+            card_header("Combined Demographic Distribution"),
             card_body_fill(
               plotly::plotlyOutput(ns("demographic_heatmap"), height = "350px")
             )
           ),
 
-          # Recommendation box
           card(
             card_header(class = "bg-info text-white", icon("lightbulb"), " Targeting Recommendations"),
             card_body(
@@ -383,7 +409,148 @@ mod_predictive_analytics_ui <- function(id) {
           )
         ),
 
-        # Tab 6: Data
+        # Tab 6: Geography
+        nav_panel(
+          title = "Geography",
+          icon = icon("globe-africa"),
+
+          layout_column_wrap(
+            width = 1/4,
+            value_box(
+              title = "Provinces Covered",
+              value = textOutput(ns("kpi_provinces")),
+              showcase = icon("map"),
+              theme = "primary"
+            ),
+            value_box(
+              title = "Health Zones",
+              value = textOutput(ns("kpi_health_zones")),
+              showcase = icon("map-marker-alt"),
+              theme = "info"
+            ),
+            value_box(
+              title = "Structures",
+              value = textOutput(ns("kpi_total_structures")),
+              showcase = icon("hospital"),
+              theme = "warning"
+            ),
+            value_box(
+              title = "Geographic Coverage",
+              value = textOutput(ns("kpi_coverage")),
+              showcase = icon("globe"),
+              theme = "success"
+            )
+          ),
+
+          card(
+            card_header("Geographic Distribution of Risk"),
+            card_body(
+              p(class = "text-muted small mb-3",
+                "Risk levels by health zone - larger bubbles indicate higher sample volumes, colors indicate risk category."),
+              plotly::plotlyOutput(ns("geographic_bubble_chart"), height = "500px")
+            )
+          ),
+
+          card(
+            card_header("Risk Summary by Province"),
+            card_body(
+              DT::DTOutput(ns("province_summary_table"))
+            )
+          )
+        ),
+
+        # Tab 7: Model Explanation
+        nav_panel(
+          title = "Model",
+          icon = icon("info-circle"),
+
+          card(
+            card_header(class = "bg-primary text-white", icon("brain"), " Predictive Model Explanation"),
+            card_body(
+              h4("Overview"),
+              p("This predictive analytics module uses historical laboratory data to identify health zones and structures at highest risk for HAT (Human African Trypanosomiasis) cases."),
+
+              h4("Data Sources"),
+              tags$ul(
+                tags$li(tags$strong("Biobank Samples:"), " Core demographic and geographic data from collected samples"),
+                tags$li(tags$strong("MIC qPCR (Molecular):"), " DNA/RNA detection using FinalCall results (Positive, Positive_DNA, Positive_RNA, LatePositive, Indeterminate)"),
+                tags$li(tags$strong("ELISA-PE:"), " Serological testing with Plasmodium Extract antigen (status_final: Positive, Borderline, Negative)"),
+                tags$li(tags$strong("ELISA-VSG:"), " Serological testing with Variable Surface Glycoprotein antigen"),
+                tags$li(tags$strong("iELISA:"), " Inhibition ELISA using LiTat 1.3 (L13) and LiTat 1.5 (L15) antigens")
+              ),
+
+              h4("Weighted Scoring System"),
+              p("Results are weighted to account for different confidence levels:"),
+
+              h5("Molecular (MIC qPCR) Weights:"),
+              tags$table(class = "table table-sm table-bordered",
+                tags$thead(tags$tr(tags$th("Result"), tags$th("Weight"), tags$th("Description"))),
+                tags$tbody(
+                  tags$tr(tags$td("Positive"), tags$td("1.0"), tags$td("Confirmed DNA+RNA detection")),
+                  tags$tr(tags$td("Positive_DNA / Positive_RNA"), tags$td("0.8"), tags$td("Single target detection")),
+                  tags$tr(tags$td("LatePositive"), tags$td("0.6"), tags$td("Late cycle amplification")),
+                  tags$tr(tags$td("Indeterminate"), tags$td("0.3"), tags$td("Inconclusive result"))
+                )
+              ),
+
+              h5("Serological (ELISA) Weights:"),
+              tags$table(class = "table table-sm table-bordered",
+                tags$thead(tags$tr(tags$th("Result"), tags$th("Weight"), tags$th("Description"))),
+                tags$tbody(
+                  tags$tr(tags$td("Positive"), tags$td("1.0"), tags$td("Clear positive (PP% >= 20 or DOD >= 0.3)")),
+                  tags$tr(tags$td("Borderline"), tags$td("0.5"), tags$td("Uncertain (PP% 15-20 or DOD 0.2-0.3)")),
+                  tags$tr(tags$td("Negative"), tags$td("0.0"), tags$td("No antibodies detected"))
+                )
+              ),
+
+              h4("Risk Score Calculation"),
+              p("Health Zone Risk Score (0-100) is calculated as:"),
+              tags$pre(class = "bg-light p-3",
+                "Risk Score = (Molecular Risk × 0.35) +
+             (Serological Risk × 0.30) +
+             (Sample Density × 0.20) +
+             (Recency Score × 0.15)"
+              ),
+
+              tags$ul(
+                tags$li(tags$strong("Molecular Risk:"), " Weighted MIC positivity rate × 10 (capped at 100)"),
+                tags$li(tags$strong("Serological Risk:"), " Weighted ELISA positivity rate × 10 (capped at 100)"),
+                tags$li(tags$strong("Sample Density:"), " Normalized sample count (0-100 scale)"),
+                tags$li(tags$strong("Recency Score:"), " 100 - (days since last sample / 2), minimum 0")
+              ),
+
+              h4("Risk Categories"),
+              tags$table(class = "table table-sm table-bordered",
+                tags$thead(tags$tr(tags$th("Category"), tags$th("Score Range"), tags$th("Action"))),
+                tags$tbody(
+                  tags$tr(class = "table-danger", tags$td("Very High"), tags$td(">= 75"), tags$td("Immediate priority surveillance")),
+                  tags$tr(class = "table-warning", tags$td("High"), tags$td("50-74"), tags$td("Enhanced monitoring recommended")),
+                  tags$tr(class = "table-info", tags$td("Medium"), tags$td("25-49"), tags$td("Regular surveillance")),
+                  tags$tr(class = "table-success", tags$td("Low"), tags$td("< 25"), tags$td("Routine monitoring"))
+                )
+              ),
+
+              h4("Structure Risk Calculation"),
+              p("Structure-level risk uses historical positivity with recency adjustment:"),
+              tags$ul(
+                tags$li("Historical positivity > 10%: Base score 90+"),
+                tags$li("Historical positivity 5-10%: Base score 70-90"),
+                tags$li("Historical positivity 0-5%: Base score 40-70"),
+                tags$li("Recency multiplier: 1.0 (<=30d), 0.9 (31-90d), 0.7 (91-180d), 0.5 (>180d)")
+              ),
+
+              h4("Limitations"),
+              tags$ul(
+                tags$li("Predictions are based on available data only - zones with no recent samples may have artificially low scores"),
+                tags$li("Small sample sizes reduce prediction confidence"),
+                tags$li("Model assumes historical patterns predict future occurrence"),
+                tags$li("Absence of positives does not guarantee absence of disease")
+              )
+            )
+          )
+        ),
+
+        # Tab 8: Data
         nav_panel(
           title = "Data",
           icon = icon("table"),
@@ -438,9 +605,8 @@ mod_predictive_analytics_server <- function(id,
         calculate_healthzone_risk(
           biobank_df = biobank_df(),
           mic_df = if ("molecular" %in% input$risk_factors) mic_df() else NULL,
-          elisa_df = if ("serological" %in% input$risk_factors) {
-            dplyr::bind_rows(elisa_pe_df(), elisa_vsg_df())
-          } else NULL,
+          elisa_pe_df = if ("serological" %in% input$risk_factors) elisa_pe_df() else NULL,
+          elisa_vsg_df = if ("serological" %in% input$risk_factors) elisa_vsg_df() else NULL,
           ielisa_df = if ("ielisa" %in% input$risk_factors) ielisa_df() else NULL
         )
       }, error = function(e) {
@@ -457,9 +623,8 @@ mod_predictive_analytics_server <- function(id,
         calculate_structure_risk(
           biobank_df = biobank_df(),
           mic_df = if ("molecular" %in% input$risk_factors) mic_df() else NULL,
-          elisa_df = if ("serological" %in% input$risk_factors) {
-            dplyr::bind_rows(elisa_pe_df(), elisa_vsg_df())
-          } else NULL,
+          elisa_pe_df = if ("serological" %in% input$risk_factors) elisa_pe_df() else NULL,
+          elisa_vsg_df = if ("serological" %in% input$risk_factors) elisa_vsg_df() else NULL,
           ielisa_df = if ("ielisa" %in% input$risk_factors) ielisa_df() else NULL
         )
       }, error = function(e) {
@@ -476,9 +641,8 @@ mod_predictive_analytics_server <- function(id,
         calculate_demographic_risk(
           biobank_df = biobank_df(),
           mic_df = if ("molecular" %in% input$risk_factors) mic_df() else NULL,
-          elisa_df = if ("serological" %in% input$risk_factors) {
-            dplyr::bind_rows(elisa_pe_df(), elisa_vsg_df())
-          } else NULL,
+          elisa_pe_df = if ("serological" %in% input$risk_factors) elisa_pe_df() else NULL,
+          elisa_vsg_df = if ("serological" %in% input$risk_factors) elisa_vsg_df() else NULL,
           ielisa_df = if ("ielisa" %in% input$risk_factors) ielisa_df() else NULL
         )
       }, error = function(e) {
@@ -495,6 +659,7 @@ mod_predictive_analytics_server <- function(id,
         calculate_temporal_predictions(
           biobank_df = biobank_df(),
           mic_df = if ("molecular" %in% input$risk_factors) mic_df() else NULL,
+          elisa_pe_df = if ("serological" %in% input$risk_factors) elisa_pe_df() else NULL,
           forecast_months = input$forecast_months
         )
       }, error = function(e) {
@@ -543,7 +708,6 @@ mod_predictive_analytics_server <- function(id,
     })
 
     output$kpi_confidence <- renderText({
-      # Based on data completeness
       bio <- biobank_df()
       if (is.null(bio) || nrow(bio) == 0) return("--")
 
@@ -562,11 +726,7 @@ mod_predictive_analytics_server <- function(id,
       DT::datatable(
         wl$priority_zones,
         rownames = FALSE,
-        options = list(
-          pageLength = 10,
-          dom = 't',
-          ordering = TRUE
-        ),
+        options = list(pageLength = 10, dom = 't', ordering = TRUE),
         class = "table-sm table-striped"
       ) %>%
         DT::formatRound("risk_score", 1) %>%
@@ -587,13 +747,10 @@ mod_predictive_analytics_server <- function(id,
 
       DT::datatable(
         wl$priority_structures %>%
-          dplyr::select(health_zone, structure, risk_score, risk_category, prediction),
+          dplyr::select(health_zone, structure, risk_score, risk_category, prediction,
+                        dplyr::any_of(c("mic_positive", "sero_positive"))),
         rownames = FALSE,
-        options = list(
-          pageLength = 10,
-          dom = 't',
-          ordering = TRUE
-        ),
+        options = list(pageLength = 10, dom = 't', ordering = TRUE),
         class = "table-sm table-striped"
       ) %>%
         DT::formatRound("risk_score", 1) %>%
@@ -613,25 +770,18 @@ mod_predictive_analytics_server <- function(id,
         return(DT::datatable(data.frame(Message = "No emerging hotspots identified")))
       }
 
+      cols_to_show <- intersect(
+        c("health_zone", "structure", "risk_score", "historical_positivity", "days_since_last", "prediction"),
+        names(wl$emerging_hotspots)
+      )
+
       DT::datatable(
-        wl$emerging_hotspots %>%
-          dplyr::select(health_zone, structure, risk_score, historical_positivity, days_since_last, prediction),
+        wl$emerging_hotspots %>% dplyr::select(dplyr::all_of(cols_to_show)),
         rownames = FALSE,
-        options = list(
-          pageLength = 10,
-          dom = 't',
-          ordering = TRUE
-        ),
+        options = list(pageLength = 10, dom = 't', ordering = TRUE),
         class = "table-sm"
       ) %>%
-        DT::formatRound(c("risk_score", "historical_positivity"), 1) %>%
-        DT::formatStyle(
-          "risk_score",
-          background = DT::styleColorBar(c(0, 100), "#dc3545"),
-          backgroundSize = "100% 90%",
-          backgroundRepeat = "no-repeat",
-          backgroundPosition = "center"
-        )
+        DT::formatRound(intersect(c("risk_score", "historical_positivity"), cols_to_show), 1)
     })
 
     # ========================================================================
@@ -686,11 +836,7 @@ mod_predictive_analytics_server <- function(id,
         color = ~risk_category,
         colors = color_palette,
         type = "bar",
-        hovertemplate = paste(
-          "<b>%{x}</b><br>",
-          "Risk Score: %{y:.1f}<br>",
-          "<extra></extra>"
-        )
+        hovertemplate = "<b>%{x}</b><br>Risk Score: %{y:.1f}<extra></extra>"
       ) %>%
         plotly::layout(
           xaxis = list(title = "", tickangle = -45),
@@ -719,13 +865,7 @@ mod_predictive_analytics_server <- function(id,
         labels = ~risk_category,
         values = ~n,
         type = "pie",
-        marker = list(colors = color_palette[risk_dist$risk_category]),
-        hovertemplate = paste(
-          "<b>%{label}</b><br>",
-          "Zones: %{value}<br>",
-          "Percentage: %{percent}<br>",
-          "<extra></extra>"
-        )
+        marker = list(colors = color_palette[risk_dist$risk_category])
       ) %>%
         plotly::layout(showlegend = TRUE)
     })
@@ -736,23 +876,20 @@ mod_predictive_analytics_server <- function(id,
         return(DT::datatable(data.frame(Message = "No data available")))
       }
 
+      # Include all relevant columns including serology
       display_cols <- c("health_zone", "risk_score", "risk_category", "total_samples")
-      if ("mic_any_positive" %in% names(zr)) display_cols <- c(display_cols, "mic_any_positive", "mic_positivity_rate")
-      if ("sero_positive" %in% names(zr)) display_cols <- c(display_cols, "sero_tested", "sero_positive", "sero_positivity_rate")
+      if ("mic_tested" %in% names(zr)) display_cols <- c(display_cols, "mic_tested", "mic_positive", "mic_positivity_rate")
+      if ("sero_tested" %in% names(zr)) display_cols <- c(display_cols, "sero_tested", "sero_positive", "sero_borderline", "sero_positivity_rate")
 
       display_cols <- display_cols[display_cols %in% names(zr)]
 
       DT::datatable(
         zr %>% dplyr::select(dplyr::all_of(display_cols)),
         rownames = FALSE,
-        options = list(
-          pageLength = 20,
-          scrollX = TRUE,
-          order = list(list(1, "desc"))
-        ),
+        options = list(pageLength = 20, scrollX = TRUE, order = list(list(1, "desc"))),
         class = "table-sm"
       ) %>%
-        DT::formatRound("risk_score", 1) %>%
+        DT::formatRound(intersect(c("risk_score", "mic_positivity_rate", "sero_positivity_rate"), display_cols), 2) %>%
         DT::formatStyle(
           "risk_category",
           backgroundColor = DT::styleEqual(
@@ -765,6 +902,36 @@ mod_predictive_analytics_server <- function(id,
     # ========================================================================
     # STRUCTURE RISK TAB OUTPUTS
     # ========================================================================
+
+    output$kpi_structures_total <- renderText({
+      sr <- structure_risk()
+      if (is.null(sr) || nrow(sr) == 0) return("--")
+      scales::comma(nrow(sr))
+    })
+
+    output$kpi_structures_very_high <- renderText({
+      sr <- structure_risk()
+      if (is.null(sr) || nrow(sr) == 0) return("--")
+      sum(sr$risk_category == "Very High", na.rm = TRUE)
+    })
+
+    output$kpi_structures_high <- renderText({
+      sr <- structure_risk()
+      if (is.null(sr) || nrow(sr) == 0) return("--")
+      sum(sr$risk_category == "High", na.rm = TRUE)
+    })
+
+    output$kpi_structures_with_pos <- renderText({
+      sr <- structure_risk()
+      if (is.null(sr) || nrow(sr) == 0 || !"historical_positivity" %in% names(sr)) return("--")
+      sum(sr$historical_positivity > 0, na.rm = TRUE)
+    })
+
+    output$kpi_structures_active <- renderText({
+      sr <- structure_risk()
+      if (is.null(sr) || nrow(sr) == 0 || !"days_since_last" %in% names(sr)) return("--")
+      sum(sr$days_since_last <= 30, na.rm = TRUE)
+    })
 
     output$structure_risk_bar <- plotly::renderPlotly({
       sr <- structure_risk()
@@ -789,12 +956,7 @@ mod_predictive_analytics_server <- function(id,
         y = ~risk_score,
         color = ~risk_category,
         colors = color_palette,
-        type = "bar",
-        hovertemplate = paste(
-          "<b>%{x}</b><br>",
-          "Risk Score: %{y:.1f}<br>",
-          "<extra></extra>"
-        )
+        type = "bar"
       ) %>%
         plotly::layout(
           xaxis = list(title = "", tickangle = -45),
@@ -810,7 +972,6 @@ mod_predictive_analytics_server <- function(id,
         return(plotly::plot_ly() %>% plotly::layout(title = "No data available"))
       }
 
-      # Get top zones and structures for heatmap
       top_zones <- sr %>%
         dplyr::group_by(health_zone) %>%
         dplyr::summarise(max_risk = max(risk_score, na.rm = TRUE), .groups = "drop") %>%
@@ -834,12 +995,7 @@ mod_predictive_analytics_server <- function(id,
         y = ~structure,
         z = ~risk_score,
         type = "heatmap",
-        colorscale = list(c(0, "#28a745"), c(0.5, "#ffc107"), c(1, "#dc3545")),
-        hovertemplate = paste(
-          "<b>%{y}</b> (%{x})<br>",
-          "Risk Score: %{z:.1f}<br>",
-          "<extra></extra>"
-        )
+        colorscale = list(c(0, "#28a745"), c(0.5, "#ffc107"), c(1, "#dc3545"))
       ) %>%
         plotly::layout(
           xaxis = list(title = "Health Zone", tickangle = -45),
@@ -854,20 +1010,18 @@ mod_predictive_analytics_server <- function(id,
         return(DT::datatable(data.frame(Message = "No data available")))
       }
 
+      display_cols <- c("health_zone", "structure", "risk_score", "risk_category", "prediction", "total_samples")
+      display_cols <- c(display_cols, intersect(c("mic_positive", "sero_positive", "historical_positivity", "days_since_last"), names(sr)))
+      display_cols <- display_cols[display_cols %in% names(sr)]
+
       DT::datatable(
-        sr %>%
-          dplyr::select(health_zone, structure, risk_score, risk_category, prediction,
-                        total_samples, dplyr::any_of(c("historical_positivity", "days_since_last"))),
+        sr %>% dplyr::select(dplyr::all_of(display_cols)),
         rownames = FALSE,
         filter = "top",
-        options = list(
-          pageLength = 20,
-          scrollX = TRUE,
-          order = list(list(2, "desc"))
-        ),
+        options = list(pageLength = 20, scrollX = TRUE, order = list(list(2, "desc"))),
         class = "table-sm"
       ) %>%
-        DT::formatRound("risk_score", 1) %>%
+        DT::formatRound(intersect(c("risk_score", "historical_positivity"), display_cols), 1) %>%
         DT::formatStyle(
           "prediction",
           color = DT::styleEqual(
@@ -885,10 +1039,9 @@ mod_predictive_analytics_server <- function(id,
     output$kpi_risk_sex <- renderText({
       dr <- demographic_risk()
       if (is.null(dr$sex_risk) || nrow(dr$sex_risk) == 0) return("--")
-      if (!"mic_positivity" %in% names(dr$sex_risk)) return("N/A")
-
+      # Return sex with highest sample count
       dr$sex_risk %>%
-        dplyr::filter(mic_positivity == max(mic_positivity, na.rm = TRUE)) %>%
+        dplyr::filter(total_samples == max(total_samples, na.rm = TRUE)) %>%
         dplyr::pull(Sex) %>%
         head(1)
     })
@@ -896,10 +1049,9 @@ mod_predictive_analytics_server <- function(id,
     output$kpi_risk_age <- renderText({
       dr <- demographic_risk()
       if (is.null(dr$age_risk) || nrow(dr$age_risk) == 0) return("--")
-      if (!"mic_positivity" %in% names(dr$age_risk)) return("N/A")
-
+      # Return age group with highest sample count
       dr$age_risk %>%
-        dplyr::filter(mic_positivity == max(mic_positivity, na.rm = TRUE)) %>%
+        dplyr::filter(total_samples == max(total_samples, na.rm = TRUE)) %>%
         dplyr::pull(age_group) %>%
         head(1)
     })
@@ -913,7 +1065,13 @@ mod_predictive_analytics_server <- function(id,
     output$kpi_demo_complete <- renderText({
       bio <- biobank_df()
       if (is.null(bio)) return("--")
-      complete <- sum(!is.na(bio$Sex) & !is.na(bio$Age), na.rm = TRUE)
+
+      sex_col <- if ("sex" %in% names(bio)) "sex" else if ("Sex" %in% names(bio)) "Sex" else NULL
+      age_col <- if ("age" %in% names(bio)) "age" else if ("Age" %in% names(bio)) "Age" else NULL
+
+      if (is.null(sex_col) || is.null(age_col)) return("N/A")
+
+      complete <- sum(!is.na(bio[[sex_col]]) & !is.na(bio[[age_col]]), na.rm = TRUE)
       paste0(scales::comma(complete), " (", round(complete/nrow(bio)*100, 1), "%)")
     })
 
@@ -925,40 +1083,19 @@ mod_predictive_analytics_server <- function(id,
 
       plot_data <- dr$sex_risk
 
-      if ("mic_positivity" %in% names(plot_data)) {
-        plotly::plot_ly(
-          data = plot_data,
-          x = ~Sex,
-          y = ~mic_positivity,
-          type = "bar",
-          marker = list(color = c("#17a2b8", "#e83e8c")),
-          text = ~paste0(round(mic_positivity, 2), "%"),
-          textposition = "outside",
-          hovertemplate = paste(
-            "<b>%{x}</b><br>",
-            "Positivity: %{y:.2f}%<br>",
-            "Tested: %{customdata}<br>",
-            "<extra></extra>"
-          ),
-          customdata = ~mic_tested
-        ) %>%
-          plotly::layout(
-            xaxis = list(title = ""),
-            yaxis = list(title = "Positivity Rate (%)")
-          )
-      } else {
-        plotly::plot_ly(
-          data = plot_data,
-          x = ~Sex,
-          y = ~total_samples,
-          type = "bar",
-          marker = list(color = c("#17a2b8", "#e83e8c"))
-        ) %>%
-          plotly::layout(
-            xaxis = list(title = ""),
-            yaxis = list(title = "Total Samples")
-          )
-      }
+      plotly::plot_ly(
+        data = plot_data,
+        x = ~Sex,
+        y = ~total_samples,
+        type = "bar",
+        marker = list(color = c("#17a2b8", "#e83e8c")),
+        text = ~scales::comma(total_samples),
+        textposition = "outside"
+      ) %>%
+        plotly::layout(
+          xaxis = list(title = ""),
+          yaxis = list(title = "Total Samples")
+        )
     })
 
     output$age_risk_plot <- plotly::renderPlotly({
@@ -967,42 +1104,19 @@ mod_predictive_analytics_server <- function(id,
         return(plotly::plot_ly() %>% plotly::layout(title = "No age data available"))
       }
 
-      plot_data <- dr$age_risk
-
-      if ("mic_positivity" %in% names(plot_data)) {
-        plotly::plot_ly(
-          data = plot_data,
-          x = ~age_group,
-          y = ~mic_positivity,
-          type = "bar",
-          marker = list(color = "#fd7e14"),
-          text = ~paste0(round(mic_positivity, 2), "%"),
-          textposition = "outside",
-          hovertemplate = paste(
-            "<b>Age %{x}</b><br>",
-            "Positivity: %{y:.2f}%<br>",
-            "Tested: %{customdata}<br>",
-            "<extra></extra>"
-          ),
-          customdata = ~mic_tested
-        ) %>%
-          plotly::layout(
-            xaxis = list(title = "Age Group"),
-            yaxis = list(title = "Positivity Rate (%)")
-          )
-      } else {
-        plotly::plot_ly(
-          data = plot_data,
-          x = ~age_group,
-          y = ~total_samples,
-          type = "bar",
-          marker = list(color = "#fd7e14")
-        ) %>%
-          plotly::layout(
-            xaxis = list(title = "Age Group"),
-            yaxis = list(title = "Total Samples")
-          )
-      }
+      plotly::plot_ly(
+        data = dr$age_risk,
+        x = ~age_group,
+        y = ~total_samples,
+        type = "bar",
+        marker = list(color = "#fd7e14"),
+        text = ~scales::comma(total_samples),
+        textposition = "outside"
+      ) %>%
+        plotly::layout(
+          xaxis = list(title = "Age Group"),
+          yaxis = list(title = "Total Samples")
+        )
     })
 
     output$demographic_heatmap <- plotly::renderPlotly({
@@ -1017,12 +1131,7 @@ mod_predictive_analytics_server <- function(id,
         y = ~Sex,
         z = ~total_samples,
         type = "heatmap",
-        colorscale = "Blues",
-        hovertemplate = paste(
-          "<b>%{y}, Age %{x}</b><br>",
-          "Samples: %{z}<br>",
-          "<extra></extra>"
-        )
+        colorscale = "Blues"
       ) %>%
         plotly::layout(
           xaxis = list(title = "Age Group"),
@@ -1035,36 +1144,36 @@ mod_predictive_analytics_server <- function(id,
 
       recommendations <- list()
 
-      if (!is.null(dr$sex_risk) && "mic_positivity" %in% names(dr$sex_risk)) {
-        high_risk_sex <- dr$sex_risk %>%
-          dplyr::filter(mic_positivity == max(mic_positivity, na.rm = TRUE)) %>%
+      if (!is.null(dr$sex_risk) && nrow(dr$sex_risk) > 0) {
+        high_sample_sex <- dr$sex_risk %>%
+          dplyr::filter(total_samples == max(total_samples, na.rm = TRUE)) %>%
           dplyr::pull(Sex)
 
-        if (length(high_risk_sex) > 0) {
+        if (length(high_sample_sex) > 0) {
           recommendations <- c(recommendations, tags$li(
-            tags$strong(high_risk_sex), " individuals show higher molecular positivity rates.",
-            " Consider targeted screening in this group."
+            tags$strong(high_sample_sex), " individuals represent the largest sample group.",
+            " Ensure balanced surveillance across both sexes."
           ))
         }
       }
 
-      if (!is.null(dr$age_risk) && "mic_positivity" %in% names(dr$age_risk)) {
-        high_risk_age <- dr$age_risk %>%
-          dplyr::filter(mic_positivity == max(mic_positivity, na.rm = TRUE)) %>%
+      if (!is.null(dr$age_risk) && nrow(dr$age_risk) > 0) {
+        high_sample_age <- dr$age_risk %>%
+          dplyr::filter(total_samples == max(total_samples, na.rm = TRUE)) %>%
           dplyr::pull(age_group)
 
-        if (length(high_risk_age) > 0) {
+        if (length(high_sample_age) > 0) {
           recommendations <- c(recommendations, tags$li(
-            "Age group ", tags$strong(high_risk_age), " shows highest positivity.",
-            " Focus surveillance efforts on this demographic."
+            "Age group ", tags$strong(high_sample_age), " has the most samples.",
+            " Consider if this reflects population at risk or sampling bias."
           ))
         }
       }
 
       if (length(recommendations) == 0) {
         recommendations <- list(tags$li(
-          "Insufficient positivity data to generate demographic recommendations.",
-          " Continue broad surveillance until patterns emerge."
+          "No demographic data available to generate recommendations.",
+          " Ensure biobank data includes sex and age information."
         ))
       }
 
@@ -1077,95 +1186,126 @@ mod_predictive_analytics_server <- function(id,
 
     output$trend_forecast_plot <- plotly::renderPlotly({
       tp <- temporal_predictions()
-      if (is.null(tp$positivity_trend) || nrow(tp$positivity_trend) == 0) {
-        return(plotly::plot_ly() %>% plotly::layout(title = "No trend data available"))
+
+      # Try positivity trend first
+      if (!is.null(tp$positivity_trend) && nrow(tp$positivity_trend) > 0) {
+        p <- plotly::plot_ly() %>%
+          plotly::add_lines(
+            data = tp$positivity_trend,
+            x = ~sample_month,
+            y = ~positivity_rate,
+            name = "Actual",
+            line = list(color = "#007bff", width = 2)
+          )
+
+        if ("positivity_ma" %in% names(tp$positivity_trend)) {
+          p <- p %>%
+            plotly::add_lines(
+              data = tp$positivity_trend %>% dplyr::filter(!is.na(positivity_ma)),
+              x = ~sample_month,
+              y = ~positivity_ma,
+              name = "3-Month MA",
+              line = list(color = "#6c757d", width = 2, dash = "dash")
+            )
+        }
+
+        if (!is.null(tp$forecast) && nrow(tp$forecast) > 0) {
+          p <- p %>%
+            plotly::add_lines(
+              data = tp$forecast,
+              x = ~sample_month,
+              y = ~predicted_positivity,
+              name = "Forecast",
+              line = list(color = "#dc3545", width = 2, dash = "dot")
+            )
+        }
+
+        return(p %>%
+          plotly::layout(
+            xaxis = list(title = "Month"),
+            yaxis = list(title = "Positivity Rate (%)"),
+            showlegend = TRUE,
+            legend = list(orientation = "h", y = -0.2)
+          ))
       }
 
-      p <- plotly::plot_ly() %>%
-        plotly::add_lines(
-          data = tp$positivity_trend,
+      # Fall back to monthly trend (sample counts)
+      if (!is.null(tp$monthly_trend) && nrow(tp$monthly_trend) > 0) {
+        return(plotly::plot_ly(
+          data = tp$monthly_trend,
           x = ~sample_month,
-          y = ~positivity_rate,
-          name = "Actual",
-          line = list(color = "#007bff", width = 2),
-          hovertemplate = paste(
-            "<b>%{x|%b %Y}</b><br>",
-            "Positivity: %{y:.2f}%<br>",
-            "<extra></extra>"
-          )
-        )
-
-      # Add moving average if available
-      if ("positivity_ma" %in% names(tp$positivity_trend)) {
-        p <- p %>%
-          plotly::add_lines(
-            data = tp$positivity_trend %>% dplyr::filter(!is.na(positivity_ma)),
-            x = ~sample_month,
-            y = ~positivity_ma,
-            name = "3-Month MA",
-            line = list(color = "#6c757d", width = 2, dash = "dash")
-          )
+          y = ~total_samples,
+          type = "scatter",
+          mode = "lines+markers",
+          name = "Samples"
+        ) %>%
+          plotly::layout(
+            xaxis = list(title = "Month"),
+            yaxis = list(title = "Samples Collected"),
+            title = "Monthly Sampling Activity (No positivity data available)"
+          ))
       }
 
-      # Add forecast if available
-      if (!is.null(tp$forecast) && nrow(tp$forecast) > 0) {
-        p <- p %>%
-          plotly::add_lines(
-            data = tp$forecast,
-            x = ~sample_month,
-            y = ~predicted_positivity,
-            name = "Forecast",
-            line = list(color = "#dc3545", width = 2, dash = "dot")
-          )
-      }
-
-      p %>%
-        plotly::layout(
-          xaxis = list(title = "Month"),
-          yaxis = list(title = "Positivity Rate (%)"),
-          showlegend = TRUE,
-          legend = list(orientation = "h", y = -0.2)
-        )
+      plotly::plot_ly() %>% plotly::layout(title = "No trend data available")
     })
 
     output$trend_summary_box <- renderUI({
       tp <- temporal_predictions()
 
-      if (is.null(tp$trend_summary)) {
-        return(div(
-          class = "text-center p-4",
-          icon("info-circle", class = "fa-2x text-muted mb-3"),
-          p("Insufficient data for trend analysis")
+      if (!is.null(tp$trend_summary)) {
+        trend_icon <- switch(
+          tp$trend_summary$trend_direction,
+          "Increasing" = icon("arrow-up", class = "text-danger"),
+          "Decreasing" = icon("arrow-down", class = "text-success"),
+          icon("minus", class = "text-warning")
+        )
+
+        return(tagList(
+          div(class = "mb-3",
+              h6("Recent Average Positivity"),
+              h3(paste0(tp$trend_summary$recent_avg_positivity, "%"))
+          ),
+          div(class = "mb-3",
+              h6("Trend Direction"),
+              h3(trend_icon, " ", tp$trend_summary$trend_direction)
+          ),
+          div(class = "mb-3",
+              h6("Forecast Confidence"),
+              span(
+                class = paste0("badge ", ifelse(tp$trend_summary$confidence == "High", "bg-success", "bg-warning")),
+                tp$trend_summary$confidence
+              )
+          )
         ))
       }
 
-      trend_icon <- switch(
-        tp$trend_summary$trend_direction,
-        "Increasing" = icon("arrow-up", class = "text-danger"),
-        "Decreasing" = icon("arrow-down", class = "text-success"),
-        icon("minus", class = "text-warning")
-      )
+      # Show monthly trend summary if available
+      if (!is.null(tp$monthly_trend) && nrow(tp$monthly_trend) > 0) {
+        total <- sum(tp$monthly_trend$total_samples, na.rm = TRUE)
+        months <- nrow(tp$monthly_trend)
 
-      tagList(
-        div(class = "mb-3",
-            h6("Recent Average Positivity"),
-            h3(paste0(tp$trend_summary$recent_avg_positivity, "%"))
-        ),
-        div(class = "mb-3",
-            h6("Trend Direction"),
-            h3(trend_icon, " ", tp$trend_summary$trend_direction)
-        ),
-        div(class = "mb-3",
-            h6("Forecast Confidence"),
-            span(
-              class = paste0("badge ",
-                             ifelse(tp$trend_summary$confidence == "High", "bg-success", "bg-warning")),
-              tp$trend_summary$confidence
-            )
-        ),
-        hr(),
-        p(class = "text-muted small",
-          "Based on ", input$forecast_months, " month forecast using historical patterns.")
+        return(tagList(
+          div(class = "mb-3",
+              h6("Total Samples"),
+              h3(scales::comma(total))
+          ),
+          div(class = "mb-3",
+              h6("Months of Data"),
+              h3(months)
+          ),
+          div(class = "mb-3",
+              h6("Avg Samples/Month"),
+              h3(scales::comma(round(total / months)))
+          ),
+          hr(),
+          p(class = "text-muted small", "Positivity trend requires MIC or ELISA data with results.")
+        ))
+      }
+
+      div(
+        class = "text-center p-4",
+        icon("info-circle", class = "fa-2x text-muted mb-3"),
+        p("Insufficient data for trend analysis")
       )
     })
 
@@ -1180,12 +1320,7 @@ mod_predictive_analytics_server <- function(id,
         x = ~sample_month,
         y = ~total_samples,
         type = "bar",
-        marker = list(color = "#17a2b8"),
-        hovertemplate = paste(
-          "<b>%{x|%b %Y}</b><br>",
-          "Samples: %{y}<br>",
-          "<extra></extra>"
-        )
+        marker = list(color = "#17a2b8")
       ) %>%
         plotly::layout(
           xaxis = list(title = "Month"),
@@ -1204,16 +1339,128 @@ mod_predictive_analytics_server <- function(id,
         x = ~month_of_year,
         y = ~avg_samples,
         type = "bar",
-        marker = list(color = "#28a745"),
-        hovertemplate = paste(
-          "<b>%{x}</b><br>",
-          "Avg Samples: %{y}<br>",
-          "<extra></extra>"
-        )
+        marker = list(color = "#28a745")
       ) %>%
         plotly::layout(
           xaxis = list(title = "Month"),
-          yaxis = list(title = "Average Samples")
+          yaxis = list(title = "Total Samples")
+        )
+    })
+
+    # ========================================================================
+    # GEOGRAPHY TAB OUTPUTS
+    # ========================================================================
+
+    output$kpi_provinces <- renderText({
+      bio <- biobank_df()
+      if (is.null(bio)) return("--")
+      province_col <- if ("province" %in% names(bio)) "province" else if ("Province" %in% names(bio)) "Province" else NULL
+      if (is.null(province_col)) return("N/A")
+      dplyr::n_distinct(bio[[province_col]], na.rm = TRUE)
+    })
+
+    output$kpi_health_zones <- renderText({
+      zr <- zone_risk()
+      if (is.null(zr) || nrow(zr) == 0) return("--")
+      nrow(zr)
+    })
+
+    output$kpi_total_structures <- renderText({
+      sr <- structure_risk()
+      if (is.null(sr) || nrow(sr) == 0) return("--")
+      nrow(sr)
+    })
+
+    output$kpi_coverage <- renderText({
+      zr <- zone_risk()
+      if (is.null(zr) || nrow(zr) == 0) return("--")
+      high_coverage <- sum(zr$total_samples >= 50, na.rm = TRUE)
+      paste0(round(high_coverage / nrow(zr) * 100, 0), "%")
+    })
+
+    output$geographic_bubble_chart <- plotly::renderPlotly({
+      zr <- zone_risk()
+      if (is.null(zr) || nrow(zr) == 0) {
+        return(plotly::plot_ly() %>% plotly::layout(title = "No geographic data available"))
+      }
+
+      color_palette <- c("Low" = "#28a745", "Medium" = "#ffc107",
+                         "High" = "#fd7e14", "Very High" = "#dc3545")
+
+      plotly::plot_ly(
+        data = zr,
+        x = ~reorder(health_zone, -risk_score),
+        y = ~risk_score,
+        size = ~total_samples,
+        color = ~risk_category,
+        colors = color_palette,
+        type = "scatter",
+        mode = "markers",
+        marker = list(sizemode = "diameter", sizeref = max(zr$total_samples) / 50),
+        text = ~paste0(health_zone, "\nRisk: ", round(risk_score, 1),
+                       "\nSamples: ", scales::comma(total_samples)),
+        hoverinfo = "text"
+      ) %>%
+        plotly::layout(
+          xaxis = list(title = "Health Zone", tickangle = -45),
+          yaxis = list(title = "Risk Score"),
+          showlegend = TRUE,
+          margin = list(b = 150)
+        )
+    })
+
+    output$province_summary_table <- DT::renderDT({
+      bio <- biobank_df()
+      zr <- zone_risk()
+
+      if (is.null(bio) || is.null(zr) || nrow(zr) == 0) {
+        return(DT::datatable(data.frame(Message = "No data available")))
+      }
+
+      province_col <- if ("province" %in% names(bio)) "province" else if ("Province" %in% names(bio)) "Province" else NULL
+
+      if (is.null(province_col)) {
+        # Show zone summary instead
+        return(DT::datatable(
+          zr %>%
+            dplyr::group_by(risk_category) %>%
+            dplyr::summarise(
+              zones = dplyr::n(),
+              total_samples = sum(total_samples, na.rm = TRUE),
+              avg_risk_score = round(mean(risk_score, na.rm = TRUE), 1),
+              .groups = "drop"
+            ),
+          rownames = FALSE,
+          options = list(dom = 't')
+        ))
+      }
+
+      # Province-level summary
+      bio <- bio %>% dplyr::rename(province = !!rlang::sym(province_col))
+
+      province_zones <- bio %>%
+        dplyr::filter(!is.na(province), !is.na(health_zone)) %>%
+        dplyr::distinct(province, health_zone)
+
+      province_summary <- province_zones %>%
+        dplyr::left_join(zr %>% dplyr::select(health_zone, risk_score, risk_category), by = "health_zone") %>%
+        dplyr::group_by(province) %>%
+        dplyr::summarise(
+          health_zones = dplyr::n(),
+          high_risk_zones = sum(risk_category %in% c("High", "Very High"), na.rm = TRUE),
+          avg_risk_score = round(mean(risk_score, na.rm = TRUE), 1),
+          .groups = "drop"
+        ) %>%
+        dplyr::arrange(dplyr::desc(avg_risk_score))
+
+      DT::datatable(
+        province_summary,
+        rownames = FALSE,
+        options = list(pageLength = 15, dom = 't')
+      ) %>%
+        DT::formatStyle(
+          "high_risk_zones",
+          backgroundColor = DT::styleInterval(c(1, 3), c("#d4edda", "#fff3cd", "#f8d7da"))
         )
     })
 
@@ -1272,26 +1519,23 @@ mod_predictive_analytics_server <- function(id,
         tryCatch({
           wb <- openxlsx::createWorkbook()
 
-          # Watchlist sheet
           wl <- watchlist()
-          if (!is.null(wl$priority_zones)) {
+          if (!is.null(wl$priority_zones) && nrow(wl$priority_zones) > 0) {
             openxlsx::addWorksheet(wb, "Priority Zones")
             openxlsx::writeData(wb, "Priority Zones", wl$priority_zones)
           }
 
-          if (!is.null(wl$priority_structures)) {
+          if (!is.null(wl$priority_structures) && nrow(wl$priority_structures) > 0) {
             openxlsx::addWorksheet(wb, "Priority Structures")
             openxlsx::writeData(wb, "Priority Structures", wl$priority_structures)
           }
 
-          # Zone risk
           zr <- zone_risk()
           if (!is.null(zr) && nrow(zr) > 0) {
             openxlsx::addWorksheet(wb, "Zone Risk Analysis")
             openxlsx::writeData(wb, "Zone Risk Analysis", zr)
           }
 
-          # Structure risk
           sr <- structure_risk()
           if (!is.null(sr) && nrow(sr) > 0) {
             openxlsx::addWorksheet(wb, "Structure Risk Analysis")

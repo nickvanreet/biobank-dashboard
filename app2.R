@@ -36,6 +36,7 @@ ui <- do.call(
       # New comprehensive analysis modules
       mod_sample_journey_ui("sample_journey"),
       mod_sample_processing_ui("sample_processing"),
+      mod_overview_assays_ui("overview_assays"),
       mod_predictive_analytics_ui("predictive_analytics")  # Predictive Analytics (renamed from Concordance)
     )
   )

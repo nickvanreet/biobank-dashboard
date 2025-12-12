@@ -114,22 +114,24 @@ calculate_healthzone_risk <- function(biobank_df, mic_df = NULL, elisa_df = NULL
       hz_col <- get_col_name(mic_df, c("health_zone", "HealthZone"))
 
       if (!is.null(hz_col)) {
-        mic_positivity <- mic_df %>%
-          dplyr::rename(health_zone = !!rlang::sym(hz_col)) %>%
-          dplyr::filter(!is.na(health_zone)) %>%
-          dplyr::group_by(health_zone) %>%
-          dplyr::summarise(
-            mic_tested = dplyr::n(),
-            mic_dna_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "DNA+"), na.rm = TRUE),
-            mic_rna_positive = sum(RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "RNA+"), na.rm = TRUE),
-            mic_any_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "DNA+") |
-                                     RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "RNA+"), na.rm = TRUE),
-            .groups = "drop"
-          ) %>%
-          dplyr::mutate(
-            mic_positivity_rate = dplyr::if_else(mic_tested > 0, mic_any_positive / mic_tested * 100, 0)
-          )
-        zone_summary <- dplyr::left_join(zone_summary, mic_positivity, by = "health_zone")
+        # MIC data uses FinalCall column with values: Positive, Negative, LatePositive, etc.
+        final_call_col <- get_col_name(mic_df, c("FinalCall", "final_call", "Result", "result"))
+
+        if (!is.null(final_call_col)) {
+          mic_positivity <- mic_df %>%
+            dplyr::rename(health_zone = !!rlang::sym(hz_col)) %>%
+            dplyr::filter(!is.na(health_zone)) %>%
+            dplyr::group_by(health_zone) %>%
+            dplyr::summarise(
+              mic_tested = dplyr::n(),
+              mic_any_positive = sum(grepl("Positive|Pos|DNA\\+|RNA\\+", .data[[final_call_col]], ignore.case = TRUE), na.rm = TRUE),
+              .groups = "drop"
+            ) %>%
+            dplyr::mutate(
+              mic_positivity_rate = dplyr::if_else(mic_tested > 0, mic_any_positive / mic_tested * 100, 0)
+            )
+          zone_summary <- dplyr::left_join(zone_summary, mic_positivity, by = "health_zone")
+        }
       }
     }
 
@@ -280,19 +282,23 @@ calculate_structure_risk <- function(biobank_df, mic_df = NULL, elisa_df = NULL,
       mic_df <- standardize_columns(mic_df)
 
       if ("structure" %in% names(mic_df) && "health_zone" %in% names(mic_df)) {
-        mic_structure <- mic_df %>%
-          dplyr::filter(!is.na(structure)) %>%
-          dplyr::group_by(health_zone, structure) %>%
-          dplyr::summarise(
-            mic_tested = dplyr::n(),
-            mic_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "DNA+") |
-                                 RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "RNA+"), na.rm = TRUE),
-            .groups = "drop"
-          ) %>%
-          dplyr::mutate(mic_positivity = dplyr::if_else(mic_tested > 0, mic_positive / mic_tested * 100, 0))
+        # MIC data uses FinalCall column
+        final_call_col <- get_col_name(mic_df, c("FinalCall", "final_call", "Result", "result"))
 
-        structure_data <- dplyr::left_join(structure_data, mic_structure,
-                                            by = c("health_zone", "structure"))
+        if (!is.null(final_call_col)) {
+          mic_structure <- mic_df %>%
+            dplyr::filter(!is.na(structure)) %>%
+            dplyr::group_by(health_zone, structure) %>%
+            dplyr::summarise(
+              mic_tested = dplyr::n(),
+              mic_positive = sum(grepl("Positive|Pos|DNA\\+|RNA\\+", .data[[final_call_col]], ignore.case = TRUE), na.rm = TRUE),
+              .groups = "drop"
+            ) %>%
+            dplyr::mutate(mic_positivity = dplyr::if_else(mic_tested > 0, mic_positive / mic_tested * 100, 0))
+
+          structure_data <- dplyr::left_join(structure_data, mic_structure,
+                                              by = c("health_zone", "structure"))
+        }
       }
     }
 
@@ -435,26 +441,30 @@ calculate_demographic_risk <- function(biobank_df, mic_df = NULL, elisa_df = NUL
         mic_sex_col <- get_col_name(mic_df, c("sex", "Sex", "sexe"))
 
         if (!is.null(mic_sex_col)) {
-          mic_sex <- mic_df %>%
-            dplyr::rename(sex = !!rlang::sym(mic_sex_col)) %>%
-            dplyr::mutate(
-              Sex = dplyr::case_when(
-                sex %in% c("M", "Male", "Homme") ~ "Male",
-                sex %in% c("F", "Female", "Femme") ~ "Female",
-                TRUE ~ NA_character_
-              )
-            ) %>%
-            dplyr::filter(!is.na(Sex)) %>%
-            dplyr::group_by(Sex) %>%
-            dplyr::summarise(
-              mic_tested = dplyr::n(),
-              mic_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "DNA+") |
-                                   RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "RNA+"), na.rm = TRUE),
-              .groups = "drop"
-            ) %>%
-            dplyr::mutate(mic_positivity = dplyr::if_else(mic_tested > 0, mic_positive / mic_tested * 100, 0))
+          # Get FinalCall column
+          final_call_col <- get_col_name(mic_df, c("FinalCall", "final_call", "Result", "result"))
 
-          sex_risk <- dplyr::left_join(sex_risk, mic_sex, by = "Sex")
+          if (!is.null(final_call_col)) {
+            mic_sex <- mic_df %>%
+              dplyr::rename(sex = !!rlang::sym(mic_sex_col)) %>%
+              dplyr::mutate(
+                Sex = dplyr::case_when(
+                  sex %in% c("M", "Male", "Homme") ~ "Male",
+                  sex %in% c("F", "Female", "Femme") ~ "Female",
+                  TRUE ~ NA_character_
+                )
+              ) %>%
+              dplyr::filter(!is.na(Sex)) %>%
+              dplyr::group_by(Sex) %>%
+              dplyr::summarise(
+                mic_tested = dplyr::n(),
+                mic_positive = sum(grepl("Positive|Pos|DNA\\+|RNA\\+", .data[[final_call_col]], ignore.case = TRUE), na.rm = TRUE),
+                .groups = "drop"
+              ) %>%
+              dplyr::mutate(mic_positivity = dplyr::if_else(mic_tested > 0, mic_positive / mic_tested * 100, 0))
+
+            sex_risk <- dplyr::left_join(sex_risk, mic_sex, by = "Sex")
+          }
         }
       }
 
@@ -497,33 +507,37 @@ calculate_demographic_risk <- function(biobank_df, mic_df = NULL, elisa_df = NUL
         mic_age_col <- get_col_name(mic_df, c("age", "Age"))
 
         if (!is.null(mic_age_col)) {
-          mic_age <- mic_df %>%
-            dplyr::rename(age = !!rlang::sym(mic_age_col)) %>%
-            dplyr::filter(!is.na(age), age >= 0, age <= 120) %>%
-            dplyr::mutate(
-              age_group = dplyr::case_when(
-                age < 5 ~ "0-4",
-                age < 15 ~ "5-14",
-                age < 25 ~ "15-24",
-                age < 35 ~ "25-34",
-                age < 45 ~ "35-44",
-                age < 55 ~ "45-54",
-                age < 65 ~ "55-64",
-                TRUE ~ "65+"
-              ),
-              age_group = factor(age_group, levels = c("0-4", "5-14", "15-24", "25-34",
-                                                         "35-44", "45-54", "55-64", "65+"))
-            ) %>%
-            dplyr::group_by(age_group) %>%
-            dplyr::summarise(
-              mic_tested = dplyr::n(),
-              mic_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "DNA+") |
-                                   RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "RNA+"), na.rm = TRUE),
-              .groups = "drop"
-            ) %>%
-            dplyr::mutate(mic_positivity = dplyr::if_else(mic_tested > 0, mic_positive / mic_tested * 100, 0))
+          # Get FinalCall column
+          final_call_col <- get_col_name(mic_df, c("FinalCall", "final_call", "Result", "result"))
 
-          age_risk <- dplyr::left_join(age_risk, mic_age, by = "age_group")
+          if (!is.null(final_call_col)) {
+            mic_age <- mic_df %>%
+              dplyr::rename(age = !!rlang::sym(mic_age_col)) %>%
+              dplyr::filter(!is.na(age), age >= 0, age <= 120) %>%
+              dplyr::mutate(
+                age_group = dplyr::case_when(
+                  age < 5 ~ "0-4",
+                  age < 15 ~ "5-14",
+                  age < 25 ~ "15-24",
+                  age < 35 ~ "25-34",
+                  age < 45 ~ "35-44",
+                  age < 55 ~ "45-54",
+                  age < 65 ~ "55-64",
+                  TRUE ~ "65+"
+                ),
+                age_group = factor(age_group, levels = c("0-4", "5-14", "15-24", "25-34",
+                                                           "35-44", "45-54", "55-64", "65+"))
+              ) %>%
+              dplyr::group_by(age_group) %>%
+              dplyr::summarise(
+                mic_tested = dplyr::n(),
+                mic_positive = sum(grepl("Positive|Pos|DNA\\+|RNA\\+", .data[[final_call_col]], ignore.case = TRUE), na.rm = TRUE),
+                .groups = "drop"
+              ) %>%
+              dplyr::mutate(mic_positivity = dplyr::if_else(mic_tested > 0, mic_positive / mic_tested * 100, 0))
+
+            age_risk <- dplyr::left_join(age_risk, mic_age, by = "age_group")
+          }
         }
       }
 
@@ -635,23 +649,26 @@ calculate_temporal_predictions <- function(biobank_df, mic_df = NULL, forecast_m
       if (!is.null(mic_date_col)) {
         mic_df$date_prel <- as.Date(mic_df[[mic_date_col]])
 
-        monthly_positivity <- mic_df %>%
-          dplyr::filter(!is.na(date_prel)) %>%
-          dplyr::mutate(
-            sample_month = lubridate::floor_date(date_prel, "month")
-          ) %>%
-          dplyr::filter(!is.na(sample_month)) %>%
-          dplyr::group_by(sample_month) %>%
-          dplyr::summarise(
-            mic_tested = dplyr::n(),
-            mic_positive = sum(DNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "DNA+") |
-                                 RNA_Result %in% c("Positive", "POSITIVE", "POS", "Pos", "RNA+"), na.rm = TRUE),
-            .groups = "drop"
-          ) %>%
-          dplyr::mutate(
-            positivity_rate = dplyr::if_else(mic_tested > 0, mic_positive / mic_tested * 100, 0)
-          ) %>%
-          dplyr::arrange(sample_month)
+        # Get FinalCall column
+        final_call_col <- get_col_name(mic_df, c("FinalCall", "final_call", "Result", "result"))
+
+        if (!is.null(final_call_col)) {
+          monthly_positivity <- mic_df %>%
+            dplyr::filter(!is.na(date_prel)) %>%
+            dplyr::mutate(
+              sample_month = lubridate::floor_date(date_prel, "month")
+            ) %>%
+            dplyr::filter(!is.na(sample_month)) %>%
+            dplyr::group_by(sample_month) %>%
+            dplyr::summarise(
+              mic_tested = dplyr::n(),
+              mic_positive = sum(grepl("Positive|Pos|DNA\\+|RNA\\+", .data[[final_call_col]], ignore.case = TRUE), na.rm = TRUE),
+              .groups = "drop"
+            ) %>%
+            dplyr::mutate(
+              positivity_rate = dplyr::if_else(mic_tested > 0, mic_positive / mic_tested * 100, 0)
+            ) %>%
+            dplyr::arrange(sample_month)
 
         # Add moving average if enough data
         if (nrow(monthly_positivity) >= 3) {
@@ -690,6 +707,7 @@ calculate_temporal_predictions <- function(biobank_df, mic_df = NULL, forecast_m
             confidence = ifelse(nrow(monthly_positivity) >= 12, "High", "Moderate")
           )
         }
+        }  # Close final_call_col check
       }
     }
 

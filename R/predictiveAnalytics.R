@@ -285,6 +285,16 @@ calculate_healthzone_risk <- function(biobank_df, mic_df = NULL,
 
     # Combine all serological data
     if (!is.null(sero_by_zone) && nrow(sero_by_zone) > 0) {
+      # Ensure all required columns exist with default 0 values
+      sero_cols <- c("pe_tested", "pe_positive", "pe_borderline", "pe_weighted",
+                     "vsg_tested", "vsg_positive", "vsg_borderline", "vsg_weighted",
+                     "ielisa_tested", "ielisa_positive")
+      for (col in sero_cols) {
+        if (!col %in% names(sero_by_zone)) {
+          sero_by_zone[[col]] <- 0
+        }
+      }
+
       # Replace NAs with 0
       sero_by_zone <- sero_by_zone %>%
         dplyr::mutate(dplyr::across(where(is.numeric), ~tidyr::replace_na(., 0)))
@@ -292,10 +302,10 @@ calculate_healthzone_risk <- function(biobank_df, mic_df = NULL,
       # Calculate combined metrics
       sero_by_zone <- sero_by_zone %>%
         dplyr::mutate(
-          sero_tested = tidyr::replace_na(pe_tested, 0) + tidyr::replace_na(vsg_tested, 0) + tidyr::replace_na(ielisa_tested, 0),
-          sero_positive = tidyr::replace_na(pe_positive, 0) + tidyr::replace_na(vsg_positive, 0) + tidyr::replace_na(ielisa_positive, 0),
-          sero_borderline = tidyr::replace_na(pe_borderline, 0) + tidyr::replace_na(vsg_borderline, 0),
-          sero_weighted = tidyr::replace_na(pe_weighted, 0) + tidyr::replace_na(vsg_weighted, 0) + tidyr::replace_na(ielisa_positive, 0),
+          sero_tested = pe_tested + vsg_tested + ielisa_tested,
+          sero_positive = pe_positive + vsg_positive + ielisa_positive,
+          sero_borderline = pe_borderline + vsg_borderline,
+          sero_weighted = pe_weighted + vsg_weighted + ielisa_positive,
           sero_positivity_rate = dplyr::if_else(sero_tested > 0, sero_positive / sero_tested * 100, 0),
           sero_weighted_rate = dplyr::if_else(sero_tested > 0, sero_weighted / sero_tested * 100, 0)
         ) %>%
@@ -527,12 +537,22 @@ calculate_structure_risk <- function(biobank_df, mic_df = NULL,
 
     # Combine serological data
     if (!is.null(sero_structure) && nrow(sero_structure) > 0) {
+      # Ensure all required columns exist with default 0 values
+      sero_cols <- c("pe_tested", "pe_positive", "pe_borderline",
+                     "vsg_tested", "vsg_positive", "vsg_borderline",
+                     "ielisa_tested", "ielisa_positive")
+      for (col in sero_cols) {
+        if (!col %in% names(sero_structure)) {
+          sero_structure[[col]] <- 0
+        }
+      }
+
       sero_structure <- sero_structure %>%
         dplyr::mutate(dplyr::across(where(is.numeric), ~tidyr::replace_na(., 0))) %>%
         dplyr::mutate(
-          sero_tested = tidyr::replace_na(pe_tested, 0) + tidyr::replace_na(vsg_tested, 0) + tidyr::replace_na(ielisa_tested, 0),
-          sero_positive = tidyr::replace_na(pe_positive, 0) + tidyr::replace_na(vsg_positive, 0) + tidyr::replace_na(ielisa_positive, 0),
-          sero_borderline = tidyr::replace_na(pe_borderline, 0) + tidyr::replace_na(vsg_borderline, 0),
+          sero_tested = pe_tested + vsg_tested + ielisa_tested,
+          sero_positive = pe_positive + vsg_positive + ielisa_positive,
+          sero_borderline = pe_borderline + vsg_borderline,
           sero_weighted = sero_positive + (sero_borderline * 0.5),
           sero_positivity = dplyr::if_else(sero_tested > 0, sero_weighted / sero_tested * 100, 0)
         ) %>%

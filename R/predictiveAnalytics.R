@@ -166,6 +166,14 @@ calculate_healthzone_risk <- function(biobank_df, mic_df = NULL, elisa_df = NULL
     zone_summary <- zone_summary %>%
       dplyr::mutate(dplyr::across(where(is.numeric), ~tidyr::replace_na(., 0)))
 
+    # Add missing columns with default values if they don't exist
+    if (!"mic_positivity_rate" %in% names(zone_summary)) {
+      zone_summary$mic_positivity_rate <- 0
+    }
+    if (!"elisa_positivity_rate" %in% names(zone_summary)) {
+      zone_summary$elisa_positivity_rate <- 0
+    }
+
     # Calculate composite risk score
     zone_summary <- zone_summary %>%
       dplyr::mutate(
@@ -175,17 +183,9 @@ calculate_healthzone_risk <- function(biobank_df, mic_df = NULL, elisa_df = NULL
         } else {
           50
         },
-        # Higher positivity = higher risk
-        molecular_risk = dplyr::if_else(
-          "mic_positivity_rate" %in% names(.) & !is.na(mic_positivity_rate),
-          pmin(100, mic_positivity_rate * 10),  # Scale up for visibility
-          0
-        ),
-        serological_risk = dplyr::if_else(
-          "elisa_positivity_rate" %in% names(.) & !is.na(elisa_positivity_rate),
-          pmin(100, elisa_positivity_rate * 10),
-          0
-        ),
+        # Higher positivity = higher risk (scale up for visibility)
+        molecular_risk = pmin(100, mic_positivity_rate * 10),
+        serological_risk = pmin(100, elisa_positivity_rate * 10),
         # Recency factor - more recent activity = higher monitoring priority
         days_since_last = as.numeric(Sys.Date() - last_sample_date),
         recency_score = pmax(0, 100 - days_since_last / 2),  # Decays over ~200 days

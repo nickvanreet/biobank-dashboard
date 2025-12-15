@@ -1505,53 +1505,136 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
 
           if (nrow(zone_data) > 0) {
             zd <- zone_data[1, ]
-            return(
-              div(
-                class = "row",
+
+            # Find all health structures in this zone
+            zone_search_pattern <- paste0("ZS ", zone_name)
+            zone_structures <- health_structures_data %>%
+              dplyr::filter(zone_sante == zone_search_pattern)
+
+            # Endemicity styling
+            endemicity_colors <- c("A" = "#DC2626", "B" = "#F59E0B", "C" = "#10B981")
+            endemicity_labels <- c("A" = "Haute", "B" = "Moyenne", "C" = "Basse")
+            endemicity_icons <- c("A" = "exclamation-triangle", "B" = "exclamation-circle", "C" = "check-circle")
+            endemicity_bg <- c("A" = "rgba(220, 38, 38, 0.1)", "B" = "rgba(245, 158, 11, 0.1)", "C" = "rgba(16, 185, 129, 0.1)")
+
+            # Build health structures UI
+            structures_ui <- if (nrow(zone_structures) > 0) {
+              structure_items <- lapply(seq_len(nrow(zone_structures)), function(i) {
+                s <- zone_structures[i, ]
+                end_color <- endemicity_colors[s$endemicite]
+                end_label <- endemicity_labels[s$endemicite]
+                end_icon <- endemicity_icons[s$endemicite]
+                end_bg <- endemicity_bg[s$endemicite]
+
+                # Determine structure type icon
+                struct_icon <- if (grepl("^HGR", s$structure)) {
+                  "hospital"
+                } else if (grepl("^CS", s$structure)) {
+                  "clinic-medical"
+                } else if (grepl("^HS", s$structure)) {
+                  "house-medical"
+                } else {
+                  "plus-square"
+                }
+
                 div(
-                  class = "col-md-3",
-                  h5(icon("map-marker-alt"), " ", zone_name),
-                  tags$table(
-                    class = "table table-sm table-borderless mb-0",
-                    tags$tr(tags$td(tags$strong("Province:")), tags$td(zd$province)),
-                    tags$tr(tags$td(tags$strong("Total Samples:")), tags$td(tags$strong(scales::comma(zd$n_samples))))
-                  )
-                ),
-                div(
-                  class = "col-md-4",
-                  h6(icon("dna"), " Molecular (MIC)"),
-                  tags$table(
-                    class = "table table-sm table-borderless mb-0",
-                    tags$tr(tags$td("DNA+ (177T):"), tags$td(zd$mic_dna_pos)),
-                    tags$tr(tags$td("RNA+ (18S2):"), tags$td(zd$mic_rna_pos)),
-                    tags$tr(tags$td("TNA+ (DNA+RNA):"), tags$td(zd$mic_tna_pos)),
-                    tags$tr(tags$td("Any positive:"), tags$td(zd$mic_any_pos)),
-                    tags$tr(tags$td("Total tested:"), tags$td(zd$mic_total)),
-                    tags$tr(tags$td(tags$strong("Rate:")), tags$td(sprintf("%.1f%%", zd$molecular_rate)))
-                  )
-                ),
-                div(
-                  class = "col-md-5",
-                  h6(icon("flask"), " Serological"),
+                  style = paste0(
+                    "background: ", end_bg, "; ",
+                    "border-left: 3px solid ", end_color, "; ",
+                    "padding: 6px 10px; margin-bottom: 6px; border-radius: 4px;"
+                  ),
                   div(
-                    class = "row",
+                    style = "display: flex; align-items: center; justify-content: space-between;",
                     div(
-                      class = "col-6",
-                      tags$table(
-                        class = "table table-sm table-borderless mb-0",
-                        tags$tr(tags$td("ELISA-PE+:"), tags$td(paste0(zd$elisa_pe_pos, " / ", zd$elisa_pe_total))),
-                        tags$tr(tags$td("ELISA-VSG+:"), tags$td(paste0(zd$elisa_vsg_pos, " / ", zd$elisa_vsg_total)))
-                      )
+                      icon(struct_icon, style = paste0("color: ", end_color, "; margin-right: 8px;")),
+                      tags$span(style = "font-weight: 500;", s$structure)
                     ),
                     div(
-                      class = "col-6",
-                      tags$table(
-                        class = "table table-sm table-borderless mb-0",
-                        tags$tr(tags$td("iELISA L1.3+:"), tags$td(zd$ielisa_l13_pos)),
-                        tags$tr(tags$td("iELISA L1.5+:"), tags$td(zd$ielisa_l15_pos)),
-                        tags$tr(tags$td(tags$strong("Sero Rate:")), tags$td(sprintf("%.1f%%", zd$sero_rate)))
+                      style = paste0("color: ", end_color, "; font-size: 0.85em;"),
+                      icon(end_icon, style = "margin-right: 4px;"),
+                      tags$span(paste0(s$endemicite, " - ", end_label))
+                    )
+                  )
+                )
+              })
+              div(structure_items)
+            } else {
+              div(
+                class = "text-muted",
+                style = "font-style: italic; padding: 8px;",
+                icon("info-circle", class = "me-1"),
+                "No health structures registered in this zone"
+              )
+            }
+
+            return(
+              div(
+                # First row: Zone info and test results
+                div(
+                  class = "row",
+                  div(
+                    class = "col-md-3",
+                    h5(icon("map-marker-alt"), " ", zone_name),
+                    tags$table(
+                      class = "table table-sm table-borderless mb-0",
+                      tags$tr(tags$td(tags$strong("Province:")), tags$td(zd$province)),
+                      tags$tr(tags$td(tags$strong("Total Samples:")), tags$td(tags$strong(scales::comma(zd$n_samples))))
+                    )
+                  ),
+                  div(
+                    class = "col-md-4",
+                    h6(icon("dna"), " Molecular (MIC)"),
+                    tags$table(
+                      class = "table table-sm table-borderless mb-0",
+                      tags$tr(tags$td("DNA+ (177T):"), tags$td(zd$mic_dna_pos)),
+                      tags$tr(tags$td("RNA+ (18S2):"), tags$td(zd$mic_rna_pos)),
+                      tags$tr(tags$td("TNA+ (DNA+RNA):"), tags$td(zd$mic_tna_pos)),
+                      tags$tr(tags$td("Any positive:"), tags$td(zd$mic_any_pos)),
+                      tags$tr(tags$td("Total tested:"), tags$td(zd$mic_total)),
+                      tags$tr(tags$td(tags$strong("Rate:")), tags$td(sprintf("%.1f%%", zd$molecular_rate)))
+                    )
+                  ),
+                  div(
+                    class = "col-md-5",
+                    h6(icon("flask"), " Serological"),
+                    div(
+                      class = "row",
+                      div(
+                        class = "col-6",
+                        tags$table(
+                          class = "table table-sm table-borderless mb-0",
+                          tags$tr(tags$td("ELISA-PE+:"), tags$td(paste0(zd$elisa_pe_pos, " / ", zd$elisa_pe_total))),
+                          tags$tr(tags$td("ELISA-VSG+:"), tags$td(paste0(zd$elisa_vsg_pos, " / ", zd$elisa_vsg_total)))
+                        )
+                      ),
+                      div(
+                        class = "col-6",
+                        tags$table(
+                          class = "table table-sm table-borderless mb-0",
+                          tags$tr(tags$td("iELISA L1.3+:"), tags$td(zd$ielisa_l13_pos)),
+                          tags$tr(tags$td("iELISA L1.5+:"), tags$td(zd$ielisa_l15_pos)),
+                          tags$tr(tags$td(tags$strong("Sero Rate:")), tags$td(sprintf("%.1f%%", zd$sero_rate)))
+                        )
                       )
                     )
+                  )
+                ),
+                # Second row: Health Structures in this zone
+                tags$hr(style = "margin: 12px 0 10px 0;"),
+                div(
+                  h6(
+                    icon("hospital-alt", style = "color: #6366F1;"),
+                    " Structures Sanitaires in ", tags$strong(zone_name),
+                    if (nrow(zone_structures) > 0) {
+                      tags$span(
+                        class = "badge bg-secondary ms-2",
+                        nrow(zone_structures)
+                      )
+                    }
+                  ),
+                  div(
+                    style = "display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;",
+                    structures_ui
                   )
                 )
               )

@@ -494,6 +494,24 @@ prepare_assay_dashboard_data <- function(
     select(-status_rank, -quantitative_missing) %>%
     mutate(assay = factor(assay))
 
+  # Add barcode and numero_lab columns from biobank lookup for display purposes
+  if (!is.null(biobank_lookup) && nrow(biobank_lookup) > 0) {
+    tidy <- tidy %>%
+      left_join(
+        biobank_lookup %>% select(sample_id, barcode = barcode_raw, numero_lab = lab_number_raw),
+        by = "sample_id"
+      )
+    message(sprintf("Added barcode and numero_lab columns from biobank lookup"))
+  } else {
+    # Add placeholder columns if no biobank lookup available
+    tidy <- tidy %>%
+      mutate(
+        barcode = sample_id,
+        numero_lab = NA_character_
+      )
+    message("No biobank lookup available - using sample_id as barcode")
+  }
+
   message(sprintf("After deduplication: %d unique sample-assay combinations", nrow(tidy)))
   message(sprintf("Unique samples: %d", length(unique(tidy$sample_id))))
 
@@ -845,6 +863,19 @@ prepare_assay_dashboard_data <- function(
     n_any_positive = n_distinct(tidy$sample_id[tidy$status == "Positive"])
   )
 
+  # Extract sample IDs for each overlap KPI (for clickable filtering)
+  overlap_sample_ids <- list(
+    all_tests_positive = all_tests_data %>%
+      filter(all_tests_positive == TRUE) %>%
+      pull(sample_id),
+    all_serology_positive = all_serology_positive_data %>%
+      filter(all_serology_positive == TRUE) %>%
+      pull(sample_id),
+    mic_and_any_serology = mic_plus_serology %>%
+      filter(mic_and_serology_positive == TRUE) %>%
+      pull(sample_id)
+  )
+
   # Detailed breakdown for each test showing what they overlap with
   test_overlap_breakdown <- tidy %>%
     filter(status == "Positive") %>%
@@ -973,6 +1004,7 @@ prepare_assay_dashboard_data <- function(
     test_specific_overlaps = test_specific_overlaps,
     pairwise_overlaps = pairwise_overlaps,
     overlap_summary = overlap_summary,
+    overlap_sample_ids = overlap_sample_ids,
     cutoffs = cutoffs
   )
 }

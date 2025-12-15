@@ -10,50 +10,64 @@ library(stringi)
 # HEALTH ZONE NORMALIZATION MAPPING
 # ============================================================================
 # Maps biobank spellings to correct geojson map spellings
+# Uses uppercase keys for case-insensitive matching
 
 get_health_zone_mapping <- function() {
   c(
-    # Biobank spelling -> Correct geojson spelling
+    # Biobank spelling (UPPERCASE) -> Correct geojson spelling
     "TSHITENGE" = "Citenge",
-    "Tshitenge" = "Citenge",
-    "tshitenge" = "Citenge",
+    "CITENGE" = "Citenge",
     "KABEYA KAMUANGA" = "Kabeya Kamwanga",
-    "Kabeya Kamuanga" = "Kabeya Kamwanga",
-    "kabeya kamuanga" = "Kabeya Kamwanga",
+    "KABEYA KAMWANGA" = "Kabeya Kamwanga",
     "MWENE-DITU" = "Mweneditu",
-    "Mwene-Ditu" = "Mweneditu",
-    "mwene-ditu" = "Mweneditu",
     "MWENE DITU" = "Mweneditu",
-    "Mwene Ditu" = "Mweneditu",
-    "mwene ditu" = "Mweneditu",
     "MUENE DITU" = "Mweneditu",
-    "Muene Ditu" = "Mweneditu",
-    "muene ditu" = "Mweneditu",
     "MUENE-DITU" = "Mweneditu",
-    "Muene-Ditu" = "Mweneditu",
-    "muene-ditu" = "Mweneditu"
+    "MWENA-DITU" = "Mweneditu",
+    "MWENA DITU" = "Mweneditu",
+    "MWENEDITU" = "Mweneditu"
   )
 }
 
+#' Get list of valid health zone names from geojson
+#' @return Character vector of valid health zone names
+get_valid_health_zones <- function() {
+  c("Kalambayi Kabanga", "Mulumba", "Mweneditu", "Kabinda",
+    "Bibanga", "Mukumbi", "Miabi", "Citenge", "Tshishimbi",
+    "Lukelenge", "Dibindi", "Bipemba", "Muya", "Bonzola",
+    "Kabeya Kamwanga")
+}
+
 #' Normalize health zone names to match geojson map
+#' Uses exact mapping first, then fuzzy matching for unknown names
 #' @param x Character vector of health zone names
 #' @return Normalized health zone names
 normalize_health_zone <- function(x) {
   mapping <- get_health_zone_mapping()
+  valid_zones <- get_valid_health_zones()
 
-  # Apply mapping where matches exist
   normalized <- x
   for (i in seq_along(x)) {
-    if (!is.na(x[i])) {
-      # Check exact match first
-      if (x[i] %in% names(mapping)) {
-        normalized[i] <- mapping[x[i]]
+    if (!is.na(x[i]) && nzchar(trimws(x[i]))) {
+      input_upper <- toupper(trimws(x[i]))
+
+      # Check exact match in mapping
+      if (input_upper %in% names(mapping)) {
+        normalized[i] <- mapping[input_upper]
       } else {
-        # Check case-insensitive match
-        match_idx <- which(toupper(names(mapping)) == toupper(x[i]))
-        if (length(match_idx) > 0) {
-          normalized[i] <- mapping[match_idx[1]]
+        # Try fuzzy matching against valid zones
+        # Calculate string distance (Levenshtein)
+        distances <- sapply(toupper(valid_zones), function(vz) {
+          utils::adist(input_upper, vz)[1, 1]
+        })
+
+        # If best match is close enough (distance <= 3), use it
+        min_dist <- min(distances)
+        if (min_dist <= 3) {
+          best_match_idx <- which.min(distances)
+          normalized[i] <- valid_zones[best_match_idx]
         }
+        # Otherwise keep original value
       }
     }
   }

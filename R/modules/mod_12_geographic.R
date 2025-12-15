@@ -116,14 +116,35 @@ mod_geographic_ui <- function(id) {
           card_body(
             div(
               class = "row",
-              div(class = "col-md-8",
-                  leaflet::leafletOutput(ns("main_map"), height = "550px")
-              ),
-              div(class = "col-md-4",
-                  h6(class = "mb-2", icon("chart-bar"), " Zone Statistics"),
-                  plotly::plotlyOutput(ns("zone_bar_chart"), height = "530px")
+              div(class = "col-12",
+                  leaflet::leafletOutput(ns("main_map"), height = "650px")
+              )
+            ),
+            # Details panel below map - shows info on click/hover
+            div(
+              class = "mt-3",
+              card(
+                class = "bg-light",
+                card_header(
+                  class = "py-2",
+                  span(icon("info-circle"), " Zone Details"),
+                  span(class = "text-muted small ms-2", "(Click on a health zone or structure for details)")
+                ),
+                card_body(
+                  class = "py-2",
+                  uiOutput(ns("zone_details_panel"))
+                )
               )
             )
+          )
+        ),
+
+        # Zone Statistics Chart (moved to separate card)
+        card(
+          class = "mb-3",
+          card_header(icon("chart-bar"), " Zone Statistics"),
+          card_body(
+            plotly::plotlyOutput(ns("zone_bar_chart"), height = "350px")
           )
         ),
 
@@ -244,6 +265,13 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
                                    ielisa_data = NULL) {
 
   moduleServer(id, function(input, output, session) {
+
+    # ========================================================================
+    # REACTIVE VALUES FOR SELECTION STATE
+    # ========================================================================
+
+    selected_zone <- reactiveVal(NULL)
+    selected_structure <- reactiveVal(NULL)
 
     # ========================================================================
     # LOAD MAP DATA
@@ -1255,6 +1283,8 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           options = leaflet::providerTileOptions(maxZoom = 18)
         ) %>%
         leaflet::addPolygons(
+          layerId = ~zonesante,
+          group = "zones",
           fillColor = ~pal(display_value),
           weight = 2,
           opacity = 1,
@@ -1268,15 +1298,16 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
             fillOpacity = 0.8,
             bringToFront = TRUE
           ),
-          label = labels,
+          label = ~zonesante,
           labelOptions = leaflet::labelOptions(
             style = list(
               "font-family" = "Inter, sans-serif",
-              "font-size" = "12px",
-              "padding" = "8px 12px",
-              "border-radius" = "6px"
+              "font-size" = "14px",
+              "font-weight" = "bold",
+              "padding" = "4px 8px",
+              "border-radius" = "4px"
             ),
-            textsize = "12px",
+            textsize = "14px",
             direction = "auto"
           )
         ) %>%
@@ -1291,56 +1322,188 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       # Add health structure markers if enabled
       show_structures <- input$show_structures %||% TRUE
       if (show_structures && nrow(health_structures_data) > 0) {
-        # Color palette for endemicity levels
+        # Color palette for endemicity levels - matching legend colors
         endemicity_colors <- c("A" = "#DC2626", "B" = "#F59E0B", "C" = "#10B981")
+        endemicity_border <- c("A" = "#991B1B", "B" = "#B45309", "C" = "#047857")
 
-        # Create popup labels for structures
-        structure_labels <- sprintf(
-          "<strong>%s</strong><br/>
-          <b>Province:</b> %s<br/>
-          <b>Zone de Sant\u00e9:</b> %s<br/>
-          <b>End\u00e9micit\u00e9:</b> <span style='color: %s; font-weight: bold;'>%s</span><br/>
-          <b>Coordinates:</b> %.6f, %.6f",
-          health_structures_data$structure,
-          health_structures_data$province,
-          health_structures_data$zone_sante,
-          endemicity_colors[health_structures_data$endemicite],
-          health_structures_data$endemicite,
-          health_structures_data$latitude,
-          health_structures_data$longitude
-        ) %>% lapply(htmltools::HTML)
+        # Add row index for layerId
+        health_structures_data$structure_id <- paste0("struct_", seq_len(nrow(health_structures_data)))
 
         base_map <- base_map %>%
           leaflet::addCircleMarkers(
             data = health_structures_data,
+            layerId = ~structure_id,
+            group = "structures",
             lng = ~longitude,
             lat = ~latitude,
-            radius = 8,
-            color = "#333333",
-            weight = 2,
+            radius = 10,
+            color = ~endemicity_border[endemicite],
+            weight = 3,
             fillColor = ~endemicity_colors[endemicite],
-            fillOpacity = 0.9,
-            popup = structure_labels,
-            label = ~structure,
+            fillOpacity = 0.95,
+            label = ~paste0(structure, " (", zone_sante, ")"),
             labelOptions = leaflet::labelOptions(
               style = list(
                 "font-family" = "Inter, sans-serif",
-                "font-size" = "11px",
-                "padding" = "4px 8px"
+                "font-size" = "12px",
+                "font-weight" = "bold",
+                "padding" = "6px 10px",
+                "background-color" = "white",
+                "border" = "2px solid #333"
               )
             )
           ) %>%
           leaflet::addLegend(
             position = "bottomleft",
             colors = c("#DC2626", "#F59E0B", "#10B981"),
-            labels = c("A - Haute", "B - Moyenne", "C - Basse"),
-            title = "End\u00e9micit\u00e9",
-            opacity = 0.9
+            labels = c("A - Haute end\u00e9micit\u00e9", "B - Moyenne end\u00e9micit\u00e9", "C - Basse end\u00e9micit\u00e9"),
+            title = "Structures Sanitaires",
+            opacity = 0.95
           )
       }
 
       base_map %>%
         leaflet::setView(lng = 23.8, lat = -6.0, zoom = 8)
+    })
+
+    # ========================================================================
+    # MAP CLICK OBSERVERS
+    # ========================================================================
+
+    # Observe clicks on health zones (polygons)
+    observeEvent(input$main_map_shape_click, {
+      click <- input$main_map_shape_click
+      if (!is.null(click) && !is.null(click$id)) {
+        # Check if it's a zone or structure click
+        if (grepl("^struct_", click$id)) {
+          # Structure click - extract index
+          idx <- as.integer(gsub("struct_", "", click$id))
+          if (idx > 0 && idx <= nrow(health_structures_data)) {
+            selected_structure(health_structures_data[idx, ])
+            selected_zone(NULL)
+          }
+        } else {
+          # Zone click
+          selected_zone(click$id)
+          selected_structure(NULL)
+        }
+      }
+    })
+
+    # ========================================================================
+    # ZONE DETAILS PANEL OUTPUT
+    # ========================================================================
+
+    output$zone_details_panel <- renderUI({
+      zone_name <- selected_zone()
+      structure_info <- selected_structure()
+
+      # If structure is selected, show structure details
+      if (!is.null(structure_info) && is.data.frame(structure_info) && nrow(structure_info) > 0) {
+        endemicity_colors <- c("A" = "#DC2626", "B" = "#F59E0B", "C" = "#10B981")
+        endemicity_labels <- c("A" = "Haute", "B" = "Moyenne", "C" = "Basse")
+        end_level <- structure_info$endemicite[1]
+
+        return(
+          div(
+            class = "row",
+            div(
+              class = "col-md-4",
+              h5(icon("hospital"), " ", structure_info$structure[1]),
+              tags$table(
+                class = "table table-sm table-borderless mb-0",
+                tags$tr(tags$td(tags$strong("Zone de Sant\u00e9:")), tags$td(structure_info$zone_sante[1])),
+                tags$tr(tags$td(tags$strong("Province:")), tags$td(structure_info$province[1])),
+                tags$tr(
+                  tags$td(tags$strong("End\u00e9micit\u00e9:")),
+                  tags$td(
+                    span(
+                      style = paste0("color: ", endemicity_colors[end_level], "; font-weight: bold;"),
+                      paste0(end_level, " - ", endemicity_labels[end_level])
+                    )
+                  )
+                ),
+                tags$tr(tags$td(tags$strong("Coordinates:")), tags$td(sprintf("%.4f, %.4f", structure_info$latitude[1], structure_info$longitude[1])))
+              )
+            ),
+            div(
+              class = "col-md-8",
+              p(class = "text-muted mb-0", icon("info-circle"), " Click on a health zone polygon to see sample statistics.")
+            )
+          )
+        )
+      }
+
+      # If zone is selected, show zone details
+      if (!is.null(zone_name) && nzchar(zone_name)) {
+        geo_data <- combined_geo_data()
+
+        if (nrow(geo_data) > 0) {
+          zone_data <- geo_data %>% dplyr::filter(zonesante == zone_name)
+
+          if (nrow(zone_data) > 0) {
+            zd <- zone_data[1, ]
+            return(
+              div(
+                class = "row",
+                div(
+                  class = "col-md-3",
+                  h5(icon("map-marker-alt"), " ", zone_name),
+                  tags$table(
+                    class = "table table-sm table-borderless mb-0",
+                    tags$tr(tags$td(tags$strong("Province:")), tags$td(zd$province)),
+                    tags$tr(tags$td(tags$strong("Total Samples:")), tags$td(tags$strong(scales::comma(zd$n_samples))))
+                  )
+                ),
+                div(
+                  class = "col-md-4",
+                  h6(icon("dna"), " Molecular (MIC)"),
+                  tags$table(
+                    class = "table table-sm table-borderless mb-0",
+                    tags$tr(tags$td("DNA+ (177T):"), tags$td(zd$mic_dna_pos)),
+                    tags$tr(tags$td("RNA+ (18S2):"), tags$td(zd$mic_rna_pos)),
+                    tags$tr(tags$td("TNA+ (DNA+RNA):"), tags$td(zd$mic_tna_pos)),
+                    tags$tr(tags$td("Any positive:"), tags$td(zd$mic_any_pos)),
+                    tags$tr(tags$td("Total tested:"), tags$td(zd$mic_total)),
+                    tags$tr(tags$td(tags$strong("Rate:")), tags$td(sprintf("%.1f%%", zd$molecular_rate)))
+                  )
+                ),
+                div(
+                  class = "col-md-5",
+                  h6(icon("flask"), " Serological"),
+                  div(
+                    class = "row",
+                    div(
+                      class = "col-6",
+                      tags$table(
+                        class = "table table-sm table-borderless mb-0",
+                        tags$tr(tags$td("ELISA-PE+:"), tags$td(paste0(zd$elisa_pe_pos, " / ", zd$elisa_pe_total))),
+                        tags$tr(tags$td("ELISA-VSG+:"), tags$td(paste0(zd$elisa_vsg_pos, " / ", zd$elisa_vsg_total)))
+                      )
+                    ),
+                    div(
+                      class = "col-6",
+                      tags$table(
+                        class = "table table-sm table-borderless mb-0",
+                        tags$tr(tags$td("iELISA L1.3+:"), tags$td(zd$ielisa_l13_pos)),
+                        tags$tr(tags$td("iELISA L1.5+:"), tags$td(zd$ielisa_l15_pos)),
+                        tags$tr(tags$td(tags$strong("Sero Rate:")), tags$td(sprintf("%.1f%%", zd$sero_rate)))
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          }
+        }
+      }
+
+      # Default message when nothing selected
+      div(
+        class = "text-center text-muted py-2",
+        icon("mouse-pointer", class = "me-2"),
+        "Click on a health zone or structure marker on the map to view details here."
+      )
     })
 
     # ========================================================================

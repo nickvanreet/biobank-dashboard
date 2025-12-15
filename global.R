@@ -127,10 +127,12 @@ source("R/core/data_loader_utils.R")       # Must source BEFORE data_linking
 source("R/core/data_linking_utils.R")      # Defines normalize_barcode()
 source("R/core/extraction_data_utils.R")   # Extraction utilities
 source("R/core/cache_manager.R")           # Unified cache management
-source("R/core/app_logger.R")              # Structured logging (replaces DEBUG)
-source("R/core/rbac.R")                    # Role-based access control hooks
 source("R/utils_elisa.R")                  # ELISA loader utilities
 source("R/data/dashboard_data_utils.R")    # Shared assay prep utilities
+
+# Optional infrastructure (disabled by default - enable when needed)
+# source("R/core/app_logger.R")            # Structured logging
+# source("R/core/rbac.R")                  # Role-based access control
 
 # CRITICAL: Source the qPCR analysis pipeline
 # This file defines analyze_qpcr(), extract_cq_values(), and related functions

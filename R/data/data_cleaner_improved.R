@@ -124,6 +124,75 @@ normalize_health_zone <- function(x) {
 }
 
 # ============================================================================
+# HEALTH STRUCTURE (STRUCTURE SANITAIRE) NORMALIZATION
+# ============================================================================
+# Maps biobank structure names to known structures with coordinates
+
+get_known_structures <- function() {
+  c(
+    "HGR Kalambayi Kabanga", "HGR de Mulumba", "HGR Mweneditu", "CS Nkumba",
+    "HS Katanda", "CSR Tshibila", "HGR Mukumbi", "HGR Miabi",
+    "HGR Citenge", "HGR Tshishimbi", "HGR Lukelenge", "HGR Dibindi",
+    "HGR Bipemba", "HGR Muya", "HGR Dipumba"
+  )
+}
+
+#' Normalize structure sanitaire names to match known structures
+#' Uses fuzzy matching to handle variations in naming
+#' @param x Character vector of structure names
+#' @return Normalized structure names
+normalize_structure <- function(x) {
+  known_structures <- get_known_structures()
+
+  # Create simplified versions for matching (remove prefixes, normalize spacing)
+  simplify_name <- function(name) {
+    name <- toupper(name)
+    # Remove common prefixes
+    name <- gsub("^(HGR|CS|CSR|HS|HOPITAL|CENTRE|CLINIQUE)\\s*(DE\\s*)?", "", name)
+    # Remove slashes and replace with space
+    name <- gsub("/", " ", name)
+    # Remove special characters
+    name <- gsub("[^A-Z0-9\\s]", "", name)
+    # Normalize multiple spaces
+    name <- gsub("\\s+", " ", name)
+    trimws(name)
+  }
+
+  # Create lookup with simplified names
+  simplified_known <- sapply(known_structures, simplify_name)
+
+  normalized <- x
+  for (i in seq_along(x)) {
+    if (!is.na(x[i]) && nzchar(trimws(x[i]))) {
+      input_simplified <- simplify_name(x[i])
+
+      # Try exact match first
+      exact_match <- which(simplified_known == input_simplified)
+      if (length(exact_match) > 0) {
+        normalized[i] <- known_structures[exact_match[1]]
+      } else {
+        # Try fuzzy matching
+        distances <- sapply(simplified_known, function(sk) {
+          utils::adist(input_simplified, sk)[1, 1]
+        })
+
+        min_dist <- min(distances)
+        # Use distance threshold relative to string length
+        threshold <- max(3, nchar(input_simplified) * 0.3)
+
+        if (min_dist <= threshold) {
+          best_match_idx <- which.min(distances)
+          normalized[i] <- known_structures[best_match_idx]
+        }
+        # Otherwise keep original value
+      }
+    }
+  }
+
+  normalized
+}
+
+# ============================================================================
 # COLUMN MAPPING CONFIGURATION
 # ============================================================================
 
@@ -349,6 +418,14 @@ clean_biobank_data_improved <- function(df_raw, skip_columns = 24:26) {
   # Step 3b: Normalize health zone names to match geojson map
   if ("health_zone" %in% names(df)) {
     df$health_zone <- normalize_health_zone(df$health_zone)
+  }
+
+  # Step 3c: Normalize structure sanitaire names to match known structures
+  if ("health_facility" %in% names(df)) {
+    df$health_facility <- normalize_structure(df$health_facility)
+  }
+  if ("health_structure" %in% names(df)) {
+    df$health_structure <- normalize_structure(df$health_structure)
   }
 
   # Step 4: Calculate derived fields

@@ -187,11 +187,12 @@ if (clear_rds && !is.null(site_paths$cache_dir) && dir.exists(site_paths$cache_d
 
   # Clear in-memory caches
   if (clear_memory) {
-    # Clear ELISA session cache
-    if (exists(".elisa_cache_env")) {
-      .elisa_cache_env$data <- NULL
-      .elisa_cache_env$hash <- NULL
-      .elisa_cache_env$version <- NULL
+    # Clear ELISA session cache (defined in utils_elisa.R)
+    if (exists(".elisa_cache_env", envir = globalenv())) {
+      elisa_env <- get(".elisa_cache_env", envir = globalenv())
+      elisa_env$data <- NULL
+      elisa_env$hash <- NULL
+      elisa_env$version <- NULL
     }
 
     # Clear app-level cache
@@ -362,8 +363,14 @@ preload_cache <- function(site_id = NULL, progress_callback = NULL) {
 #' @return List with cache hit/miss statistics
 #' @export
 get_cache_metrics <- function() {
+  # Check if .elisa_cache_env exists (defined in utils_elisa.R, sourced later)
+  elisa_hit <- FALSE
+  if (exists(".elisa_cache_env", envir = globalenv())) {
+    elisa_hit <- !is.null(get(".elisa_cache_env", envir = globalenv())$data)
+  }
+
   list(
-    elisa_cache_hit = !is.null(.elisa_cache_env$data),
+    elisa_cache_hit = elisa_hit,
     app_cache_keys = ls(.app_cache),
     cache_version = .cache_version
   )

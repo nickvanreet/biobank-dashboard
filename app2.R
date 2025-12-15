@@ -37,6 +37,7 @@ ui <- do.call(
       mod_sample_journey_ui("sample_journey"),
       mod_sample_processing_ui("sample_processing"),
       mod_overview_assays_ui("overview_assays"),
+      mod_study_comparison_ui("study_comparison"),  # Study Results Comparison (DA vs DP)
       mod_predictive_analytics_ui("predictive_analytics")  # Predictive Analytics (renamed from Concordance)
     )
   )
@@ -212,6 +213,18 @@ server <- function(input, output, session) {
     filters = data$filters
   )
   
+  # Study Results Comparison module (DA vs DP comparison across all metrics)
+  mod_study_comparison_server(
+    "study_comparison",
+    biobank_df = data$filtered_data,
+    extraction_df = data$filtered_extractions,
+    mic_df = mic_data$qpcr_samples,
+    elisa_pe_df = elisa_pe_data$samples,
+    elisa_vsg_df = elisa_vsg_data$samples,
+    ielisa_df = ielisa_data$samples,
+    filters = data$filters
+  )
+
   # Predictive Analytics module (epidemiological forecasting and risk prediction)
   mod_predictive_analytics_server(
     "predictive_analytics",

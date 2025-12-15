@@ -418,29 +418,41 @@ mod_overview_assays_ui <- function(id) {
             )
           ),
 
-          # Overlap Summary KPIs
+          # Overlap Summary KPIs (clickable to filter sample table)
           card(
-            card_header(icon("diagram-project"), "Test Overlap Summary"),
+            card_header(icon("diagram-project"), "Test Overlap Summary", tags$small(class = "text-muted ms-2", "(click to filter samples)")),
             card_body(
               layout_column_wrap(
                 width = 1/3,
-                value_box(
-                  title = "Positive on ALL Tests",
-                  value = uiOutput(ns("kpi_all_tests_positive")),
-                  showcase = icon("check-double"),
-                  theme = "success"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'ALL_TESTS_POSITIVE', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "Positive on ALL Tests",
+                    value = uiOutput(ns("kpi_all_tests_positive")),
+                    showcase = icon("check-double"),
+                    theme = "success"
+                  )
                 ),
-                value_box(
-                  title = "Positive on ALL Serology",
-                  value = uiOutput(ns("kpi_all_serology_positive")),
-                  showcase = icon("layer-group"),
-                  theme = "info"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'ALL_SEROLOGY_POSITIVE', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "Positive on ALL Serology",
+                    value = uiOutput(ns("kpi_all_serology_positive")),
+                    showcase = icon("layer-group"),
+                    theme = "info"
+                  )
                 ),
-                value_box(
-                  title = "MIC + Any Serology",
-                  value = uiOutput(ns("kpi_mic_and_serology")),
-                  showcase = icon("handshake"),
-                  theme = "warning"
+                div(
+                  class = "clickable-kpi",
+                  onclick = sprintf("Shiny.setInputValue('%s', 'MIC_AND_SEROLOGY', {priority: 'event'})", ns("kpi_clicked")),
+                  value_box(
+                    title = "MIC + Any Serology",
+                    value = uiOutput(ns("kpi_mic_and_serology")),
+                    showcase = icon("handshake"),
+                    theme = "warning"
+                  )
                 )
               )
             )
@@ -551,10 +563,26 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       })
     })
 
-    # Enhanced filtered_tidy with exclusive/shared support
+    # Enhanced filtered_tidy with exclusive/shared support and overlap KPI filtering
     filtered_tidy <- reactive({
       req(prepared())
       df <- prepared()$tidy_assays
+      filter_type <- drill_state$filter_type
+
+      # Handle overlap summary KPI filters (these filter by sample_id lists)
+      if (!is.null(filter_type) && filter_type %in% c("all_tests_positive", "all_serology_positive", "mic_and_serology")) {
+        overlap_samples <- prepared()$overlap_sample_ids
+
+        if (filter_type == "all_tests_positive" && !is.null(overlap_samples$all_tests_positive)) {
+          df <- df %>% filter(sample_id %in% overlap_samples$all_tests_positive)
+        } else if (filter_type == "all_serology_positive" && !is.null(overlap_samples$all_serology_positive)) {
+          df <- df %>% filter(sample_id %in% overlap_samples$all_serology_positive)
+        } else if (filter_type == "mic_and_serology" && !is.null(overlap_samples$mic_and_any_serology)) {
+          df <- df %>% filter(sample_id %in% overlap_samples$mic_and_any_serology)
+        }
+
+        return(df)
+      }
 
       # Apply status filter
       if (!is.null(drill_state$status)) {
@@ -564,7 +592,6 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       # Apply assay filter with exclusive/shared support
       if (!is.null(drill_state$assay)) {
         target_assay <- drill_state$assay
-        filter_type <- drill_state$filter_type
 
         if (!is.null(filter_type) && filter_type %in% c("exclusive", "shared")) {
           # Get samples positive on this assay
@@ -717,8 +744,21 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
     observeEvent(input$kpi_clicked, {
       clicked_value <- input$kpi_clicked
 
-      # Parse the clicked value (format: "AssayName" or "AssayName_exclusive" or "AssayName_shared")
-      if (grepl("_exclusive$", clicked_value)) {
+      # Handle overlap summary KPIs
+      if (clicked_value == "ALL_TESTS_POSITIVE") {
+        drill_state$assay <- NULL
+        drill_state$status <- "Positive"
+        drill_state$filter_type <- "all_tests_positive"
+      } else if (clicked_value == "ALL_SEROLOGY_POSITIVE") {
+        drill_state$assay <- NULL
+        drill_state$status <- "Positive"
+        drill_state$filter_type <- "all_serology_positive"
+      } else if (clicked_value == "MIC_AND_SEROLOGY") {
+        drill_state$assay <- NULL
+        drill_state$status <- "Positive"
+        drill_state$filter_type <- "mic_and_serology"
+      } else if (grepl("_exclusive$", clicked_value)) {
+        # Parse the clicked value (format: "AssayName" or "AssayName_exclusive" or "AssayName_shared")
         assay_name <- sub("_exclusive$", "", clicked_value)
         drill_state$assay <- assay_name
         drill_state$status <- "Positive"
@@ -1244,8 +1284,12 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
       total_count <- nrow(prepared()$tidy_assays)
       filtered_count <- nrow(df)
 
+      # Select columns including barcode and numero_lab for user visibility
+      display_cols <- c("barcode", "numero_lab", "assay", "status", "quantitative", "metric", "assay_date")
+      available_cols <- intersect(display_cols, names(df))
+
       DT::datatable(
-        df %>% select(sample_id, assay, status, metric, quantitative, assay_date),
+        df %>% select(all_of(available_cols)),
         options = list(
           pageLength = 25,
           order = list(list(0, 'asc')),
@@ -1253,7 +1297,7 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
           buttons = c('copy', 'csv', 'excel')
         ),
         caption = if (filtered_count < total_count) {
-          sprintf("Showing %d of %d total tests", filtered_count, total_count)
+          sprintf("Showing %d of %d total tests (filtered)", filtered_count, total_count)
         } else {
           sprintf("Showing all %d tests", total_count)
         },
@@ -1266,6 +1310,25 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
 
     # Filter status display with enhanced filter type support
     output$filter_status <- renderUI({
+      filter_type <- drill_state$filter_type
+
+      # Handle overlap summary KPI filters
+      if (!is.null(filter_type) && filter_type %in% c("all_tests_positive", "all_serology_positive", "mic_and_serology")) {
+        filter_label <- switch(filter_type,
+          "all_tests_positive" = "Positive on ALL Tests",
+          "all_serology_positive" = "Positive on ALL Serology (ELISA PE + VSG + iELISA L13 + L15)",
+          "mic_and_serology" = "MIC + Any Serology Positive",
+          ""
+        )
+        return(tags$span(
+          class = "badge bg-success me-2",
+          icon("filter"),
+          " ",
+          filter_label
+        ))
+      }
+
+      # Handle standard filters
       if (!is.null(drill_state$status) || !is.null(drill_state$assay)) {
         filters_active <- c()
         if (!is.null(drill_state$status)) {
@@ -1273,13 +1336,13 @@ mod_overview_assays_server <- function(id, biobank_df, elisa_df, ielisa_df, mic_
         }
         if (!is.null(drill_state$assay)) {
           assay_label <- paste(drill_state$assay, collapse = ", ")
-          if (!is.null(drill_state$filter_type) && drill_state$filter_type != "all") {
-            filter_label <- switch(drill_state$filter_type,
+          if (!is.null(filter_type) && filter_type != "all") {
+            label <- switch(filter_type,
               "exclusive" = "Exclusive only",
               "shared" = "Shared only",
               ""
             )
-            assay_label <- sprintf("%s (%s)", assay_label, filter_label)
+            assay_label <- sprintf("%s (%s)", assay_label, label)
           }
           filters_active <- c(filters_active, sprintf("Test: %s", assay_label))
         }

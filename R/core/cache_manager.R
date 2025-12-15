@@ -368,3 +368,252 @@ get_cache_metrics <- function() {
     cache_version = .cache_version
   )
 }
+
+# ============================================================================
+# UNIFIED CACHE API
+# ============================================================================
+# Provides a consistent interface for caching any data type
+# Automatically handles file-based persistence and in-memory caching
+
+#' Generate a cache key from parameters
+#'
+#' @param data_type Type of data (biobank, elisa, ielisa, mic)
+#' @param ... Additional parameters to include in key (e.g., file path, settings)
+#' @return Character cache key
+#' @export
+make_cache_key <- function(data_type, ...) {
+  params <- list(...)
+  key_content <- c(data_type, .cache_version, unlist(params))
+  digest::digest(key_content, algo = "md5")
+}
+
+#' Get data from cache
+#'
+#' Attempts to retrieve data from in-memory cache first, then file cache.
+#'
+#' @param cache_key Cache key (from make_cache_key)
+#' @param cache_dir Directory for file-based cache
+#' @param max_age_hours Maximum age in hours before cache is considered stale
+#' @return Cached data or NULL if not found/expired
+#' @export
+cache_get <- function(cache_key, cache_dir = NULL, max_age_hours = 24) {
+  # Try in-memory cache first
+  if (exists(cache_key, envir = .app_cache)) {
+    cache_entry <- .app_cache[[cache_key]]
+
+    # Check if it's just a timestamp (old format)
+    if (inherits(cache_entry, "POSIXct")) {
+      # Old format, need to check file
+    } else if (is.list(cache_entry) && !is.null(cache_entry$data)) {
+      # Check age
+      age_hours <- as.numeric(difftime(Sys.time(), cache_entry$timestamp, units = "hours"))
+      if (age_hours < max_age_hours) {
+        # Log cache hit
+        if (exists("log_cache_op")) {
+          log_cache_op("hit", "memory", cache_key)
+        }
+        return(cache_entry$data)
+      }
+    }
+  }
+
+  # Try file-based cache
+  if (!is.null(cache_dir)) {
+    cache_file <- file.path(cache_dir, paste0(cache_key, ".rds"))
+
+    if (file.exists(cache_file)) {
+      file_info <- file.info(cache_file)
+      age_hours <- as.numeric(difftime(Sys.time(), file_info$mtime, units = "hours"))
+
+      if (age_hours < max_age_hours) {
+        tryCatch({
+          data <- readRDS(cache_file)
+
+          # Store in memory for faster subsequent access
+          .app_cache[[cache_key]] <- list(
+            data = data,
+            timestamp = file_info$mtime,
+            source = "file"
+          )
+
+          if (exists("log_cache_op")) {
+            log_cache_op("hit", "file", cache_key)
+          }
+
+          return(data)
+        }, error = function(e) {
+          message("Cache read error: ", e$message)
+          return(NULL)
+        })
+      }
+    }
+  }
+
+  # Cache miss
+  if (exists("log_cache_op")) {
+    log_cache_op("miss", "all", cache_key)
+  }
+
+  NULL
+}
+
+#' Store data in cache
+#'
+#' Stores data in both in-memory and file-based cache.
+#'
+#' @param cache_key Cache key (from make_cache_key)
+#' @param data Data to cache
+#' @param cache_dir Directory for file-based cache (optional)
+#' @param persist Whether to persist to file (default TRUE if cache_dir provided)
+#' @return Invisible TRUE on success
+#' @export
+cache_set <- function(cache_key, data, cache_dir = NULL, persist = TRUE) {
+  timestamp <- Sys.time()
+
+  # Store in memory
+  .app_cache[[cache_key]] <- list(
+    data = data,
+    timestamp = timestamp,
+    source = "set"
+  )
+
+  # Persist to file if requested
+  if (persist && !is.null(cache_dir)) {
+    dir.create(cache_dir, showWarnings = FALSE, recursive = TRUE)
+    cache_file <- file.path(cache_dir, paste0(cache_key, ".rds"))
+
+    tryCatch({
+      saveRDS(data, cache_file)
+      if (exists("log_cache_op")) {
+        log_cache_op("write", "file", cache_key)
+      }
+    }, error = function(e) {
+      message("Cache write error: ", e$message)
+    })
+  }
+
+  invisible(TRUE)
+}
+
+#' Remove specific item from cache
+#'
+#' @param cache_key Cache key to remove
+#' @param cache_dir Directory for file-based cache
+#' @export
+cache_remove <- function(cache_key, cache_dir = NULL) {
+  # Remove from memory
+  if (exists(cache_key, envir = .app_cache)) {
+    rm(list = cache_key, envir = .app_cache)
+  }
+
+  # Remove file
+  if (!is.null(cache_dir)) {
+    cache_file <- file.path(cache_dir, paste0(cache_key, ".rds"))
+    if (file.exists(cache_file)) {
+      file.remove(cache_file)
+    }
+  }
+
+  invisible(TRUE)
+}
+
+#' Cache-aware data loading wrapper
+#'
+#' Wraps a data loading function with caching. Returns cached data if available,
+#' otherwise calls the loader function and caches the result.
+#'
+#' @param cache_key Unique cache key
+#' @param loader_fn Function to call if cache miss (should return data)
+#' @param cache_dir Directory for file cache
+#' @param max_age_hours Maximum cache age
+#' @param force_reload If TRUE, bypass cache and reload
+#' @return Data (from cache or freshly loaded)
+#' @export
+cache_load <- function(cache_key, loader_fn, cache_dir = NULL, max_age_hours = 24, force_reload = FALSE) {
+  # Check cache unless force reload
+  if (!force_reload) {
+    cached <- cache_get(cache_key, cache_dir, max_age_hours)
+    if (!is.null(cached)) {
+      return(cached)
+    }
+  }
+
+  # Load fresh data
+  data <- loader_fn()
+
+  # Cache the result
+  if (!is.null(data)) {
+    cache_set(cache_key, data, cache_dir)
+  }
+
+  data
+}
+
+# ============================================================================
+# CONVENIENCE FUNCTIONS FOR SPECIFIC DATA TYPES
+# ============================================================================
+
+#' Cache biobank data with standard settings
+#'
+#' @param file_path Path to biobank file
+#' @param loader_fn Function to load biobank data
+#' @param site_paths Site paths configuration
+#' @return Biobank data
+#' @export
+cache_biobank <- function(file_path, loader_fn, site_paths = NULL) {
+  if (is.null(site_paths) && exists("config")) {
+    site_paths <- config$site_paths
+  }
+
+  cache_key <- make_cache_key("biobank", basename(file_path), file.info(file_path)$mtime)
+
+  cache_load(
+    cache_key = cache_key,
+    loader_fn = loader_fn,
+    cache_dir = site_paths$cache_dir,
+    max_age_hours = 168  # 1 week
+  )
+}
+
+#' Cache pipeline results with standard settings
+#'
+#' @param pipeline_name Pipeline name (mic, elisa_pe, elisa_vsg, ielisa)
+#' @param run_id Run identifier
+#' @param loader_fn Function to load pipeline results
+#' @param site_paths Site paths configuration
+#' @return Pipeline results
+#' @export
+cache_pipeline <- function(pipeline_name, run_id, loader_fn, site_paths = NULL) {
+  if (is.null(site_paths) && exists("config")) {
+    site_paths <- config$site_paths
+  }
+
+  cache_key <- make_cache_key(pipeline_name, run_id)
+
+  cache_load(
+    cache_key = cache_key,
+    loader_fn = loader_fn,
+    cache_dir = site_paths$cache_dir,
+    max_age_hours = 24
+  )
+}
+
+#' Invalidate all cache entries for a data type
+#'
+#' @param data_type Data type to invalidate
+#' @param site_paths Site paths configuration
+#' @export
+invalidate_cache_type <- function(data_type, site_paths = NULL) {
+  if (is.null(site_paths) && exists("config")) {
+    site_paths <- config$site_paths
+  }
+
+  # Clear from memory
+  keys_to_remove <- grep(data_type, ls(.app_cache), value = TRUE)
+  if (length(keys_to_remove) > 0) {
+    rm(list = keys_to_remove, envir = .app_cache)
+  }
+
+  # Clear from file (use existing clear_cache function)
+  clear_cache(data_type, site_paths)
+}

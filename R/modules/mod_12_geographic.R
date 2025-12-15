@@ -297,13 +297,76 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
     # ========================================================================
 
     # Normalize health zone names for matching
+    # Health zone name mapping (biobank variants -> geojson names)
+    zone_name_mapping <- c(
+      # Citenge variants
+      "TSHITENGE" = "Citenge",
+      "CITENGE" = "Citenge",
+      # Kabeya Kamwanga variants
+      "KABEYA KAMUANGA" = "Kabeya Kamwanga",
+      "KABEYA KAMWANGA" = "Kabeya Kamwanga",
+      "KABEYA-KAMWANGA" = "Kabeya Kamwanga",
+      # Mweneditu variants
+      "MWENE-DITU" = "Mweneditu",
+      "MWENE DITU" = "Mweneditu",
+      "MUENE DITU" = "Mweneditu",
+      "MUENE-DITU" = "Mweneditu",
+      "MWENA-DITU" = "Mweneditu",
+      "MWENA DITU" = "Mweneditu",
+      "MWENEDITU" = "Mweneditu",
+      # Kalambayi Kabanga variants
+      "KALAMBAYI" = "Kalambayi Kabanga",
+      "KALAMBAYI KABANGA" = "Kalambayi Kabanga",
+      "KALAMBAYI-KABANGA" = "Kalambayi Kabanga",
+      # Standard zone names (for case normalization)
+      "BIBANGA" = "Bibanga",
+      "BIPEMBA" = "Bipemba",
+      "BONZOLA" = "Bonzola",
+      "CILUNDU" = "Cilundu",
+      "DIBINDI" = "Dibindi",
+      "DIULU" = "Diulu",
+      "KABINDA" = "Kabinda",
+      "KALENDA" = "Kalenda",
+      "KALONDA EST" = "Kalonda Est",
+      "KAMANA" = "Kamana",
+      "KAMIJI" = "Kamiji",
+      "KANDA KANDA" = "Kanda Kanda",
+      "KANDA-KANDA" = "Kanda Kanda",
+      "KANSELE" = "Kansele",
+      "KASANSA" = "Kasansa",
+      "LUBAO" = "Lubao",
+      "LUBILANJI" = "Lubilanji",
+      "LUDIMBI LUKULA" = "Ludimbi Lukula",
+      "LUDIMBI-LUKULA" = "Ludimbi Lukula",
+      "LUKELENGE" = "Lukelenge",
+      "LUPUTA" = "Luputa",
+      "MAKOTA" = "Makota",
+      "MIABI" = "Miabi",
+      "MPOKOLO" = "Mpokolo",
+      "MUKUMBI" = "Mukumbi",
+      "MULUMBA" = "Mulumba",
+      "MUYA" = "Muya",
+      "NGANDAJIKA" = "Ngandajika",
+      "NZABA" = "Nzaba",
+      "TSHILENGE" = "Tshilenge",
+      "TSHISHIMBI" = "Tshishimbi",
+      "TSHOFA" = "Tshofa",
+      "WIKONG" = "Wikong"
+    )
+
     normalize_zone_name <- function(x) {
       if (is.null(x)) return(NA_character_)
       x <- as.character(x)
       x <- stringr::str_trim(x)
-      x <- stringr::str_to_title(x)
-      x <- stringi::stri_trans_general(x, "Latin-ASCII")
-      x
+
+      # Try exact match in mapping (uppercase)
+      x_upper <- toupper(x)
+      matched <- zone_name_mapping[x_upper]
+
+      # Use matched value if found, otherwise apply title case
+      result <- ifelse(!is.na(matched), matched, stringr::str_to_title(x))
+      result <- stringi::stri_trans_general(result, "Latin-ASCII")
+      result
     }
 
     # Safe data extraction from reactive
@@ -1283,7 +1346,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           options = leaflet::providerTileOptions(maxZoom = 18)
         ) %>%
         leaflet::addPolygons(
-          layerId = ~zonesante,
+          layerId = ~zone_norm,
           group = "zones",
           fillColor = ~pal(display_value),
           weight = 2,
@@ -1439,7 +1502,8 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         geo_data <- combined_geo_data()
 
         if (nrow(geo_data) > 0) {
-          zone_data <- geo_data %>% dplyr::filter(zonesante == zone_name)
+          # Match by health_zone_norm (normalized name)
+          zone_data <- geo_data %>% dplyr::filter(health_zone_norm == zone_name)
 
           if (nrow(zone_data) > 0) {
             zd <- zone_data[1, ]

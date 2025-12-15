@@ -1385,9 +1385,8 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       # Add health structure markers if enabled
       show_structures <- input$show_structures %||% TRUE
       if (show_structures && nrow(health_structures_data) > 0) {
-        # Color palette for endemicity levels - matching legend colors
+        # Color palette for endemicity levels - solid colors (no black border)
         endemicity_colors <- c("A" = "#DC2626", "B" = "#F59E0B", "C" = "#10B981")
-        endemicity_border <- c("A" = "#991B1B", "B" = "#B45309", "C" = "#047857")
 
         # Add row index for layerId
         health_structures_data$structure_id <- paste0("struct_", seq_len(nrow(health_structures_data)))
@@ -1399,11 +1398,11 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
             group = "structures",
             lng = ~longitude,
             lat = ~latitude,
-            radius = 10,
-            color = ~endemicity_border[endemicite],
-            weight = 3,
+            radius = 9,
+            color = ~endemicity_colors[endemicite],
+            weight = 2,
             fillColor = ~endemicity_colors[endemicite],
-            fillOpacity = 0.95,
+            fillOpacity = 1,
             label = ~paste0(structure, " (", zone_sante, ")"),
             labelOptions = leaflet::labelOptions(
               style = list(
@@ -1415,14 +1414,8 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
                 "border" = "2px solid #333"
               )
             )
-          ) %>%
-          leaflet::addLegend(
-            position = "bottomleft",
-            colors = c("#DC2626", "#F59E0B", "#10B981"),
-            labels = c("A - Haute end\u00e9micit\u00e9", "B - Moyenne end\u00e9micit\u00e9", "C - Basse end\u00e9micit\u00e9"),
-            title = "Structures Sanitaires",
-            opacity = 0.95
           )
+        # Legend removed - colors are self-explanatory (red=high, orange=medium, green=low endemicity)
       }
 
       base_map %>%
@@ -1437,7 +1430,16 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
     observeEvent(input$main_map_shape_click, {
       click <- input$main_map_shape_click
       if (!is.null(click) && !is.null(click$id)) {
-        # Check if it's a zone or structure click
+        # Zone polygon click
+        selected_zone(click$id)
+        selected_structure(NULL)
+      }
+    })
+
+    # Observe clicks on structure markers (CircleMarkers)
+    observeEvent(input$main_map_marker_click, {
+      click <- input$main_map_marker_click
+      if (!is.null(click) && !is.null(click$id)) {
         if (grepl("^struct_", click$id)) {
           # Structure click - extract index
           idx <- as.integer(gsub("struct_", "", click$id))
@@ -1445,10 +1447,6 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
             selected_structure(health_structures_data[idx, ])
             selected_zone(NULL)
           }
-        } else {
-          # Zone click
-          selected_zone(click$id)
-          selected_structure(NULL)
         }
       }
     })

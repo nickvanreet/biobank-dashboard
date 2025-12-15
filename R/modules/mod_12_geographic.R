@@ -303,15 +303,15 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         "Kasai-Oriental", "Kasai-Oriental", "Kasai-Oriental"
       ),
       zone_sante = c(
-        "ZS Kalambayi Kabanga", "ZS Mulumba", "ZS Muene Ditu", "ZS Kabinda",
+        "ZS Kalambayi Kabanga", "ZS Mulumba", "ZS Mweneditu", "ZS Kabinda",
         "ZS Bibanga", "ZS Bibanga", "ZS Mukumbi", "ZS Miabi",
-        "ZS Tshitenge", "ZS Tshishimbi", "ZS Lukelenge", "ZS Dibindi",
+        "ZS Citenge", "ZS Tshishimbi", "ZS Lukelenge", "ZS Dibindi",
         "ZS Bipemba", "ZS Muya", "ZS Bonzola"
       ),
       structure = c(
-        "HGR Kalambayi Kabanga", "HGR de Mulumba", "HGR Mwene-Ditu", "CS Nkumba",
+        "HGR Kalambayi Kabanga", "HGR de Mulumba", "HGR Mweneditu", "CS Nkumba",
         "HS Katanda", "CSR Tshibila", "HGR Mukumbi", "HGR Miabi",
-        "HGR Tshitenge", "HGR Tshishimbi", "HGR Lukelenge", "HGR Dibindi",
+        "HGR Citenge", "HGR Tshishimbi", "HGR Lukelenge", "HGR Dibindi",
         "HGR Bipemba", "HGR Muya", "HGR Dipumba"
       ),
       endemicite = c(

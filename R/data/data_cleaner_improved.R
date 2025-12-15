@@ -15,27 +15,75 @@ library(stringi)
 get_health_zone_mapping <- function() {
   c(
     # Biobank spelling (UPPERCASE) -> Correct geojson spelling
+    # Citenge variants
     "TSHITENGE" = "Citenge",
     "CITENGE" = "Citenge",
+    # Kabeya Kamwanga variants
     "KABEYA KAMUANGA" = "Kabeya Kamwanga",
     "KABEYA KAMWANGA" = "Kabeya Kamwanga",
+    "KABEYA-KAMWANGA" = "Kabeya Kamwanga",
+    # Mweneditu variants
     "MWENE-DITU" = "Mweneditu",
     "MWENE DITU" = "Mweneditu",
     "MUENE DITU" = "Mweneditu",
     "MUENE-DITU" = "Mweneditu",
     "MWENA-DITU" = "Mweneditu",
     "MWENA DITU" = "Mweneditu",
-    "MWENEDITU" = "Mweneditu"
+    "MWENEDITU" = "Mweneditu",
+    # Kalambayi Kabanga variants
+    "KALAMBAYI" = "Kalambayi Kabanga",
+    "KALAMBAYI KABANGA" = "Kalambayi Kabanga",
+    "KALAMBAYI-KABANGA" = "Kalambayi Kabanga",
+    # Standard zone names (for case normalization)
+    "BIBANGA" = "Bibanga",
+    "BIPEMBA" = "Bipemba",
+    "BONZOLA" = "Bonzola",
+    "CILUNDU" = "Cilundu",
+    "DIBINDI" = "Dibindi",
+    "DIULU" = "Diulu",
+    "KABINDA" = "Kabinda",
+    "KALENDA" = "Kalenda",
+    "KALONDA EST" = "Kalonda Est",
+    "KAMANA" = "Kamana",
+    "KAMIJI" = "Kamiji",
+    "KANDA KANDA" = "Kanda Kanda",
+    "KANDA-KANDA" = "Kanda Kanda",
+    "KANSELE" = "Kansele",
+    "KASANSA" = "Kasansa",
+    "LUBAO" = "Lubao",
+    "LUBILANJI" = "Lubilanji",
+    "LUDIMBI LUKULA" = "Ludimbi Lukula",
+    "LUDIMBI-LUKULA" = "Ludimbi Lukula",
+    "LUKELENGE" = "Lukelenge",
+    "LUPUTA" = "Luputa",
+    "MAKOTA" = "Makota",
+    "MIABI" = "Miabi",
+    "MPOKOLO" = "Mpokolo",
+    "MUKUMBI" = "Mukumbi",
+    "MULUMBA" = "Mulumba",
+    "MUYA" = "Muya",
+    "NGANDAJIKA" = "Ngandajika",
+    "NZABA" = "Nzaba",
+    "TSHILENGE" = "Tshilenge",
+    "TSHISHIMBI" = "Tshishimbi",
+    "TSHOFA" = "Tshofa",
+    "WIKONG" = "Wikong"
   )
 }
 
 #' Get list of valid health zone names from geojson
 #' @return Character vector of valid health zone names
 get_valid_health_zones <- function() {
-  c("Kalambayi Kabanga", "Mulumba", "Mweneditu", "Kabinda",
-    "Bibanga", "Mukumbi", "Miabi", "Citenge", "Tshishimbi",
-    "Lukelenge", "Dibindi", "Bipemba", "Muya", "Bonzola",
-    "Kabeya Kamwanga")
+  c(
+    "Bibanga", "Bipemba", "Bonzola", "Cilundu", "Citenge",
+    "Dibindi", "Diulu", "Kabeya Kamwanga", "Kabinda",
+    "Kalambayi Kabanga", "Kalenda", "Kalonda Est", "Kamana",
+    "Kamiji", "Kanda Kanda", "Kansele", "Kasansa", "Lubao",
+    "Lubilanji", "Ludimbi Lukula", "Lukelenge", "Luputa",
+    "Makota", "Miabi", "Mpokolo", "Mukumbi", "Mulumba",
+    "Muya", "Mweneditu", "Ngandajika", "Nzaba", "Tshilenge",
+    "Tshishimbi", "Tshofa", "Wikong"
+  )
 }
 
 #' Normalize health zone names to match geojson map

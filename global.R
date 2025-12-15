@@ -220,6 +220,10 @@ source("R/predictiveAnalytics.R")
 source("R/modules/mod_11_predictive_analytics.R")
 cat("✓ Predictive Analytics module loaded\n")
 
+# Study Results Comparison module (DA vs DP comparison)
+source("R/modules/mod_study_comparison.R")
+cat("✓ Study Comparison module loaded\n")
+
 # Geographic visualization module
 source("R/modules/mod_12_geographic.R")
 cat("✓ Geographic module loaded\n")

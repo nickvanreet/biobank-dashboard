@@ -7,6 +7,61 @@ library(lubridate)
 library(stringi)
 
 # ============================================================================
+# HEALTH ZONE NORMALIZATION MAPPING
+# ============================================================================
+# Maps biobank spellings to correct geojson map spellings
+
+get_health_zone_mapping <- function() {
+  c(
+    # Biobank spelling -> Correct geojson spelling
+    "TSHITENGE" = "Citenge",
+    "Tshitenge" = "Citenge",
+    "tshitenge" = "Citenge",
+    "KABEYA KAMUANGA" = "Kabeya Kamwanga",
+    "Kabeya Kamuanga" = "Kabeya Kamwanga",
+    "kabeya kamuanga" = "Kabeya Kamwanga",
+    "MWENE-DITU" = "Mweneditu",
+    "Mwene-Ditu" = "Mweneditu",
+    "mwene-ditu" = "Mweneditu",
+    "MWENE DITU" = "Mweneditu",
+    "Mwene Ditu" = "Mweneditu",
+    "mwene ditu" = "Mweneditu",
+    "MUENE DITU" = "Mweneditu",
+    "Muene Ditu" = "Mweneditu",
+    "muene ditu" = "Mweneditu",
+    "MUENE-DITU" = "Mweneditu",
+    "Muene-Ditu" = "Mweneditu",
+    "muene-ditu" = "Mweneditu"
+  )
+}
+
+#' Normalize health zone names to match geojson map
+#' @param x Character vector of health zone names
+#' @return Normalized health zone names
+normalize_health_zone <- function(x) {
+  mapping <- get_health_zone_mapping()
+
+  # Apply mapping where matches exist
+  normalized <- x
+  for (i in seq_along(x)) {
+    if (!is.na(x[i])) {
+      # Check exact match first
+      if (x[i] %in% names(mapping)) {
+        normalized[i] <- mapping[x[i]]
+      } else {
+        # Check case-insensitive match
+        match_idx <- which(toupper(names(mapping)) == toupper(x[i]))
+        if (length(match_idx) > 0) {
+          normalized[i] <- mapping[match_idx[1]]
+        }
+      }
+    }
+  }
+
+  normalized
+}
+
+# ============================================================================
 # COLUMN MAPPING CONFIGURATION
 # ============================================================================
 
@@ -228,7 +283,12 @@ clean_biobank_data_improved <- function(df_raw, skip_columns = 24:26) {
       )
     }
   }
-  
+
+  # Step 3b: Normalize health zone names to match geojson map
+  if ("health_zone" %in% names(df)) {
+    df$health_zone <- normalize_health_zone(df$health_zone)
+  }
+
   # Step 4: Calculate derived fields
   df <- df %>%
     mutate(

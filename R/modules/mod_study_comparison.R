@@ -281,8 +281,8 @@ mod_study_comparison_ui <- function(id) {
 # HELPER FUNCTIONS
 # ============================================================================
 
-#' Normalize sample ID for matching
-normalize_id <- function(x) {
+#' Normalize barcode for matching (local to this module)
+.normalize_barcode_for_study <- function(x) {
   if (is.na(x) || x == "") return(NA_character_)
   x <- trimws(tolower(as.character(x)))
   x <- gsub("^kps[-_]?", "", x)
@@ -371,7 +371,7 @@ mod_study_comparison_server <- function(id,
       biobank %>%
         dplyr::select(barcode = !!rlang::sym(barcode_col), study) %>%
         dplyr::filter(!is.na(barcode), barcode != "") %>%
-        dplyr::mutate(barcode_norm = sapply(barcode, normalize_id)) %>%
+        dplyr::mutate(barcode_norm = sapply(barcode, .normalize_barcode_for_study)) %>%
         dplyr::select(barcode_norm, study) %>%
         dplyr::distinct(barcode_norm, .keep_all = TRUE)
     })
@@ -425,7 +425,7 @@ mod_study_comparison_server <- function(id,
       if (is.null(barcode_col)) return(NULL)
 
       elisa %>%
-        dplyr::mutate(barcode_norm = sapply(.data[[barcode_col]], normalize_id)) %>%
+        dplyr::mutate(barcode_norm = sapply(.data[[barcode_col]], .normalize_barcode_for_study)) %>%
         dplyr::left_join(lookup, by = "barcode_norm") %>%
         dplyr::filter(!is.na(study))
     })
@@ -453,7 +453,7 @@ mod_study_comparison_server <- function(id,
       if (is.null(barcode_col)) return(NULL)
 
       elisa %>%
-        dplyr::mutate(barcode_norm = sapply(.data[[barcode_col]], normalize_id)) %>%
+        dplyr::mutate(barcode_norm = sapply(.data[[barcode_col]], .normalize_barcode_for_study)) %>%
         dplyr::left_join(lookup, by = "barcode_norm") %>%
         dplyr::filter(!is.na(study))
     })
@@ -481,7 +481,7 @@ mod_study_comparison_server <- function(id,
       if (is.null(barcode_col)) return(NULL)
 
       ielisa %>%
-        dplyr::mutate(barcode_norm = sapply(.data[[barcode_col]], normalize_id)) %>%
+        dplyr::mutate(barcode_norm = sapply(.data[[barcode_col]], .normalize_barcode_for_study)) %>%
         dplyr::left_join(lookup, by = "barcode_norm") %>%
         dplyr::filter(!is.na(study))
     })
@@ -509,7 +509,7 @@ mod_study_comparison_server <- function(id,
       if (is.null(barcode_col)) return(NULL)
 
       extract %>%
-        dplyr::mutate(barcode_norm = sapply(.data[[barcode_col]], normalize_id)) %>%
+        dplyr::mutate(barcode_norm = sapply(.data[[barcode_col]], .normalize_barcode_for_study)) %>%
         dplyr::left_join(lookup, by = "barcode_norm") %>%
         dplyr::filter(!is.na(study))
     })

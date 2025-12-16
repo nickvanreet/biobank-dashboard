@@ -22,7 +22,7 @@ ui <- do.call(
     # Navigation panels
     list(
       mod_data_quality_ui("data_quality"),
-      mod_overview_assays_ui("overview_assays"),
+      #mod_overview_assays_ui("overview_assays"),
       mod_overview_demographics_ui("overview_demographics"),
       mod_geographic_ui("geographic"),
       mod_transport_ui("transport"),

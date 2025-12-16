@@ -246,6 +246,7 @@ convert_to_legacy_format <- function(modular_output) {
     "sample_type", "sample", "sample_code",
     "numero_labo", "code_barres_kps",
     "PP_percent", "DOD", "sample_positive",
+    "status_final", "status_raw",  # CRITICAL: Required for consolidation
     "Ag_plus_1", "Ag_plus_2", "Ag0_1", "Ag0_2",
     "mean_Ag_plus", "mean_Ag0",
     "cv_Ag_plus", "cv_Ag0",

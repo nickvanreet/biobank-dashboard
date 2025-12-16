@@ -1,6 +1,15 @@
 # R/modules/mod_study_comparison.R
 # Study Results Comparison Module - Compare DA (Active) vs DP (Passive) Screening
 # ============================================================================
+# Enhanced version with:
+# - Filter controls for invalid/borderline results
+# - Test Methods documentation tab
+# - Detailed MIC Cq values (177T, 18S2, RNAseP-DNA, RNAseP-RNA)
+# - ELISA OD values alongside PP%
+# - iELISA LiTat 1.3 and 1.5 separate analysis
+# - Enhanced geographic statistical tests
+# - Clarified significance metrics with effect sizes
+# ============================================================================
 
 # ============================================================================
 # MODULE UI
@@ -17,7 +26,7 @@ mod_study_comparison_ui <- function(id) {
     icon = icon("balance-scale"),
 
     page_fluid(
-      # Header
+      # Header with Filter Controls
       card(
         card_header(
           class = "d-flex justify-content-between align-items-center",
@@ -30,13 +39,34 @@ mod_study_comparison_ui <- function(id) {
         ),
         card_body(
           p("Compare results between Active Screening (DA - Dépistage Actif) and Passive Screening (DP - Dépistage Passif) across demographics, geography, and all test types."),
-          p(class = "text-muted mb-0 small", "Includes chi-squared tests for categorical variables and Mann-Whitney U tests for continuous variables.")
+
+          # Filter controls row
+          layout_columns(
+            col_widths = c(4, 4, 4), gap = "12px",
+
+            div(
+              class = "d-flex align-items-center gap-2",
+              tags$label("Result Filters:", class = "fw-bold"),
+              checkboxInput(ns("exclude_invalid"), "Exclude Invalid Results", value = TRUE)
+            ),
+            div(
+              class = "d-flex align-items-center gap-2",
+              checkboxInput(ns("include_borderline"), "Include Borderline as Positive", value = FALSE)
+            ),
+            div(
+              class = "text-muted small",
+              textOutput(ns("filter_status"))
+            )
+          ),
+
+          p(class = "text-muted mb-0 small mt-2",
+            "Statistical tests: Chi-squared for categorical, Mann-Whitney U for continuous, Fisher's exact for small samples. Effect sizes: Cramér's V, Odds Ratio with 95% CI.")
         )
       ),
 
-      # KPI Summary Row
+      # KPI Summary Row - Enhanced with clearer labels
       layout_column_wrap(
-        width = 1/5, fixed_width = TRUE, heights_equal = "row", gap = "12px",
+        width = 1/6, fixed_width = TRUE, heights_equal = "row", gap = "10px",
 
         value_box(
           title = "DA Samples",
@@ -51,28 +81,74 @@ mod_study_comparison_ui <- function(id) {
           theme = "success"
         ),
         value_box(
-          title = "DA Positivity",
+          title = "DA MIC+",
           value = textOutput(ns("kpi_da_positivity")),
           showcase = icon("vial"),
           theme = "warning"
         ),
         value_box(
-          title = "DP Positivity",
+          title = "DP MIC+",
           value = textOutput(ns("kpi_dp_positivity")),
           showcase = icon("vial"),
           theme = "danger"
         ),
         value_box(
-          title = "Significance",
+          title = "MIC p-value",
           value = textOutput(ns("kpi_overall_pvalue")),
           showcase = icon("calculator"),
-          theme = "secondary"
+          theme = "secondary",
+          p(class = "small text-muted mb-0", "DA vs DP positivity")
+        ),
+        value_box(
+          title = "Effect Size",
+          value = textOutput(ns("kpi_effect_size")),
+          showcase = icon("chart-line"),
+          theme = "light",
+          p(class = "small text-muted mb-0", "Odds Ratio")
         )
       ),
 
       # Main tabbed content
       navset_card_tab(
         id = ns("comparison_tabs"),
+
+        # ==== TAB 0: Overview ====
+        nav_panel(
+          title = "Overview",
+          icon = icon("home"),
+
+          # Quick summary cards
+          layout_column_wrap(
+            width = 1/3, gap = "12px",
+
+            card(
+              card_header(class = "bg-primary text-white", "Sample Overview"),
+              card_body(
+                DT::DTOutput(ns("overview_samples_table"))
+              )
+            ),
+            card(
+              card_header(class = "bg-success text-white", "Test Positivity Overview"),
+              card_body(
+                DT::DTOutput(ns("overview_positivity_table"))
+              )
+            ),
+            card(
+              card_header(class = "bg-info text-white", "Key Findings"),
+              card_body(
+                uiOutput(ns("overview_key_findings"))
+              )
+            )
+          ),
+
+          # Detailed breakdown
+          card(
+            card_header("Detailed Test Results by Study Type"),
+            card_body(
+              DT::DTOutput(ns("overview_detailed_table"))
+            )
+          )
+        ),
 
         # ==== TAB 1: Demographics ====
         nav_panel(
@@ -143,10 +219,36 @@ mod_study_comparison_ui <- function(id) {
             )
           ),
 
+          # NEW: Geographic positivity comparison
+          layout_columns(
+            col_widths = c(6, 6), gap = "16px",
+
+            card(
+              card_header("Positivity Rate by Province"),
+              card_body_fill(
+                plotly::plotlyOutput(ns("province_positivity_plot"), height = "400px")
+              )
+            ),
+            card(
+              card_header("Positivity Rate by Health Zone (Top 10)"),
+              card_body_fill(
+                plotly::plotlyOutput(ns("zone_positivity_plot"), height = "400px")
+              )
+            )
+          ),
+
           card(
             card_header("Geographic Distribution Summary"),
             card_body(
               DT::DTOutput(ns("geographic_stats_table"))
+            )
+          ),
+
+          # NEW: Geographic statistical tests
+          card(
+            card_header("Geographic Statistical Tests"),
+            card_body(
+              DT::DTOutput(ns("geographic_tests_table"))
             )
           )
         ),
@@ -202,6 +304,168 @@ mod_study_comparison_ui <- function(id) {
             card_header("Test Results Statistical Summary"),
             card_body(
               DT::DTOutput(ns("test_stats_table"))
+            )
+          )
+        ),
+
+        # ==== TAB 3b: MIC Detailed ====
+        nav_panel(
+          title = "MIC Details",
+          icon = icon("dna"),
+
+          card(
+            card_header("MIC qPCR Target Analysis: Cq Values by Study Type"),
+            card_body(
+              p(class = "text-muted", "Comparison of Cq (quantification cycle) values for each MIC target between DA and DP samples. Lower Cq = higher parasite load.")
+            )
+          ),
+
+          layout_columns(
+            col_widths = c(6, 6), gap = "16px",
+
+            card(
+              card_header("MIC-177T (Trypanozoon DNA)"),
+              card_body_fill(
+                plotly::plotlyOutput(ns("mic_177t_plot"), height = "350px")
+              )
+            ),
+            card(
+              card_header("MIC-18S2 (18S rRNA gene)"),
+              card_body_fill(
+                plotly::plotlyOutput(ns("mic_18s2_plot"), height = "350px")
+              )
+            )
+          ),
+
+          layout_columns(
+            col_widths = c(6, 6), gap = "16px",
+
+            card(
+              card_header("MIC-RNAseP-DNA (Human DNA control)"),
+              card_body_fill(
+                plotly::plotlyOutput(ns("mic_rnasep_dna_plot"), height = "350px")
+              )
+            ),
+            card(
+              card_header("MIC-RNAseP-RNA (Human RNA control)"),
+              card_body_fill(
+                plotly::plotlyOutput(ns("mic_rnasep_rna_plot"), height = "350px")
+              )
+            )
+          ),
+
+          card(
+            card_header("MIC Cq Values Statistical Summary"),
+            card_body(
+              DT::DTOutput(ns("mic_cq_stats_table"))
+            )
+          )
+        ),
+
+        # ==== TAB 3c: ELISA Detailed ====
+        nav_panel(
+          title = "ELISA Details",
+          icon = icon("flask"),
+
+          card(
+            card_header("ELISA Detailed Analysis: PP% and OD Values"),
+            card_body(
+              p(class = "text-muted", "Comparison of PP% (Percent Positivity) and raw OD (Optical Density) values between DA and DP samples.")
+            )
+          ),
+
+          layout_columns(
+            col_widths = c(6, 6), gap = "16px",
+
+            card(
+              card_header("ELISA-PE: PP% Distribution"),
+              card_body_fill(
+                plotly::plotlyOutput(ns("elisa_pe_pp_plot"), height = "350px")
+              )
+            ),
+            card(
+              card_header("ELISA-PE: OD Values"),
+              card_body_fill(
+                plotly::plotlyOutput(ns("elisa_pe_od_plot"), height = "350px")
+              )
+            )
+          ),
+
+          layout_columns(
+            col_widths = c(6, 6), gap = "16px",
+
+            card(
+              card_header("ELISA-VSG: PP% Distribution"),
+              card_body_fill(
+                plotly::plotlyOutput(ns("elisa_vsg_pp_plot"), height = "350px")
+              )
+            ),
+            card(
+              card_header("ELISA-VSG: OD Values"),
+              card_body_fill(
+                plotly::plotlyOutput(ns("elisa_vsg_od_plot"), height = "350px")
+              )
+            )
+          ),
+
+          card(
+            card_header("ELISA Detailed Statistics"),
+            card_body(
+              DT::DTOutput(ns("elisa_detailed_stats_table"))
+            )
+          )
+        ),
+
+        # ==== TAB 3d: iELISA Detailed ====
+        nav_panel(
+          title = "iELISA Details",
+          icon = icon("vial"),
+
+          card(
+            card_header("iELISA Antigen-Specific Analysis"),
+            card_body(
+              p(class = "text-muted", "Comparison of LiTat 1.3 and LiTat 1.5 antigen results between DA and DP samples.")
+            )
+          ),
+
+          layout_columns(
+            col_widths = c(6, 6), gap = "16px",
+
+            card(
+              card_header("LiTat 1.3 Positivity"),
+              card_body_fill(
+                plotly::plotlyOutput(ns("ielisa_l13_positivity_plot"), height = "350px")
+              )
+            ),
+            card(
+              card_header("LiTat 1.5 Positivity"),
+              card_body_fill(
+                plotly::plotlyOutput(ns("ielisa_l15_positivity_plot"), height = "350px")
+              )
+            )
+          ),
+
+          layout_columns(
+            col_widths = c(6, 6), gap = "16px",
+
+            card(
+              card_header("LiTat 1.3 % Inhibition"),
+              card_body_fill(
+                plotly::plotlyOutput(ns("ielisa_l13_inhibition_plot"), height = "350px")
+              )
+            ),
+            card(
+              card_header("LiTat 1.5 % Inhibition"),
+              card_body_fill(
+                plotly::plotlyOutput(ns("ielisa_l15_inhibition_plot"), height = "350px")
+              )
+            )
+          ),
+
+          card(
+            card_header("iELISA Antigen-Specific Statistics"),
+            card_body(
+              DT::DTOutput(ns("ielisa_detailed_stats_table"))
             )
           )
         ),
@@ -266,9 +530,116 @@ mod_study_comparison_ui <- function(id) {
           ),
 
           card(
-            card_header("Statistical Tests Summary"),
+            card_header("Statistical Tests Summary with Effect Sizes"),
             card_body(
               DT::DTOutput(ns("statistical_tests_table"))
+            )
+          )
+        ),
+
+        # ==== TAB 6: Test Methods ====
+        nav_panel(
+          title = "Test Methods",
+          icon = icon("book"),
+
+          card(
+            card_header(class = "bg-dark text-white", "How Tests Are Calculated"),
+            card_body(
+              h4("Overview"),
+              p("This module compares results between Active Screening (DA) and Passive Screening (DP) using appropriate statistical tests based on data type and sample size."),
+              hr(),
+
+              h4("Data Filtering"),
+              tags$ul(
+                tags$li(tags$strong("Invalid Results:"), " Results with FinalCall = 'Invalid', 'Failed', 'RunInvalid' are excluded by default. Toggle 'Exclude Invalid Results' to include them."),
+                tags$li(tags$strong("Borderline Results:"), " Results with FinalCall = 'Indeterminate', 'Inconclusive', 'Review', 'Retest' are treated as negative by default. Toggle 'Include Borderline as Positive' to count them as positive.")
+              ),
+              hr(),
+
+              h4("Statistical Tests Used"),
+
+              h5("1. Chi-squared Test (χ²)"),
+              p("Used for: Comparing categorical variables (sex, province, health zone, test positivity)"),
+              tags$ul(
+                tags$li("Tests whether the distribution of a categorical variable differs between DA and DP"),
+                tags$li("Requires expected cell counts ≥ 5"),
+                tags$li("Reports: χ² statistic, degrees of freedom, p-value")
+              ),
+
+              h5("2. Fisher's Exact Test"),
+              p("Used for: Categorical comparisons when sample sizes are small (expected counts < 5)"),
+              tags$ul(
+                tags$li("More accurate than chi-squared for small samples"),
+                tags$li("Reports: Odds Ratio, 95% CI, p-value")
+              ),
+
+              h5("3. Mann-Whitney U Test (Wilcoxon rank-sum)"),
+              p("Used for: Comparing continuous variables (age, Cq values, PP%, % inhibition, transport time)"),
+              tags$ul(
+                tags$li("Non-parametric test - does not assume normal distribution"),
+                tags$li("Compares medians between groups"),
+                tags$li("Reports: U statistic, p-value, median (IQR) for each group")
+              ),
+              hr(),
+
+              h4("Effect Size Measures"),
+
+              h5("1. Cramér's V"),
+              p("For categorical variables:"),
+              tags$ul(
+                tags$li("Range: 0 to 1"),
+                tags$li("0.1 = small effect, 0.3 = medium effect, 0.5 = large effect")
+              ),
+
+              h5("2. Odds Ratio (OR)"),
+              p("For binary outcomes (positive/negative):"),
+              tags$ul(
+                tags$li("OR = 1: No difference between DA and DP"),
+                tags$li("OR > 1: Higher odds in DA"),
+                tags$li("OR < 1: Higher odds in DP"),
+                tags$li("95% CI not crossing 1 indicates statistical significance")
+              ),
+
+              h5("3. Cliff's Delta"),
+              p("For continuous variables:"),
+              tags$ul(
+                tags$li("Range: -1 to 1"),
+                tags$li("|d| < 0.147 = negligible, |d| < 0.33 = small, |d| < 0.474 = medium, |d| ≥ 0.474 = large")
+              ),
+              hr(),
+
+              h4("Test-Specific Calculations"),
+
+              h5("MIC qPCR"),
+              tags$ul(
+                tags$li(tags$strong("Positive:"), " FinalCall in ('Positive', 'Positive_DNA', 'Positive_RNA', 'LatePositive')"),
+                tags$li(tags$strong("Targets:"), " 177T (Trypanozoon DNA), 18S2 (18S rRNA), RNAseP-DNA (human DNA control), RNAseP-RNA (human RNA control)"),
+                tags$li(tags$strong("Cq values:"), " Lower Cq = higher parasite/template concentration")
+              ),
+
+              h5("ELISA (PE and VSG)"),
+              tags$ul(
+                tags$li(tags$strong("PP%:"), " (Sample OD / Positive Control OD) × 100"),
+                tags$li(tags$strong("Positive:"), " PP% ≥ cutoff threshold (typically 15-20%)"),
+                tags$li(tags$strong("OD:"), " Raw optical density at 450nm")
+              ),
+
+              h5("iELISA (Inhibition ELISA)"),
+              tags$ul(
+                tags$li(tags$strong("Antigens:"), " LiTat 1.3 and LiTat 1.5 (T.b. gambiense VSGs)"),
+                tags$li(tags$strong("% Inhibition:"), " 100 × (1 - Sample OD / Negative Control OD)"),
+                tags$li(tags$strong("Positive:"), " % Inhibition ≥ threshold (typically 50%)"),
+                tags$li(tags$strong("Borderline:"), " % Inhibition between borderline and positive threshold")
+              ),
+              hr(),
+
+              h4("P-value Interpretation"),
+              tags$ul(
+                tags$li(tags$span(class = "badge bg-success", "p < 0.001"), " Highly significant difference"),
+                tags$li(tags$span(class = "badge bg-warning text-dark", "p < 0.05"), " Significant difference"),
+                tags$li(tags$span(class = "badge bg-secondary", "p ≥ 0.05"), " No significant difference")
+              ),
+              p(class = "text-muted small", "Note: Multiple comparisons may inflate Type I error. Consider Bonferroni correction for formal analysis.")
             )
           )
         )
@@ -288,6 +659,78 @@ mod_study_comparison_ui <- function(id) {
   x <- gsub("^kps[-_]?", "", x)
   x <- gsub("[^a-z0-9]", "", x)
   if (x == "") NA_character_ else x
+}
+
+#' Calculate Cramér's V effect size for chi-squared test
+.cramers_v <- function(chi_result, n) {
+  if (is.null(chi_result) || is.na(n) || n == 0) return(NA_real_)
+  k <- min(chi_result$parameter + 1, 2)  # For 2x2 or 2xk tables
+  v <- sqrt(chi_result$statistic / (n * (k - 1)))
+  as.numeric(v)
+}
+
+#' Calculate Odds Ratio with 95% CI
+.calc_odds_ratio <- function(a, b, c, d) {
+  # a = DA positive, b = DA negative, c = DP positive, d = DP negative
+  # Add 0.5 continuity correction if any cell is 0
+  if (any(c(a, b, c, d) == 0)) {
+    a <- a + 0.5; b <- b + 0.5; c <- c + 0.5; d <- d + 0.5
+  }
+  or <- (a * d) / (b * c)
+  se_log_or <- sqrt(1/a + 1/b + 1/c + 1/d)
+  ci_lower <- exp(log(or) - 1.96 * se_log_or)
+  ci_upper <- exp(log(or) + 1.96 * se_log_or)
+  list(or = or, ci_lower = ci_lower, ci_upper = ci_upper)
+}
+
+#' Calculate Cliff's Delta effect size for continuous variables
+.cliffs_delta <- function(x, y) {
+  if (length(x) == 0 || length(y) == 0) return(NA_real_)
+  n_x <- length(x)
+  n_y <- length(y)
+  # Count dominance
+  d <- 0
+  for (xi in x) {
+    d <- d + sum(xi > y) - sum(xi < y)
+  }
+  d / (n_x * n_y)
+}
+
+#' Interpret effect size magnitude
+.interpret_effect <- function(value, type = "cramers_v") {
+  if (is.na(value)) return("N/A")
+  if (type == "cramers_v") {
+    if (value < 0.1) return("Negligible")
+    if (value < 0.3) return("Small")
+    if (value < 0.5) return("Medium")
+    return("Large")
+  } else if (type == "cliffs_delta") {
+    value <- abs(value)
+    if (value < 0.147) return("Negligible")
+    if (value < 0.33) return("Small")
+    if (value < 0.474) return("Medium")
+    return("Large")
+  }
+  "N/A"
+}
+
+#' Determine if a MIC result is positive based on filter settings
+.is_mic_positive <- function(final_call, include_borderline = FALSE) {
+  positive_values <- c("Positive", "Positive_DNA", "Positive_RNA", "LatePositive")
+  borderline_values <- c("Indeterminate", "Inconclusive", "Review", "Retest")
+
+  if (include_borderline) {
+    return(final_call %in% c(positive_values, borderline_values))
+  }
+  final_call %in% positive_values
+}
+
+#' Filter out invalid results
+.filter_invalid <- function(data, exclude_invalid = TRUE, final_call_col = "FinalCall") {
+
+  if (!exclude_invalid || !final_call_col %in% names(data)) return(data)
+  invalid_values <- c("Invalid", "Failed", "RunInvalid")
+  data %>% dplyr::filter(!.data[[final_call_col]] %in% invalid_values)
 }
 
 # ============================================================================
@@ -317,6 +760,16 @@ mod_study_comparison_server <- function(id,
 
     # Color palette for DA vs DP
     study_colors <- c("DA" = "#3498DB", "DP" = "#E74C3C")
+
+    # ========================================================================
+    # FILTER STATUS OUTPUT
+    # ========================================================================
+
+    output$filter_status <- renderText({
+      invalid_status <- if (input$exclude_invalid) "Invalid excluded" else "Invalid included"
+      borderline_status <- if (input$include_borderline) "Borderline = Positive" else "Borderline = Negative"
+      paste(invalid_status, "|", borderline_status)
+    })
 
     # ========================================================================
     # REACTIVE DATA PREPARATION
@@ -377,6 +830,7 @@ mod_study_comparison_server <- function(id,
     })
 
     # Link MIC data with study type (MIC uses lab numbers, not barcodes)
+    # Apply invalid/borderline filters
     linked_mic_data <- reactive({
       mic <- mic_df()
       lookup <- lab_number_lookup()
@@ -394,10 +848,18 @@ mod_study_comparison_server <- function(id,
       }
       if (is.null(sample_col)) return(NULL)
 
-      mic %>%
+      result <- mic %>%
         dplyr::mutate(lab_number_norm = sapply(.data[[sample_col]], function(x) trimws(tolower(as.character(x))))) %>%
         dplyr::left_join(lookup, by = "lab_number_norm") %>%
         dplyr::filter(!is.na(study))
+
+      # Apply invalid filter
+      if (input$exclude_invalid && "FinalCall" %in% names(result)) {
+        invalid_values <- c("Invalid", "Failed", "RunInvalid")
+        result <- result %>% dplyr::filter(!FinalCall %in% invalid_values)
+      }
+
+      result
     })
 
     # Link ELISA-PE data with study type
@@ -537,9 +999,9 @@ mod_study_comparison_server <- function(id,
       da_mic <- mic %>% dplyr::filter(study == "DA")
       if (nrow(da_mic) == 0) return("N/A")
 
-      # Find positivity - check FinalCall column first
+      # Find positivity - check FinalCall column first, respecting borderline setting
       if ("FinalCall" %in% names(da_mic)) {
-        pos_rate <- mean(da_mic$FinalCall %in% c("Positive", "Positive_DNA", "Positive_RNA", "LatePositive"), na.rm = TRUE) * 100
+        pos_rate <- mean(.is_mic_positive(da_mic$FinalCall, input$include_borderline), na.rm = TRUE) * 100
       } else {
         pos_col <- intersect(c("positive", "is_positive", "overall_positive"), names(da_mic))[1]
         if (is.na(pos_col)) return("N/A")
@@ -556,7 +1018,7 @@ mod_study_comparison_server <- function(id,
       if (nrow(dp_mic) == 0) return("N/A")
 
       if ("FinalCall" %in% names(dp_mic)) {
-        pos_rate <- mean(dp_mic$FinalCall %in% c("Positive", "Positive_DNA", "Positive_RNA", "LatePositive"), na.rm = TRUE) * 100
+        pos_rate <- mean(.is_mic_positive(dp_mic$FinalCall, input$include_borderline), na.rm = TRUE) * 100
       } else {
         pos_col <- intersect(c("positive", "is_positive", "overall_positive"), names(dp_mic))[1]
         if (is.na(pos_col)) return("N/A")
@@ -565,12 +1027,14 @@ mod_study_comparison_server <- function(id,
       sprintf("%.1f%%", pos_rate)
     })
 
+    # Significance KPI - Now for MIC positivity comparison (not sex)
     output$kpi_overall_pvalue <- renderText({
-      data <- biobank_data()
-      if (is.null(data) || !"sex" %in% names(data)) return("N/A")
+      mic <- linked_mic_data()
+      if (is.null(mic) || nrow(mic) == 0 || !"FinalCall" %in% names(mic)) return("N/A")
 
       tryCatch({
-        tbl <- table(data$study, data$sex)
+        is_positive <- .is_mic_positive(mic$FinalCall, input$include_borderline)
+        tbl <- table(mic$study, is_positive)
         if (all(dim(tbl) >= 2) && sum(tbl) > 0) {
           test <- chisq.test(tbl)
           if (test$p.value < 0.001) "p < 0.001" else sprintf("p = %.3f", test$p.value)
@@ -578,6 +1042,332 @@ mod_study_comparison_server <- function(id,
           "N/A"
         }
       }, error = function(e) "N/A")
+    })
+
+    # NEW: Effect size KPI (Odds Ratio for MIC positivity)
+    output$kpi_effect_size <- renderText({
+      mic <- linked_mic_data()
+      if (is.null(mic) || nrow(mic) == 0 || !"FinalCall" %in% names(mic)) return("N/A")
+
+      tryCatch({
+        is_positive <- .is_mic_positive(mic$FinalCall, input$include_borderline)
+
+        da_pos <- sum(mic$study == "DA" & is_positive, na.rm = TRUE)
+        da_neg <- sum(mic$study == "DA" & !is_positive, na.rm = TRUE)
+        dp_pos <- sum(mic$study == "DP" & is_positive, na.rm = TRUE)
+        dp_neg <- sum(mic$study == "DP" & !is_positive, na.rm = TRUE)
+
+        if (da_neg == 0 || dp_neg == 0 || (da_pos + da_neg) == 0 || (dp_pos + dp_neg) == 0) return("N/A")
+
+        or_result <- .calc_odds_ratio(da_pos, da_neg, dp_pos, dp_neg)
+        sprintf("%.2f", or_result$or)
+      }, error = function(e) "N/A")
+    })
+
+    # ========================================================================
+    # OVERVIEW TAB OUTPUTS
+    # ========================================================================
+
+    # Sample overview table
+    output$overview_samples_table <- DT::renderDT({
+      data <- biobank_data()
+      if (is.null(data)) return(DT::datatable(data.frame(Message = "No data")))
+
+      da_n <- sum(data$study == "DA", na.rm = TRUE)
+      dp_n <- sum(data$study == "DP", na.rm = TRUE)
+      total <- da_n + dp_n
+
+      df <- data.frame(
+        Metric = c("Total Samples", "DA (Active)", "DP (Passive)", "DA %", "DP %"),
+        Value = c(
+          scales::comma(total),
+          scales::comma(da_n),
+          scales::comma(dp_n),
+          sprintf("%.1f%%", da_n / max(total, 1) * 100),
+          sprintf("%.1f%%", dp_n / max(total, 1) * 100)
+        ),
+        stringsAsFactors = FALSE
+      )
+
+      DT::datatable(df, rownames = FALSE, options = list(dom = 't', pageLength = 10), class = "table-sm")
+    })
+
+    # Positivity overview table
+    output$overview_positivity_table <- DT::renderDT({
+      results <- list()
+
+      # MIC
+      mic <- linked_mic_data()
+      if (!is.null(mic) && nrow(mic) > 0 && "FinalCall" %in% names(mic)) {
+        is_pos <- .is_mic_positive(mic$FinalCall, input$include_borderline)
+        da_rate <- mean(is_pos[mic$study == "DA"], na.rm = TRUE) * 100
+        dp_rate <- mean(is_pos[mic$study == "DP"], na.rm = TRUE) * 100
+        results[[length(results) + 1]] <- data.frame(
+          Test = "MIC qPCR",
+          DA_Rate = sprintf("%.1f%%", da_rate),
+          DP_Rate = sprintf("%.1f%%", dp_rate),
+          stringsAsFactors = FALSE
+        )
+      }
+
+      # ELISA-PE
+      pe <- linked_elisa_pe_data()
+      if (!is.null(pe) && nrow(pe) > 0) {
+        pos_col <- if ("sample_positive" %in% names(pe)) "sample_positive" else intersect(c("positive", "is_positive"), names(pe))[1]
+        if (!is.na(pos_col) && !is.null(pos_col)) {
+          da_rate <- mean(pe[[pos_col]][pe$study == "DA"] == TRUE, na.rm = TRUE) * 100
+          dp_rate <- mean(pe[[pos_col]][pe$study == "DP"] == TRUE, na.rm = TRUE) * 100
+          results[[length(results) + 1]] <- data.frame(
+            Test = "ELISA-PE",
+            DA_Rate = sprintf("%.1f%%", da_rate),
+            DP_Rate = sprintf("%.1f%%", dp_rate),
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+
+      # ELISA-VSG
+      vsg <- linked_elisa_vsg_data()
+      if (!is.null(vsg) && nrow(vsg) > 0) {
+        pos_col <- if ("sample_positive" %in% names(vsg)) "sample_positive" else intersect(c("positive", "is_positive"), names(vsg))[1]
+        if (!is.na(pos_col) && !is.null(pos_col)) {
+          da_rate <- mean(vsg[[pos_col]][vsg$study == "DA"] == TRUE, na.rm = TRUE) * 100
+          dp_rate <- mean(vsg[[pos_col]][vsg$study == "DP"] == TRUE, na.rm = TRUE) * 100
+          results[[length(results) + 1]] <- data.frame(
+            Test = "ELISA-VSG",
+            DA_Rate = sprintf("%.1f%%", da_rate),
+            DP_Rate = sprintf("%.1f%%", dp_rate),
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+
+      # iELISA
+      ielisa <- linked_ielisa_data()
+      if (!is.null(ielisa) && nrow(ielisa) > 0) {
+        pos_col <- intersect(c("positive_L13", "sample_positive", "positive"), names(ielisa))[1]
+        if (!is.na(pos_col)) {
+          da_rate <- mean(ielisa[[pos_col]][ielisa$study == "DA"] == TRUE, na.rm = TRUE) * 100
+          dp_rate <- mean(ielisa[[pos_col]][ielisa$study == "DP"] == TRUE, na.rm = TRUE) * 100
+          results[[length(results) + 1]] <- data.frame(
+            Test = "iELISA",
+            DA_Rate = sprintf("%.1f%%", da_rate),
+            DP_Rate = sprintf("%.1f%%", dp_rate),
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+
+      if (length(results) == 0) {
+        return(DT::datatable(data.frame(Message = "No test data")))
+      }
+
+      df <- do.call(rbind, results)
+      DT::datatable(df, rownames = FALSE, options = list(dom = 't', pageLength = 10), class = "table-sm")
+    })
+
+    # Key findings
+    output$overview_key_findings <- renderUI({
+      findings <- list()
+
+      mic <- linked_mic_data()
+      if (!is.null(mic) && nrow(mic) > 0 && "FinalCall" %in% names(mic)) {
+        is_pos <- .is_mic_positive(mic$FinalCall, input$include_borderline)
+        da_rate <- mean(is_pos[mic$study == "DA"], na.rm = TRUE) * 100
+        dp_rate <- mean(is_pos[mic$study == "DP"], na.rm = TRUE) * 100
+
+        if (!is.na(da_rate) && !is.na(dp_rate)) {
+          diff <- da_rate - dp_rate
+          direction <- if (diff > 0) "higher" else "lower"
+          findings[[length(findings) + 1]] <- tags$li(
+            sprintf("MIC positivity is %.1f%% %s in DA vs DP (%.1f%% vs %.1f%%)",
+                    abs(diff), direction, da_rate, dp_rate)
+          )
+
+          # Calculate OR
+          da_pos <- sum(mic$study == "DA" & is_pos, na.rm = TRUE)
+          da_neg <- sum(mic$study == "DA" & !is_pos, na.rm = TRUE)
+          dp_pos <- sum(mic$study == "DP" & is_pos, na.rm = TRUE)
+          dp_neg <- sum(mic$study == "DP" & !is_pos, na.rm = TRUE)
+
+          if (da_neg > 0 && dp_neg > 0) {
+            or_result <- .calc_odds_ratio(da_pos, da_neg, dp_pos, dp_neg)
+            findings[[length(findings) + 1]] <- tags$li(
+              sprintf("Odds Ratio (DA vs DP): %.2f (95%% CI: %.2f-%.2f)",
+                      or_result$or, or_result$ci_lower, or_result$ci_upper)
+            )
+          }
+        }
+      }
+
+      data <- biobank_data()
+      if (!is.null(data) && "age" %in% names(data)) {
+        da_median <- median(data$age[data$study == "DA"], na.rm = TRUE)
+        dp_median <- median(data$age[data$study == "DP"], na.rm = TRUE)
+        if (!is.na(da_median) && !is.na(dp_median)) {
+          findings[[length(findings) + 1]] <- tags$li(
+            sprintf("Median age: DA = %.0f years, DP = %.0f years", da_median, dp_median)
+          )
+        }
+      }
+
+      if (length(findings) == 0) {
+        return(p("No significant findings available"))
+      }
+
+      tags$ul(findings)
+    })
+
+    # Detailed overview table
+    output$overview_detailed_table <- DT::renderDT({
+      results <- list()
+
+      # MIC detailed
+      mic <- linked_mic_data()
+      if (!is.null(mic) && nrow(mic) > 0 && "FinalCall" %in% names(mic)) {
+        is_pos <- .is_mic_positive(mic$FinalCall, input$include_borderline)
+        da_n <- sum(mic$study == "DA", na.rm = TRUE)
+        dp_n <- sum(mic$study == "DP", na.rm = TRUE)
+        da_pos <- sum(mic$study == "DA" & is_pos, na.rm = TRUE)
+        dp_pos <- sum(mic$study == "DP" & is_pos, na.rm = TRUE)
+
+        results[[length(results) + 1]] <- data.frame(
+          Test = "MIC qPCR",
+          DA_N = da_n,
+          DA_Pos = da_pos,
+          DA_Rate = sprintf("%.1f%%", da_pos / max(da_n, 1) * 100),
+          DP_N = dp_n,
+          DP_Pos = dp_pos,
+          DP_Rate = sprintf("%.1f%%", dp_pos / max(dp_n, 1) * 100),
+          stringsAsFactors = FALSE
+        )
+
+        # Add borderline counts if applicable
+        if ("FinalCall" %in% names(mic)) {
+          borderline_values <- c("Indeterminate", "Inconclusive", "Review", "Retest")
+          da_borderline <- sum(mic$study == "DA" & mic$FinalCall %in% borderline_values, na.rm = TRUE)
+          dp_borderline <- sum(mic$study == "DP" & mic$FinalCall %in% borderline_values, na.rm = TRUE)
+          results[[length(results) + 1]] <- data.frame(
+            Test = "  - Borderline",
+            DA_N = "",
+            DA_Pos = da_borderline,
+            DA_Rate = sprintf("%.1f%%", da_borderline / max(da_n, 1) * 100),
+            DP_N = "",
+            DP_Pos = dp_borderline,
+            DP_Rate = sprintf("%.1f%%", dp_borderline / max(dp_n, 1) * 100),
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+
+      # ELISA-PE
+      pe <- linked_elisa_pe_data()
+      if (!is.null(pe) && nrow(pe) > 0) {
+        pos_col <- if ("sample_positive" %in% names(pe)) "sample_positive" else intersect(c("positive", "is_positive"), names(pe))[1]
+        if (!is.na(pos_col) && !is.null(pos_col)) {
+          da_n <- sum(pe$study == "DA", na.rm = TRUE)
+          dp_n <- sum(pe$study == "DP", na.rm = TRUE)
+          da_pos <- sum(pe$study == "DA" & pe[[pos_col]] == TRUE, na.rm = TRUE)
+          dp_pos <- sum(pe$study == "DP" & pe[[pos_col]] == TRUE, na.rm = TRUE)
+
+          results[[length(results) + 1]] <- data.frame(
+            Test = "ELISA-PE",
+            DA_N = da_n,
+            DA_Pos = da_pos,
+            DA_Rate = sprintf("%.1f%%", da_pos / max(da_n, 1) * 100),
+            DP_N = dp_n,
+            DP_Pos = dp_pos,
+            DP_Rate = sprintf("%.1f%%", dp_pos / max(dp_n, 1) * 100),
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+
+      # ELISA-VSG
+      vsg <- linked_elisa_vsg_data()
+      if (!is.null(vsg) && nrow(vsg) > 0) {
+        pos_col <- if ("sample_positive" %in% names(vsg)) "sample_positive" else intersect(c("positive", "is_positive"), names(vsg))[1]
+        if (!is.na(pos_col) && !is.null(pos_col)) {
+          da_n <- sum(vsg$study == "DA", na.rm = TRUE)
+          dp_n <- sum(vsg$study == "DP", na.rm = TRUE)
+          da_pos <- sum(vsg$study == "DA" & vsg[[pos_col]] == TRUE, na.rm = TRUE)
+          dp_pos <- sum(vsg$study == "DP" & vsg[[pos_col]] == TRUE, na.rm = TRUE)
+
+          results[[length(results) + 1]] <- data.frame(
+            Test = "ELISA-VSG",
+            DA_N = da_n,
+            DA_Pos = da_pos,
+            DA_Rate = sprintf("%.1f%%", da_pos / max(da_n, 1) * 100),
+            DP_N = dp_n,
+            DP_Pos = dp_pos,
+            DP_Rate = sprintf("%.1f%%", dp_pos / max(dp_n, 1) * 100),
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+
+      # iELISA with L13 and L15
+      ielisa <- linked_ielisa_data()
+      if (!is.null(ielisa) && nrow(ielisa) > 0) {
+        da_n <- sum(ielisa$study == "DA", na.rm = TRUE)
+        dp_n <- sum(ielisa$study == "DP", na.rm = TRUE)
+
+        # Overall
+        pos_col <- intersect(c("sample_positive", "positive_L13", "positive"), names(ielisa))[1]
+        if (!is.na(pos_col)) {
+          da_pos <- sum(ielisa$study == "DA" & ielisa[[pos_col]] == TRUE, na.rm = TRUE)
+          dp_pos <- sum(ielisa$study == "DP" & ielisa[[pos_col]] == TRUE, na.rm = TRUE)
+          results[[length(results) + 1]] <- data.frame(
+            Test = "iELISA (Overall)",
+            DA_N = da_n,
+            DA_Pos = da_pos,
+            DA_Rate = sprintf("%.1f%%", da_pos / max(da_n, 1) * 100),
+            DP_N = dp_n,
+            DP_Pos = dp_pos,
+            DP_Rate = sprintf("%.1f%%", dp_pos / max(dp_n, 1) * 100),
+            stringsAsFactors = FALSE
+          )
+        }
+
+        # L13
+        if ("positive_L13" %in% names(ielisa)) {
+          da_pos <- sum(ielisa$study == "DA" & ielisa$positive_L13 == TRUE, na.rm = TRUE)
+          dp_pos <- sum(ielisa$study == "DP" & ielisa$positive_L13 == TRUE, na.rm = TRUE)
+          results[[length(results) + 1]] <- data.frame(
+            Test = "  - LiTat 1.3",
+            DA_N = "",
+            DA_Pos = da_pos,
+            DA_Rate = sprintf("%.1f%%", da_pos / max(da_n, 1) * 100),
+            DP_N = "",
+            DP_Pos = dp_pos,
+            DP_Rate = sprintf("%.1f%%", dp_pos / max(dp_n, 1) * 100),
+            stringsAsFactors = FALSE
+          )
+        }
+
+        # L15
+        if ("positive_L15" %in% names(ielisa)) {
+          da_pos <- sum(ielisa$study == "DA" & ielisa$positive_L15 == TRUE, na.rm = TRUE)
+          dp_pos <- sum(ielisa$study == "DP" & ielisa$positive_L15 == TRUE, na.rm = TRUE)
+          results[[length(results) + 1]] <- data.frame(
+            Test = "  - LiTat 1.5",
+            DA_N = "",
+            DA_Pos = da_pos,
+            DA_Rate = sprintf("%.1f%%", da_pos / max(da_n, 1) * 100),
+            DP_N = "",
+            DP_Pos = dp_pos,
+            DP_Rate = sprintf("%.1f%%", dp_pos / max(dp_n, 1) * 100),
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+
+      if (length(results) == 0) {
+        return(DT::datatable(data.frame(Message = "No test data available")))
+      }
+
+      df <- do.call(rbind, results)
+      DT::datatable(df, rownames = FALSE, options = list(pageLength = 20, scrollX = TRUE), class = "table-sm")
     })
 
     # ========================================================================
@@ -851,6 +1641,221 @@ mod_study_comparison_server <- function(id,
         zone_summary,
         rownames = FALSE,
         options = list(pageLength = 15, scrollX = TRUE),
+        class = "table-sm"
+      )
+    })
+
+    # NEW: Province positivity plot
+    output$province_positivity_plot <- plotly::renderPlotly({
+      data <- biobank_data()
+      mic <- linked_mic_data()
+
+      if (is.null(data) || is.null(mic) || !"province" %in% names(data)) return(plotly::plotly_empty())
+      if (!"FinalCall" %in% names(mic)) return(plotly::plotly_empty())
+
+      # Get lab number column for joining
+      lab_col <- intersect(c("numero_labo", "lab_id", "numero"), names(data))[1]
+      if (is.na(lab_col)) return(plotly::plotly_empty())
+
+      # Create combined dataset
+      is_positive <- .is_mic_positive(mic$FinalCall, input$include_borderline)
+      mic_summary <- mic %>%
+        dplyr::mutate(mic_positive = is_positive) %>%
+        dplyr::select(lab_number_norm, mic_positive)
+
+      combined <- data %>%
+        dplyr::mutate(lab_number_norm = sapply(.data[[lab_col]], function(x) trimws(tolower(as.character(x))))) %>%
+        dplyr::left_join(mic_summary, by = "lab_number_norm") %>%
+        dplyr::filter(!is.na(province), !is.na(mic_positive))
+
+      if (nrow(combined) == 0) return(plotly::plotly_empty())
+
+      prov_positivity <- combined %>%
+        dplyr::group_by(study, province) %>%
+        dplyr::summarise(
+          n = dplyr::n(),
+          pos = sum(mic_positive, na.rm = TRUE),
+          rate = pos / n * 100,
+          .groups = "drop"
+        )
+
+      plotly::plot_ly(prov_positivity, x = ~province, y = ~rate, color = ~study,
+                      colors = study_colors, type = "bar",
+                      text = ~sprintf("%.1f%% (%d/%d)", rate, pos, n), textposition = "auto",
+                      hovertemplate = "Province: %{x}<br>Study: %{fullData.name}<br>Rate: %{y:.1f}%<extra></extra>") %>%
+        plotly::layout(
+          barmode = "group",
+          xaxis = list(title = ""),
+          yaxis = list(title = "MIC Positivity Rate (%)"),
+          legend = list(orientation = "h", y = -0.2)
+        )
+    })
+
+    # NEW: Zone positivity plot
+    output$zone_positivity_plot <- plotly::renderPlotly({
+      data <- biobank_data()
+      mic <- linked_mic_data()
+
+      if (is.null(data) || is.null(mic) || !"health_zone" %in% names(data)) return(plotly::plotly_empty())
+      if (!"FinalCall" %in% names(mic)) return(plotly::plotly_empty())
+
+      lab_col <- intersect(c("numero_labo", "lab_id", "numero"), names(data))[1]
+      if (is.na(lab_col)) return(plotly::plotly_empty())
+
+      is_positive <- .is_mic_positive(mic$FinalCall, input$include_borderline)
+      mic_summary <- mic %>%
+        dplyr::mutate(mic_positive = is_positive) %>%
+        dplyr::select(lab_number_norm, mic_positive)
+
+      combined <- data %>%
+        dplyr::mutate(lab_number_norm = sapply(.data[[lab_col]], function(x) trimws(tolower(as.character(x))))) %>%
+        dplyr::left_join(mic_summary, by = "lab_number_norm") %>%
+        dplyr::filter(!is.na(health_zone), !is.na(mic_positive))
+
+      if (nrow(combined) == 0) return(plotly::plotly_empty())
+
+      # Get top 10 zones
+      top_zones <- combined %>%
+        dplyr::count(health_zone, sort = TRUE) %>%
+        dplyr::slice_head(n = 10) %>%
+        dplyr::pull(health_zone)
+
+      zone_positivity <- combined %>%
+        dplyr::filter(health_zone %in% top_zones) %>%
+        dplyr::group_by(study, health_zone) %>%
+        dplyr::summarise(
+          n = dplyr::n(),
+          pos = sum(mic_positive, na.rm = TRUE),
+          rate = pos / n * 100,
+          .groups = "drop"
+        )
+
+      plotly::plot_ly(zone_positivity, y = ~health_zone, x = ~rate, color = ~study,
+                      colors = study_colors, type = "bar", orientation = "h",
+                      text = ~sprintf("%.1f%%", rate), textposition = "auto",
+                      hovertemplate = "Zone: %{y}<br>Study: %{fullData.name}<br>Rate: %{x:.1f}%<extra></extra>") %>%
+        plotly::layout(
+          barmode = "group",
+          xaxis = list(title = "MIC Positivity Rate (%)"),
+          yaxis = list(title = "", categoryorder = "total ascending"),
+          legend = list(orientation = "h", y = -0.15)
+        )
+    })
+
+    # NEW: Geographic statistical tests table
+    output$geographic_tests_table <- DT::renderDT({
+      data <- biobank_data()
+      if (is.null(data)) return(DT::datatable(data.frame(Message = "No data")))
+
+      tests <- list()
+
+      # Province distribution test
+      if ("province" %in% names(data)) {
+        tbl <- table(data$study, data$province)
+        if (all(dim(tbl) >= 2) && sum(tbl) > 0) {
+          chi_test <- tryCatch(chisq.test(tbl), error = function(e) NULL)
+          if (!is.null(chi_test)) {
+            cramers <- .cramers_v(chi_test, sum(tbl))
+            tests[[length(tests) + 1]] <- data.frame(
+              Variable = "Province Distribution",
+              Test = "Chi-squared",
+              Statistic = sprintf("χ² = %.2f (df=%d)", chi_test$statistic, chi_test$parameter),
+              P_Value = chi_test$p.value,
+              Effect_Size = sprintf("V = %.3f (%s)", cramers, .interpret_effect(cramers, "cramers_v")),
+              stringsAsFactors = FALSE
+            )
+          }
+        }
+      }
+
+      # Health zone distribution test
+      if ("health_zone" %in% names(data)) {
+        tbl <- table(data$study, data$health_zone)
+        if (all(dim(tbl) >= 2) && sum(tbl) > 0) {
+          chi_test <- tryCatch(chisq.test(tbl), error = function(e) NULL)
+          if (!is.null(chi_test)) {
+            cramers <- .cramers_v(chi_test, sum(tbl))
+            tests[[length(tests) + 1]] <- data.frame(
+              Variable = "Health Zone Distribution",
+              Test = "Chi-squared",
+              Statistic = sprintf("χ² = %.2f (df=%d)", chi_test$statistic, chi_test$parameter),
+              P_Value = chi_test$p.value,
+              Effect_Size = sprintf("V = %.3f (%s)", cramers, .interpret_effect(cramers, "cramers_v")),
+              stringsAsFactors = FALSE
+            )
+          }
+        }
+      }
+
+      # Geographic positivity test (if MIC data available)
+      mic <- linked_mic_data()
+      if (!is.null(mic) && nrow(mic) > 0 && "FinalCall" %in% names(mic) && "province" %in% names(data)) {
+        lab_col <- intersect(c("numero_labo", "lab_id", "numero"), names(data))[1]
+        if (!is.na(lab_col)) {
+          is_positive <- .is_mic_positive(mic$FinalCall, input$include_borderline)
+          mic_summary <- mic %>%
+            dplyr::mutate(mic_positive = is_positive) %>%
+            dplyr::select(lab_number_norm, mic_positive)
+
+          combined <- data %>%
+            dplyr::mutate(lab_number_norm = sapply(.data[[lab_col]], function(x) trimws(tolower(as.character(x))))) %>%
+            dplyr::left_join(mic_summary, by = "lab_number_norm") %>%
+            dplyr::filter(!is.na(province), !is.na(mic_positive))
+
+          if (nrow(combined) > 0) {
+            # Test: Province vs MIC positivity
+            tbl <- table(combined$province, combined$mic_positive)
+            if (all(dim(tbl) >= 2) && sum(tbl) > 0) {
+              chi_test <- tryCatch(chisq.test(tbl), error = function(e) NULL)
+              if (!is.null(chi_test)) {
+                cramers <- .cramers_v(chi_test, sum(tbl))
+                tests[[length(tests) + 1]] <- data.frame(
+                  Variable = "Province vs MIC Positivity",
+                  Test = "Chi-squared",
+                  Statistic = sprintf("χ² = %.2f (df=%d)", chi_test$statistic, chi_test$parameter),
+                  P_Value = chi_test$p.value,
+                  Effect_Size = sprintf("V = %.3f (%s)", cramers, .interpret_effect(cramers, "cramers_v")),
+                  stringsAsFactors = FALSE
+                )
+              }
+            }
+
+            # Test: Health zone vs MIC positivity
+            if ("health_zone" %in% names(combined)) {
+              combined_hz <- combined %>% dplyr::filter(!is.na(health_zone))
+              if (nrow(combined_hz) > 0) {
+                tbl <- table(combined_hz$health_zone, combined_hz$mic_positive)
+                if (all(dim(tbl) >= 2) && sum(tbl) > 0) {
+                  chi_test <- tryCatch(chisq.test(tbl), error = function(e) NULL)
+                  if (!is.null(chi_test)) {
+                    cramers <- .cramers_v(chi_test, sum(tbl))
+                    tests[[length(tests) + 1]] <- data.frame(
+                      Variable = "Health Zone vs MIC Positivity",
+                      Test = "Chi-squared",
+                      Statistic = sprintf("χ² = %.2f (df=%d)", chi_test$statistic, chi_test$parameter),
+                      P_Value = chi_test$p.value,
+                      Effect_Size = sprintf("V = %.3f (%s)", cramers, .interpret_effect(cramers, "cramers_v")),
+                      stringsAsFactors = FALSE
+                    )
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (length(tests) == 0) {
+        return(DT::datatable(data.frame(Message = "Insufficient geographic data for tests")))
+      }
+
+      tests_df <- do.call(rbind, tests)
+      tests_df$P_Value <- sprintf("%.4f", tests_df$P_Value)
+
+      DT::datatable(
+        tests_df,
+        rownames = FALSE,
+        options = list(pageLength = 10, dom = 't', scrollX = TRUE),
         class = "table-sm"
       )
     })
@@ -1171,6 +2176,375 @@ mod_study_comparison_server <- function(id,
         DT::formatStyle("P_Value",
           backgroundColor = DT::styleInterval(c(0.001, 0.05), c("#d4edda", "#fff3cd", "#f8f9fa"))
         )
+    })
+
+    # ========================================================================
+    # MIC DETAILED PLOTS (Cq values)
+    # ========================================================================
+
+    # Helper to create MIC Cq boxplot
+    .create_mic_cq_plot <- function(mic_data, cq_col, title) {
+      if (is.null(mic_data) || nrow(mic_data) == 0) return(plotly::plotly_empty())
+      if (!cq_col %in% names(mic_data)) return(plotly::plotly_empty())
+
+      data_filtered <- mic_data %>% dplyr::filter(!is.na(.data[[cq_col]]))
+      if (nrow(data_filtered) == 0) return(plotly::plotly_empty())
+
+      plotly::plot_ly(data_filtered, x = ~study, y = ~.data[[cq_col]], color = ~study,
+                      colors = study_colors, type = "box",
+                      hovertemplate = "Study: %{x}<br>Cq: %{y:.2f}<extra></extra>") %>%
+        plotly::layout(
+          xaxis = list(title = "Study Type"),
+          yaxis = list(title = paste0("Cq Value (", title, ")")),
+          showlegend = FALSE
+        )
+    }
+
+    output$mic_177t_plot <- plotly::renderPlotly({
+      mic <- linked_mic_data()
+      cq_col <- intersect(c("Cq_177T", "cq_177t", "177T_Cq", "Cq.177T"), names(mic))[1]
+      if (is.na(cq_col)) cq_col <- "Cq_177T"  # Default
+      .create_mic_cq_plot(mic, cq_col, "177T")
+    })
+
+    output$mic_18s2_plot <- plotly::renderPlotly({
+      mic <- linked_mic_data()
+      cq_col <- intersect(c("Cq_18S2", "cq_18s2", "18S2_Cq", "Cq.18S2"), names(mic))[1]
+      if (is.na(cq_col)) cq_col <- "Cq_18S2"
+      .create_mic_cq_plot(mic, cq_col, "18S2")
+    })
+
+    output$mic_rnasep_dna_plot <- plotly::renderPlotly({
+      mic <- linked_mic_data()
+      cq_col <- intersect(c("Cq_RNAseP_DNA", "cq_rnasep_dna", "RNAseP_DNA_Cq", "Cq.RNAseP.DNA"), names(mic))[1]
+      if (is.na(cq_col)) cq_col <- "Cq_RNAseP_DNA"
+      .create_mic_cq_plot(mic, cq_col, "RNAseP-DNA")
+    })
+
+    output$mic_rnasep_rna_plot <- plotly::renderPlotly({
+      mic <- linked_mic_data()
+      cq_col <- intersect(c("Cq_RNAseP_RNA", "cq_rnasep_rna", "RNAseP_RNA_Cq", "Cq.RNAseP.RNA"), names(mic))[1]
+      if (is.na(cq_col)) cq_col <- "Cq_RNAseP_RNA"
+      .create_mic_cq_plot(mic, cq_col, "RNAseP-RNA")
+    })
+
+    # MIC Cq statistics table
+    output$mic_cq_stats_table <- DT::renderDT({
+      mic <- linked_mic_data()
+      if (is.null(mic) || nrow(mic) == 0) {
+        return(DT::datatable(data.frame(Message = "No MIC data available")))
+      }
+
+      stats <- list()
+      cq_cols <- list(
+        "177T" = c("Cq_177T", "cq_177t", "177T_Cq"),
+        "18S2" = c("Cq_18S2", "cq_18s2", "18S2_Cq"),
+        "RNAseP-DNA" = c("Cq_RNAseP_DNA", "cq_rnasep_dna", "RNAseP_DNA_Cq"),
+        "RNAseP-RNA" = c("Cq_RNAseP_RNA", "cq_rnasep_rna", "RNAseP_RNA_Cq")
+      )
+
+      for (target in names(cq_cols)) {
+        cq_col <- intersect(cq_cols[[target]], names(mic))[1]
+        if (!is.na(cq_col)) {
+          da_vals <- mic[[cq_col]][mic$study == "DA" & !is.na(mic[[cq_col]])]
+          dp_vals <- mic[[cq_col]][mic$study == "DP" & !is.na(mic[[cq_col]])]
+
+          if (length(da_vals) > 0 && length(dp_vals) > 0) {
+            wilcox_test <- tryCatch(wilcox.test(da_vals, dp_vals), error = function(e) NULL)
+            stats[[length(stats) + 1]] <- data.frame(
+              Target = target,
+              DA_N = length(da_vals),
+              DA_Median_IQR = sprintf("%.1f (%.1f-%.1f)", median(da_vals), quantile(da_vals, 0.25), quantile(da_vals, 0.75)),
+              DP_N = length(dp_vals),
+              DP_Median_IQR = sprintf("%.1f (%.1f-%.1f)", median(dp_vals), quantile(dp_vals, 0.25), quantile(dp_vals, 0.75)),
+              P_Value = if (!is.null(wilcox_test)) sprintf("%.4f", wilcox_test$p.value) else "N/A",
+              stringsAsFactors = FALSE
+            )
+          }
+        }
+      }
+
+      if (length(stats) == 0) {
+        return(DT::datatable(data.frame(Message = "No Cq data available")))
+      }
+
+      DT::datatable(do.call(rbind, stats), rownames = FALSE,
+                    options = list(dom = 't', pageLength = 10), class = "table-sm") %>%
+        DT::formatStyle("P_Value",
+          backgroundColor = DT::styleInterval(c(0.001, 0.05), c("#d4edda", "#fff3cd", "#f8f9fa")))
+    })
+
+    # ========================================================================
+    # ELISA DETAILED PLOTS (PP% and OD)
+    # ========================================================================
+
+    output$elisa_pe_pp_plot <- plotly::renderPlotly({
+      pe <- linked_elisa_pe_data()
+      if (is.null(pe) || nrow(pe) == 0) return(plotly::plotly_empty())
+
+      pp_col <- intersect(c("PP_percent", "pp_percent", "PP"), names(pe))[1]
+      if (is.na(pp_col)) return(plotly::plotly_empty())
+
+      pe_filtered <- pe %>% dplyr::filter(!is.na(.data[[pp_col]]))
+      if (nrow(pe_filtered) == 0) return(plotly::plotly_empty())
+
+      plotly::plot_ly(pe_filtered, x = ~study, y = ~.data[[pp_col]], color = ~study,
+                      colors = study_colors, type = "box",
+                      hovertemplate = "Study: %{x}<br>PP%%: %{y:.1f}<extra></extra>") %>%
+        plotly::layout(xaxis = list(title = "Study Type"), yaxis = list(title = "PP%"), showlegend = FALSE)
+    })
+
+    output$elisa_pe_od_plot <- plotly::renderPlotly({
+      pe <- linked_elisa_pe_data()
+      if (is.null(pe) || nrow(pe) == 0) return(plotly::plotly_empty())
+
+      od_col <- intersect(c("OD", "od", "OD_450", "od_450", "optical_density"), names(pe))[1]
+      if (is.na(od_col)) return(plotly::plotly_empty())
+
+      pe_filtered <- pe %>% dplyr::filter(!is.na(.data[[od_col]]))
+      if (nrow(pe_filtered) == 0) return(plotly::plotly_empty())
+
+      plotly::plot_ly(pe_filtered, x = ~study, y = ~.data[[od_col]], color = ~study,
+                      colors = study_colors, type = "box",
+                      hovertemplate = "Study: %{x}<br>OD: %{y:.3f}<extra></extra>") %>%
+        plotly::layout(xaxis = list(title = "Study Type"), yaxis = list(title = "OD (450nm)"), showlegend = FALSE)
+    })
+
+    output$elisa_vsg_pp_plot <- plotly::renderPlotly({
+      vsg <- linked_elisa_vsg_data()
+      if (is.null(vsg) || nrow(vsg) == 0) return(plotly::plotly_empty())
+
+      pp_col <- intersect(c("PP_percent", "pp_percent", "PP"), names(vsg))[1]
+      if (is.na(pp_col)) return(plotly::plotly_empty())
+
+      vsg_filtered <- vsg %>% dplyr::filter(!is.na(.data[[pp_col]]))
+      if (nrow(vsg_filtered) == 0) return(plotly::plotly_empty())
+
+      plotly::plot_ly(vsg_filtered, x = ~study, y = ~.data[[pp_col]], color = ~study,
+                      colors = study_colors, type = "box",
+                      hovertemplate = "Study: %{x}<br>PP%%: %{y:.1f}<extra></extra>") %>%
+        plotly::layout(xaxis = list(title = "Study Type"), yaxis = list(title = "PP%"), showlegend = FALSE)
+    })
+
+    output$elisa_vsg_od_plot <- plotly::renderPlotly({
+      vsg <- linked_elisa_vsg_data()
+      if (is.null(vsg) || nrow(vsg) == 0) return(plotly::plotly_empty())
+
+      od_col <- intersect(c("OD", "od", "OD_450", "od_450", "optical_density"), names(vsg))[1]
+      if (is.na(od_col)) return(plotly::plotly_empty())
+
+      vsg_filtered <- vsg %>% dplyr::filter(!is.na(.data[[od_col]]))
+      if (nrow(vsg_filtered) == 0) return(plotly::plotly_empty())
+
+      plotly::plot_ly(vsg_filtered, x = ~study, y = ~.data[[od_col]], color = ~study,
+                      colors = study_colors, type = "box",
+                      hovertemplate = "Study: %{x}<br>OD: %{y:.3f}<extra></extra>") %>%
+        plotly::layout(xaxis = list(title = "Study Type"), yaxis = list(title = "OD (450nm)"), showlegend = FALSE)
+    })
+
+    # ELISA detailed statistics
+    output$elisa_detailed_stats_table <- DT::renderDT({
+      stats <- list()
+
+      # ELISA-PE PP%
+      pe <- linked_elisa_pe_data()
+      if (!is.null(pe) && nrow(pe) > 0) {
+        pp_col <- intersect(c("PP_percent", "pp_percent", "PP"), names(pe))[1]
+        if (!is.na(pp_col)) {
+          da_vals <- pe[[pp_col]][pe$study == "DA" & !is.na(pe[[pp_col]])]
+          dp_vals <- pe[[pp_col]][pe$study == "DP" & !is.na(pe[[pp_col]])]
+          if (length(da_vals) > 0 && length(dp_vals) > 0) {
+            wilcox <- tryCatch(wilcox.test(da_vals, dp_vals), error = function(e) NULL)
+            stats[[length(stats) + 1]] <- data.frame(
+              Assay = "ELISA-PE", Measure = "PP%",
+              DA_Median = sprintf("%.1f (%.1f-%.1f)", median(da_vals), quantile(da_vals, 0.25), quantile(da_vals, 0.75)),
+              DP_Median = sprintf("%.1f (%.1f-%.1f)", median(dp_vals), quantile(dp_vals, 0.25), quantile(dp_vals, 0.75)),
+              P_Value = if (!is.null(wilcox)) sprintf("%.4f", wilcox$p.value) else "N/A",
+              stringsAsFactors = FALSE)
+          }
+        }
+      }
+
+      # ELISA-VSG PP%
+      vsg <- linked_elisa_vsg_data()
+      if (!is.null(vsg) && nrow(vsg) > 0) {
+        pp_col <- intersect(c("PP_percent", "pp_percent", "PP"), names(vsg))[1]
+        if (!is.na(pp_col)) {
+          da_vals <- vsg[[pp_col]][vsg$study == "DA" & !is.na(vsg[[pp_col]])]
+          dp_vals <- vsg[[pp_col]][vsg$study == "DP" & !is.na(vsg[[pp_col]])]
+          if (length(da_vals) > 0 && length(dp_vals) > 0) {
+            wilcox <- tryCatch(wilcox.test(da_vals, dp_vals), error = function(e) NULL)
+            stats[[length(stats) + 1]] <- data.frame(
+              Assay = "ELISA-VSG", Measure = "PP%",
+              DA_Median = sprintf("%.1f (%.1f-%.1f)", median(da_vals), quantile(da_vals, 0.25), quantile(da_vals, 0.75)),
+              DP_Median = sprintf("%.1f (%.1f-%.1f)", median(dp_vals), quantile(dp_vals, 0.25), quantile(dp_vals, 0.75)),
+              P_Value = if (!is.null(wilcox)) sprintf("%.4f", wilcox$p.value) else "N/A",
+              stringsAsFactors = FALSE)
+          }
+        }
+      }
+
+      if (length(stats) == 0) return(DT::datatable(data.frame(Message = "No ELISA data")))
+      DT::datatable(do.call(rbind, stats), rownames = FALSE, options = list(dom = 't'), class = "table-sm") %>%
+        DT::formatStyle("P_Value", backgroundColor = DT::styleInterval(c(0.001, 0.05), c("#d4edda", "#fff3cd", "#f8f9fa")))
+    })
+
+    # ========================================================================
+    # iELISA DETAILED PLOTS (L13 and L15)
+    # ========================================================================
+
+    output$ielisa_l13_positivity_plot <- plotly::renderPlotly({
+      ielisa <- linked_ielisa_data()
+      if (is.null(ielisa) || nrow(ielisa) == 0 || !"positive_L13" %in% names(ielisa)) return(plotly::plotly_empty())
+
+      pos_data <- ielisa %>%
+        dplyr::group_by(study) %>%
+        dplyr::summarise(
+          n = dplyr::n(),
+          pos = sum(positive_L13 == TRUE, na.rm = TRUE),
+          rate = pos / n * 100,
+          .groups = "drop"
+        )
+
+      plotly::plot_ly(pos_data, x = ~study, y = ~rate, color = ~study, colors = study_colors, type = "bar",
+                      text = ~sprintf("%.1f%% (%d/%d)", rate, pos, n), textposition = "auto",
+                      hovertemplate = "Study: %{x}<br>Rate: %{y:.1f}%<extra></extra>") %>%
+        plotly::layout(xaxis = list(title = "Study Type"), yaxis = list(title = "LiTat 1.3 Positivity (%)"), showlegend = FALSE)
+    })
+
+    output$ielisa_l15_positivity_plot <- plotly::renderPlotly({
+      ielisa <- linked_ielisa_data()
+      if (is.null(ielisa) || nrow(ielisa) == 0 || !"positive_L15" %in% names(ielisa)) return(plotly::plotly_empty())
+
+      pos_data <- ielisa %>%
+        dplyr::group_by(study) %>%
+        dplyr::summarise(
+          n = dplyr::n(),
+          pos = sum(positive_L15 == TRUE, na.rm = TRUE),
+          rate = pos / n * 100,
+          .groups = "drop"
+        )
+
+      plotly::plot_ly(pos_data, x = ~study, y = ~rate, color = ~study, colors = study_colors, type = "bar",
+                      text = ~sprintf("%.1f%% (%d/%d)", rate, pos, n), textposition = "auto",
+                      hovertemplate = "Study: %{x}<br>Rate: %{y:.1f}%<extra></extra>") %>%
+        plotly::layout(xaxis = list(title = "Study Type"), yaxis = list(title = "LiTat 1.5 Positivity (%)"), showlegend = FALSE)
+    })
+
+    output$ielisa_l13_inhibition_plot <- plotly::renderPlotly({
+      ielisa <- linked_ielisa_data()
+      if (is.null(ielisa) || nrow(ielisa) == 0) return(plotly::plotly_empty())
+
+      inh_col <- intersect(c("pct_inh_f2_13", "pct_inh_f1_13", "pct_inhibition_L13"), names(ielisa))[1]
+      if (is.na(inh_col)) return(plotly::plotly_empty())
+
+      ielisa_filtered <- ielisa %>% dplyr::filter(!is.na(.data[[inh_col]]))
+      if (nrow(ielisa_filtered) == 0) return(plotly::plotly_empty())
+
+      plotly::plot_ly(ielisa_filtered, x = ~study, y = ~.data[[inh_col]], color = ~study,
+                      colors = study_colors, type = "box",
+                      hovertemplate = "Study: %{x}<br>%% Inh: %{y:.1f}<extra></extra>") %>%
+        plotly::layout(xaxis = list(title = "Study Type"), yaxis = list(title = "% Inhibition (L13)"), showlegend = FALSE)
+    })
+
+    output$ielisa_l15_inhibition_plot <- plotly::renderPlotly({
+      ielisa <- linked_ielisa_data()
+      if (is.null(ielisa) || nrow(ielisa) == 0) return(plotly::plotly_empty())
+
+      inh_col <- intersect(c("pct_inh_f2_15", "pct_inh_f1_15", "pct_inhibition_L15"), names(ielisa))[1]
+      if (is.na(inh_col)) return(plotly::plotly_empty())
+
+      ielisa_filtered <- ielisa %>% dplyr::filter(!is.na(.data[[inh_col]]))
+      if (nrow(ielisa_filtered) == 0) return(plotly::plotly_empty())
+
+      plotly::plot_ly(ielisa_filtered, x = ~study, y = ~.data[[inh_col]], color = ~study,
+                      colors = study_colors, type = "box",
+                      hovertemplate = "Study: %{x}<br>%% Inh: %{y:.1f}<extra></extra>") %>%
+        plotly::layout(xaxis = list(title = "Study Type"), yaxis = list(title = "% Inhibition (L15)"), showlegend = FALSE)
+    })
+
+    # iELISA detailed statistics
+    output$ielisa_detailed_stats_table <- DT::renderDT({
+      ielisa <- linked_ielisa_data()
+      if (is.null(ielisa) || nrow(ielisa) == 0) return(DT::datatable(data.frame(Message = "No iELISA data")))
+
+      stats <- list()
+      da_n <- sum(ielisa$study == "DA", na.rm = TRUE)
+      dp_n <- sum(ielisa$study == "DP", na.rm = TRUE)
+
+      # L13 positivity
+      if ("positive_L13" %in% names(ielisa)) {
+        da_pos <- sum(ielisa$study == "DA" & ielisa$positive_L13 == TRUE, na.rm = TRUE)
+        dp_pos <- sum(ielisa$study == "DP" & ielisa$positive_L13 == TRUE, na.rm = TRUE)
+        if (da_n > 0 && dp_n > 0) {
+          tbl <- matrix(c(da_pos, da_n - da_pos, dp_pos, dp_n - dp_pos), nrow = 2)
+          chi <- tryCatch(chisq.test(tbl), error = function(e) NULL)
+          or <- .calc_odds_ratio(da_pos, da_n - da_pos, dp_pos, dp_n - dp_pos)
+          stats[[length(stats) + 1]] <- data.frame(
+            Antigen = "LiTat 1.3", Measure = "Positivity",
+            DA = sprintf("%d/%d (%.1f%%)", da_pos, da_n, da_pos/da_n*100),
+            DP = sprintf("%d/%d (%.1f%%)", dp_pos, dp_n, dp_pos/dp_n*100),
+            OR_95CI = sprintf("%.2f (%.2f-%.2f)", or$or, or$ci_lower, or$ci_upper),
+            P_Value = if (!is.null(chi)) sprintf("%.4f", chi$p.value) else "N/A",
+            stringsAsFactors = FALSE)
+        }
+      }
+
+      # L15 positivity
+      if ("positive_L15" %in% names(ielisa)) {
+        da_pos <- sum(ielisa$study == "DA" & ielisa$positive_L15 == TRUE, na.rm = TRUE)
+        dp_pos <- sum(ielisa$study == "DP" & ielisa$positive_L15 == TRUE, na.rm = TRUE)
+        if (da_n > 0 && dp_n > 0) {
+          tbl <- matrix(c(da_pos, da_n - da_pos, dp_pos, dp_n - dp_pos), nrow = 2)
+          chi <- tryCatch(chisq.test(tbl), error = function(e) NULL)
+          or <- .calc_odds_ratio(da_pos, da_n - da_pos, dp_pos, dp_n - dp_pos)
+          stats[[length(stats) + 1]] <- data.frame(
+            Antigen = "LiTat 1.5", Measure = "Positivity",
+            DA = sprintf("%d/%d (%.1f%%)", da_pos, da_n, da_pos/da_n*100),
+            DP = sprintf("%d/%d (%.1f%%)", dp_pos, dp_n, dp_pos/dp_n*100),
+            OR_95CI = sprintf("%.2f (%.2f-%.2f)", or$or, or$ci_lower, or$ci_upper),
+            P_Value = if (!is.null(chi)) sprintf("%.4f", chi$p.value) else "N/A",
+            stringsAsFactors = FALSE)
+        }
+      }
+
+      # L13 inhibition
+      inh_col_13 <- intersect(c("pct_inh_f2_13", "pct_inh_f1_13"), names(ielisa))[1]
+      if (!is.na(inh_col_13)) {
+        da_vals <- ielisa[[inh_col_13]][ielisa$study == "DA" & !is.na(ielisa[[inh_col_13]])]
+        dp_vals <- ielisa[[inh_col_13]][ielisa$study == "DP" & !is.na(ielisa[[inh_col_13]])]
+        if (length(da_vals) > 0 && length(dp_vals) > 0) {
+          wilcox <- tryCatch(wilcox.test(da_vals, dp_vals), error = function(e) NULL)
+          stats[[length(stats) + 1]] <- data.frame(
+            Antigen = "LiTat 1.3", Measure = "% Inhibition",
+            DA = sprintf("%.1f (%.1f-%.1f)", median(da_vals), quantile(da_vals, 0.25), quantile(da_vals, 0.75)),
+            DP = sprintf("%.1f (%.1f-%.1f)", median(dp_vals), quantile(dp_vals, 0.25), quantile(dp_vals, 0.75)),
+            OR_95CI = "-",
+            P_Value = if (!is.null(wilcox)) sprintf("%.4f", wilcox$p.value) else "N/A",
+            stringsAsFactors = FALSE)
+        }
+      }
+
+      # L15 inhibition
+      inh_col_15 <- intersect(c("pct_inh_f2_15", "pct_inh_f1_15"), names(ielisa))[1]
+      if (!is.na(inh_col_15)) {
+        da_vals <- ielisa[[inh_col_15]][ielisa$study == "DA" & !is.na(ielisa[[inh_col_15]])]
+        dp_vals <- ielisa[[inh_col_15]][ielisa$study == "DP" & !is.na(ielisa[[inh_col_15]])]
+        if (length(da_vals) > 0 && length(dp_vals) > 0) {
+          wilcox <- tryCatch(wilcox.test(da_vals, dp_vals), error = function(e) NULL)
+          stats[[length(stats) + 1]] <- data.frame(
+            Antigen = "LiTat 1.5", Measure = "% Inhibition",
+            DA = sprintf("%.1f (%.1f-%.1f)", median(da_vals), quantile(da_vals, 0.25), quantile(da_vals, 0.75)),
+            DP = sprintf("%.1f (%.1f-%.1f)", median(dp_vals), quantile(dp_vals, 0.25), quantile(dp_vals, 0.75)),
+            OR_95CI = "-",
+            P_Value = if (!is.null(wilcox)) sprintf("%.4f", wilcox$p.value) else "N/A",
+            stringsAsFactors = FALSE)
+        }
+      }
+
+      if (length(stats) == 0) return(DT::datatable(data.frame(Message = "No iELISA data")))
+      DT::datatable(do.call(rbind, stats), rownames = FALSE, options = list(dom = 't', pageLength = 10), class = "table-sm") %>%
+        DT::formatStyle("P_Value", backgroundColor = DT::styleInterval(c(0.001, 0.05), c("#d4edda", "#fff3cd", "#f8f9fa")))
     })
 
     # ========================================================================

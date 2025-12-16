@@ -2179,6 +2179,375 @@ mod_study_comparison_server <- function(id,
     })
 
     # ========================================================================
+    # MIC DETAILED PLOTS (Cq values)
+    # ========================================================================
+
+    # Helper to create MIC Cq boxplot
+    .create_mic_cq_plot <- function(mic_data, cq_col, title) {
+      if (is.null(mic_data) || nrow(mic_data) == 0) return(plotly::plotly_empty())
+      if (!cq_col %in% names(mic_data)) return(plotly::plotly_empty())
+
+      data_filtered <- mic_data %>% dplyr::filter(!is.na(.data[[cq_col]]))
+      if (nrow(data_filtered) == 0) return(plotly::plotly_empty())
+
+      plotly::plot_ly(data_filtered, x = ~study, y = ~.data[[cq_col]], color = ~study,
+                      colors = study_colors, type = "box",
+                      hovertemplate = "Study: %{x}<br>Cq: %{y:.2f}<extra></extra>") %>%
+        plotly::layout(
+          xaxis = list(title = "Study Type"),
+          yaxis = list(title = paste0("Cq Value (", title, ")")),
+          showlegend = FALSE
+        )
+    }
+
+    output$mic_177t_plot <- plotly::renderPlotly({
+      mic <- linked_mic_data()
+      cq_col <- intersect(c("Cq_177T", "cq_177t", "177T_Cq", "Cq.177T"), names(mic))[1]
+      if (is.na(cq_col)) cq_col <- "Cq_177T"  # Default
+      .create_mic_cq_plot(mic, cq_col, "177T")
+    })
+
+    output$mic_18s2_plot <- plotly::renderPlotly({
+      mic <- linked_mic_data()
+      cq_col <- intersect(c("Cq_18S2", "cq_18s2", "18S2_Cq", "Cq.18S2"), names(mic))[1]
+      if (is.na(cq_col)) cq_col <- "Cq_18S2"
+      .create_mic_cq_plot(mic, cq_col, "18S2")
+    })
+
+    output$mic_rnasep_dna_plot <- plotly::renderPlotly({
+      mic <- linked_mic_data()
+      cq_col <- intersect(c("Cq_RNAseP_DNA", "cq_rnasep_dna", "RNAseP_DNA_Cq", "Cq.RNAseP.DNA"), names(mic))[1]
+      if (is.na(cq_col)) cq_col <- "Cq_RNAseP_DNA"
+      .create_mic_cq_plot(mic, cq_col, "RNAseP-DNA")
+    })
+
+    output$mic_rnasep_rna_plot <- plotly::renderPlotly({
+      mic <- linked_mic_data()
+      cq_col <- intersect(c("Cq_RNAseP_RNA", "cq_rnasep_rna", "RNAseP_RNA_Cq", "Cq.RNAseP.RNA"), names(mic))[1]
+      if (is.na(cq_col)) cq_col <- "Cq_RNAseP_RNA"
+      .create_mic_cq_plot(mic, cq_col, "RNAseP-RNA")
+    })
+
+    # MIC Cq statistics table
+    output$mic_cq_stats_table <- DT::renderDT({
+      mic <- linked_mic_data()
+      if (is.null(mic) || nrow(mic) == 0) {
+        return(DT::datatable(data.frame(Message = "No MIC data available")))
+      }
+
+      stats <- list()
+      cq_cols <- list(
+        "177T" = c("Cq_177T", "cq_177t", "177T_Cq"),
+        "18S2" = c("Cq_18S2", "cq_18s2", "18S2_Cq"),
+        "RNAseP-DNA" = c("Cq_RNAseP_DNA", "cq_rnasep_dna", "RNAseP_DNA_Cq"),
+        "RNAseP-RNA" = c("Cq_RNAseP_RNA", "cq_rnasep_rna", "RNAseP_RNA_Cq")
+      )
+
+      for (target in names(cq_cols)) {
+        cq_col <- intersect(cq_cols[[target]], names(mic))[1]
+        if (!is.na(cq_col)) {
+          da_vals <- mic[[cq_col]][mic$study == "DA" & !is.na(mic[[cq_col]])]
+          dp_vals <- mic[[cq_col]][mic$study == "DP" & !is.na(mic[[cq_col]])]
+
+          if (length(da_vals) > 0 && length(dp_vals) > 0) {
+            wilcox_test <- tryCatch(wilcox.test(da_vals, dp_vals), error = function(e) NULL)
+            stats[[length(stats) + 1]] <- data.frame(
+              Target = target,
+              DA_N = length(da_vals),
+              DA_Median_IQR = sprintf("%.1f (%.1f-%.1f)", median(da_vals), quantile(da_vals, 0.25), quantile(da_vals, 0.75)),
+              DP_N = length(dp_vals),
+              DP_Median_IQR = sprintf("%.1f (%.1f-%.1f)", median(dp_vals), quantile(dp_vals, 0.25), quantile(dp_vals, 0.75)),
+              P_Value = if (!is.null(wilcox_test)) sprintf("%.4f", wilcox_test$p.value) else "N/A",
+              stringsAsFactors = FALSE
+            )
+          }
+        }
+      }
+
+      if (length(stats) == 0) {
+        return(DT::datatable(data.frame(Message = "No Cq data available")))
+      }
+
+      DT::datatable(do.call(rbind, stats), rownames = FALSE,
+                    options = list(dom = 't', pageLength = 10), class = "table-sm") %>%
+        DT::formatStyle("P_Value",
+          backgroundColor = DT::styleInterval(c(0.001, 0.05), c("#d4edda", "#fff3cd", "#f8f9fa")))
+    })
+
+    # ========================================================================
+    # ELISA DETAILED PLOTS (PP% and OD)
+    # ========================================================================
+
+    output$elisa_pe_pp_plot <- plotly::renderPlotly({
+      pe <- linked_elisa_pe_data()
+      if (is.null(pe) || nrow(pe) == 0) return(plotly::plotly_empty())
+
+      pp_col <- intersect(c("PP_percent", "pp_percent", "PP"), names(pe))[1]
+      if (is.na(pp_col)) return(plotly::plotly_empty())
+
+      pe_filtered <- pe %>% dplyr::filter(!is.na(.data[[pp_col]]))
+      if (nrow(pe_filtered) == 0) return(plotly::plotly_empty())
+
+      plotly::plot_ly(pe_filtered, x = ~study, y = ~.data[[pp_col]], color = ~study,
+                      colors = study_colors, type = "box",
+                      hovertemplate = "Study: %{x}<br>PP%%: %{y:.1f}<extra></extra>") %>%
+        plotly::layout(xaxis = list(title = "Study Type"), yaxis = list(title = "PP%"), showlegend = FALSE)
+    })
+
+    output$elisa_pe_od_plot <- plotly::renderPlotly({
+      pe <- linked_elisa_pe_data()
+      if (is.null(pe) || nrow(pe) == 0) return(plotly::plotly_empty())
+
+      od_col <- intersect(c("OD", "od", "OD_450", "od_450", "optical_density"), names(pe))[1]
+      if (is.na(od_col)) return(plotly::plotly_empty())
+
+      pe_filtered <- pe %>% dplyr::filter(!is.na(.data[[od_col]]))
+      if (nrow(pe_filtered) == 0) return(plotly::plotly_empty())
+
+      plotly::plot_ly(pe_filtered, x = ~study, y = ~.data[[od_col]], color = ~study,
+                      colors = study_colors, type = "box",
+                      hovertemplate = "Study: %{x}<br>OD: %{y:.3f}<extra></extra>") %>%
+        plotly::layout(xaxis = list(title = "Study Type"), yaxis = list(title = "OD (450nm)"), showlegend = FALSE)
+    })
+
+    output$elisa_vsg_pp_plot <- plotly::renderPlotly({
+      vsg <- linked_elisa_vsg_data()
+      if (is.null(vsg) || nrow(vsg) == 0) return(plotly::plotly_empty())
+
+      pp_col <- intersect(c("PP_percent", "pp_percent", "PP"), names(vsg))[1]
+      if (is.na(pp_col)) return(plotly::plotly_empty())
+
+      vsg_filtered <- vsg %>% dplyr::filter(!is.na(.data[[pp_col]]))
+      if (nrow(vsg_filtered) == 0) return(plotly::plotly_empty())
+
+      plotly::plot_ly(vsg_filtered, x = ~study, y = ~.data[[pp_col]], color = ~study,
+                      colors = study_colors, type = "box",
+                      hovertemplate = "Study: %{x}<br>PP%%: %{y:.1f}<extra></extra>") %>%
+        plotly::layout(xaxis = list(title = "Study Type"), yaxis = list(title = "PP%"), showlegend = FALSE)
+    })
+
+    output$elisa_vsg_od_plot <- plotly::renderPlotly({
+      vsg <- linked_elisa_vsg_data()
+      if (is.null(vsg) || nrow(vsg) == 0) return(plotly::plotly_empty())
+
+      od_col <- intersect(c("OD", "od", "OD_450", "od_450", "optical_density"), names(vsg))[1]
+      if (is.na(od_col)) return(plotly::plotly_empty())
+
+      vsg_filtered <- vsg %>% dplyr::filter(!is.na(.data[[od_col]]))
+      if (nrow(vsg_filtered) == 0) return(plotly::plotly_empty())
+
+      plotly::plot_ly(vsg_filtered, x = ~study, y = ~.data[[od_col]], color = ~study,
+                      colors = study_colors, type = "box",
+                      hovertemplate = "Study: %{x}<br>OD: %{y:.3f}<extra></extra>") %>%
+        plotly::layout(xaxis = list(title = "Study Type"), yaxis = list(title = "OD (450nm)"), showlegend = FALSE)
+    })
+
+    # ELISA detailed statistics
+    output$elisa_detailed_stats_table <- DT::renderDT({
+      stats <- list()
+
+      # ELISA-PE PP%
+      pe <- linked_elisa_pe_data()
+      if (!is.null(pe) && nrow(pe) > 0) {
+        pp_col <- intersect(c("PP_percent", "pp_percent", "PP"), names(pe))[1]
+        if (!is.na(pp_col)) {
+          da_vals <- pe[[pp_col]][pe$study == "DA" & !is.na(pe[[pp_col]])]
+          dp_vals <- pe[[pp_col]][pe$study == "DP" & !is.na(pe[[pp_col]])]
+          if (length(da_vals) > 0 && length(dp_vals) > 0) {
+            wilcox <- tryCatch(wilcox.test(da_vals, dp_vals), error = function(e) NULL)
+            stats[[length(stats) + 1]] <- data.frame(
+              Assay = "ELISA-PE", Measure = "PP%",
+              DA_Median = sprintf("%.1f (%.1f-%.1f)", median(da_vals), quantile(da_vals, 0.25), quantile(da_vals, 0.75)),
+              DP_Median = sprintf("%.1f (%.1f-%.1f)", median(dp_vals), quantile(dp_vals, 0.25), quantile(dp_vals, 0.75)),
+              P_Value = if (!is.null(wilcox)) sprintf("%.4f", wilcox$p.value) else "N/A",
+              stringsAsFactors = FALSE)
+          }
+        }
+      }
+
+      # ELISA-VSG PP%
+      vsg <- linked_elisa_vsg_data()
+      if (!is.null(vsg) && nrow(vsg) > 0) {
+        pp_col <- intersect(c("PP_percent", "pp_percent", "PP"), names(vsg))[1]
+        if (!is.na(pp_col)) {
+          da_vals <- vsg[[pp_col]][vsg$study == "DA" & !is.na(vsg[[pp_col]])]
+          dp_vals <- vsg[[pp_col]][vsg$study == "DP" & !is.na(vsg[[pp_col]])]
+          if (length(da_vals) > 0 && length(dp_vals) > 0) {
+            wilcox <- tryCatch(wilcox.test(da_vals, dp_vals), error = function(e) NULL)
+            stats[[length(stats) + 1]] <- data.frame(
+              Assay = "ELISA-VSG", Measure = "PP%",
+              DA_Median = sprintf("%.1f (%.1f-%.1f)", median(da_vals), quantile(da_vals, 0.25), quantile(da_vals, 0.75)),
+              DP_Median = sprintf("%.1f (%.1f-%.1f)", median(dp_vals), quantile(dp_vals, 0.25), quantile(dp_vals, 0.75)),
+              P_Value = if (!is.null(wilcox)) sprintf("%.4f", wilcox$p.value) else "N/A",
+              stringsAsFactors = FALSE)
+          }
+        }
+      }
+
+      if (length(stats) == 0) return(DT::datatable(data.frame(Message = "No ELISA data")))
+      DT::datatable(do.call(rbind, stats), rownames = FALSE, options = list(dom = 't'), class = "table-sm") %>%
+        DT::formatStyle("P_Value", backgroundColor = DT::styleInterval(c(0.001, 0.05), c("#d4edda", "#fff3cd", "#f8f9fa")))
+    })
+
+    # ========================================================================
+    # iELISA DETAILED PLOTS (L13 and L15)
+    # ========================================================================
+
+    output$ielisa_l13_positivity_plot <- plotly::renderPlotly({
+      ielisa <- linked_ielisa_data()
+      if (is.null(ielisa) || nrow(ielisa) == 0 || !"positive_L13" %in% names(ielisa)) return(plotly::plotly_empty())
+
+      pos_data <- ielisa %>%
+        dplyr::group_by(study) %>%
+        dplyr::summarise(
+          n = dplyr::n(),
+          pos = sum(positive_L13 == TRUE, na.rm = TRUE),
+          rate = pos / n * 100,
+          .groups = "drop"
+        )
+
+      plotly::plot_ly(pos_data, x = ~study, y = ~rate, color = ~study, colors = study_colors, type = "bar",
+                      text = ~sprintf("%.1f%% (%d/%d)", rate, pos, n), textposition = "auto",
+                      hovertemplate = "Study: %{x}<br>Rate: %{y:.1f}%<extra></extra>") %>%
+        plotly::layout(xaxis = list(title = "Study Type"), yaxis = list(title = "LiTat 1.3 Positivity (%)"), showlegend = FALSE)
+    })
+
+    output$ielisa_l15_positivity_plot <- plotly::renderPlotly({
+      ielisa <- linked_ielisa_data()
+      if (is.null(ielisa) || nrow(ielisa) == 0 || !"positive_L15" %in% names(ielisa)) return(plotly::plotly_empty())
+
+      pos_data <- ielisa %>%
+        dplyr::group_by(study) %>%
+        dplyr::summarise(
+          n = dplyr::n(),
+          pos = sum(positive_L15 == TRUE, na.rm = TRUE),
+          rate = pos / n * 100,
+          .groups = "drop"
+        )
+
+      plotly::plot_ly(pos_data, x = ~study, y = ~rate, color = ~study, colors = study_colors, type = "bar",
+                      text = ~sprintf("%.1f%% (%d/%d)", rate, pos, n), textposition = "auto",
+                      hovertemplate = "Study: %{x}<br>Rate: %{y:.1f}%<extra></extra>") %>%
+        plotly::layout(xaxis = list(title = "Study Type"), yaxis = list(title = "LiTat 1.5 Positivity (%)"), showlegend = FALSE)
+    })
+
+    output$ielisa_l13_inhibition_plot <- plotly::renderPlotly({
+      ielisa <- linked_ielisa_data()
+      if (is.null(ielisa) || nrow(ielisa) == 0) return(plotly::plotly_empty())
+
+      inh_col <- intersect(c("pct_inh_f2_13", "pct_inh_f1_13", "pct_inhibition_L13"), names(ielisa))[1]
+      if (is.na(inh_col)) return(plotly::plotly_empty())
+
+      ielisa_filtered <- ielisa %>% dplyr::filter(!is.na(.data[[inh_col]]))
+      if (nrow(ielisa_filtered) == 0) return(plotly::plotly_empty())
+
+      plotly::plot_ly(ielisa_filtered, x = ~study, y = ~.data[[inh_col]], color = ~study,
+                      colors = study_colors, type = "box",
+                      hovertemplate = "Study: %{x}<br>%% Inh: %{y:.1f}<extra></extra>") %>%
+        plotly::layout(xaxis = list(title = "Study Type"), yaxis = list(title = "% Inhibition (L13)"), showlegend = FALSE)
+    })
+
+    output$ielisa_l15_inhibition_plot <- plotly::renderPlotly({
+      ielisa <- linked_ielisa_data()
+      if (is.null(ielisa) || nrow(ielisa) == 0) return(plotly::plotly_empty())
+
+      inh_col <- intersect(c("pct_inh_f2_15", "pct_inh_f1_15", "pct_inhibition_L15"), names(ielisa))[1]
+      if (is.na(inh_col)) return(plotly::plotly_empty())
+
+      ielisa_filtered <- ielisa %>% dplyr::filter(!is.na(.data[[inh_col]]))
+      if (nrow(ielisa_filtered) == 0) return(plotly::plotly_empty())
+
+      plotly::plot_ly(ielisa_filtered, x = ~study, y = ~.data[[inh_col]], color = ~study,
+                      colors = study_colors, type = "box",
+                      hovertemplate = "Study: %{x}<br>%% Inh: %{y:.1f}<extra></extra>") %>%
+        plotly::layout(xaxis = list(title = "Study Type"), yaxis = list(title = "% Inhibition (L15)"), showlegend = FALSE)
+    })
+
+    # iELISA detailed statistics
+    output$ielisa_detailed_stats_table <- DT::renderDT({
+      ielisa <- linked_ielisa_data()
+      if (is.null(ielisa) || nrow(ielisa) == 0) return(DT::datatable(data.frame(Message = "No iELISA data")))
+
+      stats <- list()
+      da_n <- sum(ielisa$study == "DA", na.rm = TRUE)
+      dp_n <- sum(ielisa$study == "DP", na.rm = TRUE)
+
+      # L13 positivity
+      if ("positive_L13" %in% names(ielisa)) {
+        da_pos <- sum(ielisa$study == "DA" & ielisa$positive_L13 == TRUE, na.rm = TRUE)
+        dp_pos <- sum(ielisa$study == "DP" & ielisa$positive_L13 == TRUE, na.rm = TRUE)
+        if (da_n > 0 && dp_n > 0) {
+          tbl <- matrix(c(da_pos, da_n - da_pos, dp_pos, dp_n - dp_pos), nrow = 2)
+          chi <- tryCatch(chisq.test(tbl), error = function(e) NULL)
+          or <- .calc_odds_ratio(da_pos, da_n - da_pos, dp_pos, dp_n - dp_pos)
+          stats[[length(stats) + 1]] <- data.frame(
+            Antigen = "LiTat 1.3", Measure = "Positivity",
+            DA = sprintf("%d/%d (%.1f%%)", da_pos, da_n, da_pos/da_n*100),
+            DP = sprintf("%d/%d (%.1f%%)", dp_pos, dp_n, dp_pos/dp_n*100),
+            OR_95CI = sprintf("%.2f (%.2f-%.2f)", or$or, or$ci_lower, or$ci_upper),
+            P_Value = if (!is.null(chi)) sprintf("%.4f", chi$p.value) else "N/A",
+            stringsAsFactors = FALSE)
+        }
+      }
+
+      # L15 positivity
+      if ("positive_L15" %in% names(ielisa)) {
+        da_pos <- sum(ielisa$study == "DA" & ielisa$positive_L15 == TRUE, na.rm = TRUE)
+        dp_pos <- sum(ielisa$study == "DP" & ielisa$positive_L15 == TRUE, na.rm = TRUE)
+        if (da_n > 0 && dp_n > 0) {
+          tbl <- matrix(c(da_pos, da_n - da_pos, dp_pos, dp_n - dp_pos), nrow = 2)
+          chi <- tryCatch(chisq.test(tbl), error = function(e) NULL)
+          or <- .calc_odds_ratio(da_pos, da_n - da_pos, dp_pos, dp_n - dp_pos)
+          stats[[length(stats) + 1]] <- data.frame(
+            Antigen = "LiTat 1.5", Measure = "Positivity",
+            DA = sprintf("%d/%d (%.1f%%)", da_pos, da_n, da_pos/da_n*100),
+            DP = sprintf("%d/%d (%.1f%%)", dp_pos, dp_n, dp_pos/dp_n*100),
+            OR_95CI = sprintf("%.2f (%.2f-%.2f)", or$or, or$ci_lower, or$ci_upper),
+            P_Value = if (!is.null(chi)) sprintf("%.4f", chi$p.value) else "N/A",
+            stringsAsFactors = FALSE)
+        }
+      }
+
+      # L13 inhibition
+      inh_col_13 <- intersect(c("pct_inh_f2_13", "pct_inh_f1_13"), names(ielisa))[1]
+      if (!is.na(inh_col_13)) {
+        da_vals <- ielisa[[inh_col_13]][ielisa$study == "DA" & !is.na(ielisa[[inh_col_13]])]
+        dp_vals <- ielisa[[inh_col_13]][ielisa$study == "DP" & !is.na(ielisa[[inh_col_13]])]
+        if (length(da_vals) > 0 && length(dp_vals) > 0) {
+          wilcox <- tryCatch(wilcox.test(da_vals, dp_vals), error = function(e) NULL)
+          stats[[length(stats) + 1]] <- data.frame(
+            Antigen = "LiTat 1.3", Measure = "% Inhibition",
+            DA = sprintf("%.1f (%.1f-%.1f)", median(da_vals), quantile(da_vals, 0.25), quantile(da_vals, 0.75)),
+            DP = sprintf("%.1f (%.1f-%.1f)", median(dp_vals), quantile(dp_vals, 0.25), quantile(dp_vals, 0.75)),
+            OR_95CI = "-",
+            P_Value = if (!is.null(wilcox)) sprintf("%.4f", wilcox$p.value) else "N/A",
+            stringsAsFactors = FALSE)
+        }
+      }
+
+      # L15 inhibition
+      inh_col_15 <- intersect(c("pct_inh_f2_15", "pct_inh_f1_15"), names(ielisa))[1]
+      if (!is.na(inh_col_15)) {
+        da_vals <- ielisa[[inh_col_15]][ielisa$study == "DA" & !is.na(ielisa[[inh_col_15]])]
+        dp_vals <- ielisa[[inh_col_15]][ielisa$study == "DP" & !is.na(ielisa[[inh_col_15]])]
+        if (length(da_vals) > 0 && length(dp_vals) > 0) {
+          wilcox <- tryCatch(wilcox.test(da_vals, dp_vals), error = function(e) NULL)
+          stats[[length(stats) + 1]] <- data.frame(
+            Antigen = "LiTat 1.5", Measure = "% Inhibition",
+            DA = sprintf("%.1f (%.1f-%.1f)", median(da_vals), quantile(da_vals, 0.25), quantile(da_vals, 0.75)),
+            DP = sprintf("%.1f (%.1f-%.1f)", median(dp_vals), quantile(dp_vals, 0.25), quantile(dp_vals, 0.75)),
+            OR_95CI = "-",
+            P_Value = if (!is.null(wilcox)) sprintf("%.4f", wilcox$p.value) else "N/A",
+            stringsAsFactors = FALSE)
+        }
+      }
+
+      if (length(stats) == 0) return(DT::datatable(data.frame(Message = "No iELISA data")))
+      DT::datatable(do.call(rbind, stats), rownames = FALSE, options = list(dom = 't', pageLength = 10), class = "table-sm") %>%
+        DT::formatStyle("P_Value", backgroundColor = DT::styleInterval(c(0.001, 0.05), c("#d4edda", "#fff3cd", "#f8f9fa")))
+    })
+
+    # ========================================================================
     # TRANSPORT & EXTRACTION PLOTS
     # ========================================================================
 

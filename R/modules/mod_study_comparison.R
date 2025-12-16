@@ -278,6 +278,19 @@ mod_study_comparison_ui <- function(id) {
 }
 
 # ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+#' Normalize sample ID for matching
+normalize_id <- function(x) {
+  if (is.na(x) || x == "") return(NA_character_)
+  x <- trimws(tolower(as.character(x)))
+  x <- gsub("^kps[-_]?", "", x)
+  x <- gsub("[^a-z0-9]", "", x)
+  if (x == "") NA_character_ else x
+}
+
+# ============================================================================
 # MODULE SERVER
 # ============================================================================
 
@@ -309,132 +322,196 @@ mod_study_comparison_server <- function(id,
     # REACTIVE DATA PREPARATION
     # ========================================================================
 
-    # Split biobank data by study type
-    study_data <- reactive({
-      req(biobank_df())
+    # Get biobank data with study info
+    biobank_data <- reactive({
       data <- biobank_df()
-
-      if (!"study" %in% names(data) || nrow(data) == 0) {
-        return(list(da = data.frame(), dp = data.frame(), all = data))
-      }
-
-      list(
-        da = data %>% dplyr::filter(study == "DA"),
-        dp = data %>% dplyr::filter(study == "DP"),
-        all = data %>% dplyr::filter(study %in% c("DA", "DP"))
-      )
+      if (is.null(data) || nrow(data) == 0) return(NULL)
+      if (!"study" %in% names(data)) return(NULL)
+      data %>% dplyr::filter(study %in% c("DA", "DP"))
     })
 
-    # Link test data with study type from biobank
+    # Create lookup table: lab_number -> study
+    lab_number_lookup <- reactive({
+      biobank <- biobank_data()
+      if (is.null(biobank)) return(NULL)
+
+      # Find lab number column
+      lab_col <- NULL
+      for (col in c("numero_labo", "lab_id", "numero")) {
+        if (col %in% names(biobank)) {
+          lab_col <- col
+          break
+        }
+      }
+      if (is.null(lab_col)) return(NULL)
+
+      biobank %>%
+        dplyr::select(lab_number = !!rlang::sym(lab_col), study) %>%
+        dplyr::filter(!is.na(lab_number), lab_number != "") %>%
+        dplyr::mutate(lab_number_norm = sapply(lab_number, function(x) trimws(tolower(as.character(x))))) %>%
+        dplyr::select(lab_number_norm, study) %>%
+        dplyr::distinct(lab_number_norm, .keep_all = TRUE)
+    })
+
+    # Create lookup table: barcode -> study
+    barcode_lookup <- reactive({
+      biobank <- biobank_data()
+      if (is.null(biobank)) return(NULL)
+
+      # Find barcode column
+      barcode_col <- NULL
+      for (col in c("barcode", "code_barres_kps")) {
+        if (col %in% names(biobank)) {
+          barcode_col <- col
+          break
+        }
+      }
+      if (is.null(barcode_col)) return(NULL)
+
+      biobank %>%
+        dplyr::select(barcode = !!rlang::sym(barcode_col), study) %>%
+        dplyr::filter(!is.na(barcode), barcode != "") %>%
+        dplyr::mutate(barcode_norm = sapply(barcode, normalize_id)) %>%
+        dplyr::select(barcode_norm, study) %>%
+        dplyr::distinct(barcode_norm, .keep_all = TRUE)
+    })
+
+    # Link MIC data with study type (MIC uses lab numbers, not barcodes)
     linked_mic_data <- reactive({
       mic <- mic_df()
-      biobank <- biobank_df()
+      lookup <- lab_number_lookup()
 
       if (is.null(mic) || nrow(mic) == 0) return(NULL)
-      if (is.null(biobank) || nrow(biobank) == 0) return(mic)
+      if (is.null(lookup) || nrow(lookup) == 0) return(NULL)
 
-      # Try to link via barcode
-      if ("barcode" %in% names(mic) && "barcode" %in% names(biobank)) {
-        mic %>%
-          dplyr::left_join(
-            biobank %>% dplyr::select(barcode, study) %>% dplyr::distinct(),
-            by = "barcode"
-          )
-      } else if ("sample_id" %in% names(mic) && "barcode" %in% names(biobank)) {
-        mic %>%
-          dplyr::left_join(
-            biobank %>% dplyr::select(barcode, study) %>% dplyr::distinct(),
-            by = c("sample_id" = "barcode")
-          )
-      } else {
-        mic
+      # Find sample ID column in MIC data
+      sample_col <- NULL
+      for (col in c("SampleID", "SampleName", "sample_id", "Name")) {
+        if (col %in% names(mic)) {
+          sample_col <- col
+          break
+        }
       }
+      if (is.null(sample_col)) return(NULL)
+
+      mic %>%
+        dplyr::mutate(lab_number_norm = sapply(.data[[sample_col]], function(x) trimws(tolower(as.character(x))))) %>%
+        dplyr::left_join(lookup, by = "lab_number_norm") %>%
+        dplyr::filter(!is.na(study))
     })
 
+    # Link ELISA-PE data with study type
     linked_elisa_pe_data <- reactive({
       elisa <- elisa_pe_df()
-      biobank <- biobank_df()
+      lookup <- barcode_lookup()
 
       if (is.null(elisa) || nrow(elisa) == 0) return(NULL)
-      if (is.null(biobank) || nrow(biobank) == 0) return(elisa)
 
-      # Check for study column already present
-      if ("study" %in% names(elisa)) return(elisa)
-
-      # Link via barcode
-      barcode_col <- intersect(c("barcode", "code_barres_kps", "sample_id"), names(elisa))[1]
-      if (!is.na(barcode_col) && "barcode" %in% names(biobank)) {
-        elisa %>%
-          dplyr::left_join(
-            biobank %>% dplyr::select(barcode, study) %>% dplyr::distinct(),
-            by = stats::setNames("barcode", barcode_col)
-          )
-      } else {
-        elisa
+      # Check if study column already exists
+      if ("study" %in% names(elisa) && any(!is.na(elisa$study))) {
+        return(elisa %>% dplyr::filter(study %in% c("DA", "DP")))
       }
+
+      if (is.null(lookup) || nrow(lookup) == 0) return(NULL)
+
+      # Find barcode column
+      barcode_col <- NULL
+      for (col in c("code_barres_kps", "barcode", "sample_id")) {
+        if (col %in% names(elisa)) {
+          barcode_col <- col
+          break
+        }
+      }
+      if (is.null(barcode_col)) return(NULL)
+
+      elisa %>%
+        dplyr::mutate(barcode_norm = sapply(.data[[barcode_col]], normalize_id)) %>%
+        dplyr::left_join(lookup, by = "barcode_norm") %>%
+        dplyr::filter(!is.na(study))
     })
 
+    # Link ELISA-VSG data with study type
     linked_elisa_vsg_data <- reactive({
       elisa <- elisa_vsg_df()
-      biobank <- biobank_df()
+      lookup <- barcode_lookup()
 
       if (is.null(elisa) || nrow(elisa) == 0) return(NULL)
-      if (is.null(biobank) || nrow(biobank) == 0) return(elisa)
 
-      if ("study" %in% names(elisa)) return(elisa)
-
-      barcode_col <- intersect(c("barcode", "code_barres_kps", "sample_id"), names(elisa))[1]
-      if (!is.na(barcode_col) && "barcode" %in% names(biobank)) {
-        elisa %>%
-          dplyr::left_join(
-            biobank %>% dplyr::select(barcode, study) %>% dplyr::distinct(),
-            by = stats::setNames("barcode", barcode_col)
-          )
-      } else {
-        elisa
+      if ("study" %in% names(elisa) && any(!is.na(elisa$study))) {
+        return(elisa %>% dplyr::filter(study %in% c("DA", "DP")))
       }
+
+      if (is.null(lookup) || nrow(lookup) == 0) return(NULL)
+
+      barcode_col <- NULL
+      for (col in c("code_barres_kps", "barcode", "sample_id")) {
+        if (col %in% names(elisa)) {
+          barcode_col <- col
+          break
+        }
+      }
+      if (is.null(barcode_col)) return(NULL)
+
+      elisa %>%
+        dplyr::mutate(barcode_norm = sapply(.data[[barcode_col]], normalize_id)) %>%
+        dplyr::left_join(lookup, by = "barcode_norm") %>%
+        dplyr::filter(!is.na(study))
     })
 
+    # Link iELISA data with study type
     linked_ielisa_data <- reactive({
       ielisa <- ielisa_df()
-      biobank <- biobank_df()
+      lookup <- barcode_lookup()
 
       if (is.null(ielisa) || nrow(ielisa) == 0) return(NULL)
-      if (is.null(biobank) || nrow(biobank) == 0) return(ielisa)
 
-      if ("study" %in% names(ielisa)) return(ielisa)
-
-      barcode_col <- intersect(c("barcode", "code_barres_kps", "sample_id"), names(ielisa))[1]
-      if (!is.na(barcode_col) && "barcode" %in% names(biobank)) {
-        ielisa %>%
-          dplyr::left_join(
-            biobank %>% dplyr::select(barcode, study) %>% dplyr::distinct(),
-            by = stats::setNames("barcode", barcode_col)
-          )
-      } else {
-        ielisa
+      if ("study" %in% names(ielisa) && any(!is.na(ielisa$study))) {
+        return(ielisa %>% dplyr::filter(study %in% c("DA", "DP")))
       }
+
+      if (is.null(lookup) || nrow(lookup) == 0) return(NULL)
+
+      barcode_col <- NULL
+      for (col in c("code_barres_kps", "barcode", "sample_id")) {
+        if (col %in% names(ielisa)) {
+          barcode_col <- col
+          break
+        }
+      }
+      if (is.null(barcode_col)) return(NULL)
+
+      ielisa %>%
+        dplyr::mutate(barcode_norm = sapply(.data[[barcode_col]], normalize_id)) %>%
+        dplyr::left_join(lookup, by = "barcode_norm") %>%
+        dplyr::filter(!is.na(study))
     })
 
+    # Link extraction data with study type
     linked_extraction_data <- reactive({
       extract <- extraction_df()
-      biobank <- biobank_df()
+      lookup <- barcode_lookup()
 
       if (is.null(extract) || nrow(extract) == 0) return(NULL)
-      if (is.null(biobank) || nrow(biobank) == 0) return(extract)
 
-      if ("study" %in% names(extract)) return(extract)
-
-      barcode_col <- intersect(c("barcode", "sample_id", "code_barres_kps"), names(extract))[1]
-      if (!is.na(barcode_col) && "barcode" %in% names(biobank)) {
-        extract %>%
-          dplyr::left_join(
-            biobank %>% dplyr::select(barcode, study) %>% dplyr::distinct(),
-            by = stats::setNames("barcode", barcode_col)
-          )
-      } else {
-        extract
+      if ("study" %in% names(extract) && any(!is.na(extract$study))) {
+        return(extract %>% dplyr::filter(study %in% c("DA", "DP")))
       }
+
+      if (is.null(lookup) || nrow(lookup) == 0) return(NULL)
+
+      barcode_col <- NULL
+      for (col in c("barcode", "sample_id", "code_barres_kps")) {
+        if (col %in% names(extract)) {
+          barcode_col <- col
+          break
+        }
+      }
+      if (is.null(barcode_col)) return(NULL)
+
+      extract %>%
+        dplyr::mutate(barcode_norm = sapply(.data[[barcode_col]], normalize_id)) %>%
+        dplyr::left_join(lookup, by = "barcode_norm") %>%
+        dplyr::filter(!is.na(study))
     })
 
     # ========================================================================
@@ -442,29 +519,30 @@ mod_study_comparison_server <- function(id,
     # ========================================================================
 
     output$kpi_da_count <- renderText({
-      data <- study_data()
-      scales::comma(nrow(data$da))
+      data <- biobank_data()
+      if (is.null(data)) return("0")
+      scales::comma(sum(data$study == "DA", na.rm = TRUE))
     })
 
     output$kpi_dp_count <- renderText({
-      data <- study_data()
-      scales::comma(nrow(data$dp))
+      data <- biobank_data()
+      if (is.null(data)) return("0")
+      scales::comma(sum(data$study == "DP", na.rm = TRUE))
     })
 
     output$kpi_da_positivity <- renderText({
       mic <- linked_mic_data()
-      if (is.null(mic) || nrow(mic) == 0 || !"study" %in% names(mic)) return("N/A")
+      if (is.null(mic) || nrow(mic) == 0) return("N/A")
 
       da_mic <- mic %>% dplyr::filter(study == "DA")
       if (nrow(da_mic) == 0) return("N/A")
 
-      # Find positivity column
-      pos_col <- intersect(c("positive", "is_positive", "overall_positive", "PipelineCategory"), names(da_mic))[1]
-      if (is.na(pos_col)) return("N/A")
-
-      if (pos_col == "PipelineCategory") {
-        pos_rate <- mean(da_mic[[pos_col]] %in% c("positive", "detected"), na.rm = TRUE) * 100
+      # Find positivity - check FinalCall column first
+      if ("FinalCall" %in% names(da_mic)) {
+        pos_rate <- mean(da_mic$FinalCall %in% c("Positive", "Positive_DNA", "Positive_RNA", "LatePositive"), na.rm = TRUE) * 100
       } else {
+        pos_col <- intersect(c("positive", "is_positive", "overall_positive"), names(da_mic))[1]
+        if (is.na(pos_col)) return("N/A")
         pos_rate <- mean(da_mic[[pos_col]] == TRUE, na.rm = TRUE) * 100
       }
       sprintf("%.1f%%", pos_rate)
@@ -472,29 +550,27 @@ mod_study_comparison_server <- function(id,
 
     output$kpi_dp_positivity <- renderText({
       mic <- linked_mic_data()
-      if (is.null(mic) || nrow(mic) == 0 || !"study" %in% names(mic)) return("N/A")
+      if (is.null(mic) || nrow(mic) == 0) return("N/A")
 
       dp_mic <- mic %>% dplyr::filter(study == "DP")
       if (nrow(dp_mic) == 0) return("N/A")
 
-      pos_col <- intersect(c("positive", "is_positive", "overall_positive", "PipelineCategory"), names(dp_mic))[1]
-      if (is.na(pos_col)) return("N/A")
-
-      if (pos_col == "PipelineCategory") {
-        pos_rate <- mean(dp_mic[[pos_col]] %in% c("positive", "detected"), na.rm = TRUE) * 100
+      if ("FinalCall" %in% names(dp_mic)) {
+        pos_rate <- mean(dp_mic$FinalCall %in% c("Positive", "Positive_DNA", "Positive_RNA", "LatePositive"), na.rm = TRUE) * 100
       } else {
+        pos_col <- intersect(c("positive", "is_positive", "overall_positive"), names(dp_mic))[1]
+        if (is.na(pos_col)) return("N/A")
         pos_rate <- mean(dp_mic[[pos_col]] == TRUE, na.rm = TRUE) * 100
       }
       sprintf("%.1f%%", pos_rate)
     })
 
     output$kpi_overall_pvalue <- renderText({
-      data <- study_data()
-      if (nrow(data$all) == 0 || !"sex" %in% names(data$all)) return("N/A")
+      data <- biobank_data()
+      if (is.null(data) || !"sex" %in% names(data)) return("N/A")
 
-      # Quick chi-squared on sex distribution
       tryCatch({
-        tbl <- table(data$all$study, data$all$sex)
+        tbl <- table(data$study, data$sex)
         if (all(dim(tbl) >= 2) && sum(tbl) > 0) {
           test <- chisq.test(tbl)
           if (test$p.value < 0.001) "p < 0.001" else sprintf("p = %.3f", test$p.value)
@@ -509,10 +585,11 @@ mod_study_comparison_server <- function(id,
     # ========================================================================
 
     output$age_comparison_plot <- plotly::renderPlotly({
-      data <- study_data()$all
-      if (nrow(data) == 0 || !"age" %in% names(data)) return(plotly::plotly_empty())
+      data <- biobank_data()
+      if (is.null(data) || !"age" %in% names(data)) return(plotly::plotly_empty())
 
       data <- data %>% dplyr::filter(!is.na(age), !is.na(study))
+      if (nrow(data) == 0) return(plotly::plotly_empty())
 
       plotly::plot_ly(data, x = ~age, color = ~study, colors = study_colors,
                       type = "histogram", alpha = 0.7,
@@ -526,8 +603,8 @@ mod_study_comparison_server <- function(id,
     })
 
     output$sex_comparison_plot <- plotly::renderPlotly({
-      data <- study_data()$all
-      if (nrow(data) == 0 || !"sex" %in% names(data)) return(plotly::plotly_empty())
+      data <- biobank_data()
+      if (is.null(data) || !"sex" %in% names(data)) return(plotly::plotly_empty())
 
       sex_data <- data %>%
         dplyr::filter(!is.na(sex), !is.na(study), sex %in% c("M", "F")) %>%
@@ -535,6 +612,8 @@ mod_study_comparison_server <- function(id,
         dplyr::group_by(study) %>%
         dplyr::mutate(pct = n / sum(n) * 100) %>%
         dplyr::ungroup()
+
+      if (nrow(sex_data) == 0) return(plotly::plotly_empty())
 
       plotly::plot_ly(sex_data, x = ~study, y = ~pct, color = ~sex,
                       colors = c("M" = "#3498DB", "F" = "#E91E63"),
@@ -549,8 +628,8 @@ mod_study_comparison_server <- function(id,
     })
 
     output$age_group_comparison_plot <- plotly::renderPlotly({
-      data <- study_data()$all
-      if (nrow(data) == 0 || !"age" %in% names(data)) return(plotly::plotly_empty())
+      data <- biobank_data()
+      if (is.null(data) || !"age" %in% names(data)) return(plotly::plotly_empty())
 
       age_data <- data %>%
         dplyr::filter(!is.na(age), !is.na(study)) %>%
@@ -566,6 +645,8 @@ mod_study_comparison_server <- function(id,
         dplyr::mutate(pct = n / sum(n) * 100) %>%
         dplyr::ungroup()
 
+      if (nrow(age_data) == 0) return(plotly::plotly_empty())
+
       plotly::plot_ly(age_data, x = ~age_group, y = ~pct, color = ~study,
                       colors = study_colors, type = "bar",
                       hovertemplate = "Age: %{x}<br>Study: %{fullData.name}<br>%{y:.1f}%<extra></extra>") %>%
@@ -578,17 +659,20 @@ mod_study_comparison_server <- function(id,
     })
 
     output$case_category_plot <- plotly::renderPlotly({
-      data <- study_data()$all
+      data <- biobank_data()
+      if (is.null(data)) return(plotly::plotly_empty())
 
       # Create case_category if not present
       if (!"case_category" %in% names(data)) {
         if ("previous_case" %in% names(data) || "treated" %in% names(data)) {
+          prev_col <- if ("previous_case" %in% names(data)) data$previous_case else rep(NA, nrow(data))
+          treat_col <- if ("treated" %in% names(data)) data$treated else rep(NA, nrow(data))
           data <- data %>%
             dplyr::mutate(
               case_category = dplyr::case_when(
-                previous_case == "Oui" | treated == "Oui" ~ "Previous/Treated",
-                previous_case == "Non" & treated == "Non" ~ "New case",
-                previous_case == "Incertain" | treated == "Incertain" ~ "Uncertain",
+                prev_col == "Oui" | treat_col == "Oui" ~ "Previous/Treated",
+                prev_col == "Non" & treat_col == "Non" ~ "New case",
+                prev_col == "Incertain" | treat_col == "Incertain" ~ "Uncertain",
                 TRUE ~ "Unknown"
               )
             )
@@ -604,6 +688,8 @@ mod_study_comparison_server <- function(id,
         dplyr::mutate(pct = n / sum(n) * 100) %>%
         dplyr::ungroup()
 
+      if (nrow(case_data) == 0) return(plotly::plotly_empty())
+
       plotly::plot_ly(case_data, x = ~case_category, y = ~pct, color = ~study,
                       colors = study_colors, type = "bar",
                       hovertemplate = "Category: %{x}<br>Study: %{fullData.name}<br>%{y:.1f}%<extra></extra>") %>%
@@ -617,10 +703,9 @@ mod_study_comparison_server <- function(id,
 
     # Demographics statistics table
     output$demographics_stats_table <- DT::renderDT({
-      data <- study_data()$all
-      if (nrow(data) == 0) return(DT::datatable(data.frame(Message = "No data")))
+      data <- biobank_data()
+      if (is.null(data)) return(DT::datatable(data.frame(Message = "No data available")))
 
-      # Calculate statistics
       stats_list <- list()
 
       # Age comparison
@@ -631,7 +716,7 @@ mod_study_comparison_server <- function(id,
         if (length(da_ages) > 0 && length(dp_ages) > 0) {
           wilcox_test <- tryCatch(wilcox.test(da_ages, dp_ages), error = function(e) NULL)
           stats_list[[length(stats_list) + 1]] <- data.frame(
-            Variable = "Age",
+            Variable = "Age (median, IQR)",
             DA_Value = sprintf("%.1f (%.1f-%.1f)", median(da_ages), quantile(da_ages, 0.25), quantile(da_ages, 0.75)),
             DP_Value = sprintf("%.1f (%.1f-%.1f)", median(dp_ages), quantile(dp_ages, 0.25), quantile(dp_ages, 0.75)),
             Test = "Mann-Whitney U",
@@ -684,8 +769,8 @@ mod_study_comparison_server <- function(id,
     # ========================================================================
 
     output$province_comparison_plot <- plotly::renderPlotly({
-      data <- study_data()$all
-      if (nrow(data) == 0 || !"province" %in% names(data)) return(plotly::plotly_empty())
+      data <- biobank_data()
+      if (is.null(data) || !"province" %in% names(data)) return(plotly::plotly_empty())
 
       prov_data <- data %>%
         dplyr::filter(!is.na(province), !is.na(study)) %>%
@@ -693,6 +778,8 @@ mod_study_comparison_server <- function(id,
         dplyr::group_by(study) %>%
         dplyr::mutate(pct = n / sum(n) * 100) %>%
         dplyr::ungroup()
+
+      if (nrow(prov_data) == 0) return(plotly::plotly_empty())
 
       plotly::plot_ly(prov_data, x = ~province, y = ~pct, color = ~study,
                       colors = study_colors, type = "bar",
@@ -706,8 +793,8 @@ mod_study_comparison_server <- function(id,
     })
 
     output$zone_comparison_plot <- plotly::renderPlotly({
-      data <- study_data()$all
-      if (nrow(data) == 0 || !"health_zone" %in% names(data)) return(plotly::plotly_empty())
+      data <- biobank_data()
+      if (is.null(data) || !"health_zone" %in% names(data)) return(plotly::plotly_empty())
 
       # Get top 10 zones by total count
       top_zones <- data %>%
@@ -723,6 +810,8 @@ mod_study_comparison_server <- function(id,
         dplyr::mutate(pct = n / sum(n) * 100) %>%
         dplyr::ungroup()
 
+      if (nrow(zone_data) == 0) return(plotly::plotly_empty())
+
       plotly::plot_ly(zone_data, y = ~health_zone, x = ~pct, color = ~study,
                       colors = study_colors, type = "bar", orientation = "h",
                       hovertemplate = "Zone: %{y}<br>Study: %{fullData.name}<br>%{x:.1f}%<extra></extra>") %>%
@@ -735,9 +824,9 @@ mod_study_comparison_server <- function(id,
     })
 
     output$geographic_stats_table <- DT::renderDT({
-      data <- study_data()$all
-      if (nrow(data) == 0 || !"health_zone" %in% names(data)) {
-        return(DT::datatable(data.frame(Message = "No geographic data")))
+      data <- biobank_data()
+      if (is.null(data) || !"health_zone" %in% names(data)) {
+        return(DT::datatable(data.frame(Message = "No geographic data available")))
       }
 
       # Summary by health zone
@@ -754,6 +843,10 @@ mod_study_comparison_server <- function(id,
         ) %>%
         dplyr::arrange(dplyr::desc(Total))
 
+      if (nrow(zone_summary) == 0) {
+        return(DT::datatable(data.frame(Message = "No geographic data available")))
+      }
+
       DT::datatable(
         zone_summary,
         rownames = FALSE,
@@ -767,18 +860,19 @@ mod_study_comparison_server <- function(id,
     # ========================================================================
 
     output$positivity_comparison_plot <- plotly::renderPlotly({
-      # Collect positivity rates from all tests
       results <- list()
 
       # MIC
       mic <- linked_mic_data()
-      if (!is.null(mic) && nrow(mic) > 0 && "study" %in% names(mic)) {
-        pos_col <- intersect(c("positive", "is_positive", "overall_positive"), names(mic))[1]
-        if (!is.na(pos_col)) {
+      if (!is.null(mic) && nrow(mic) > 0) {
+        if ("FinalCall" %in% names(mic)) {
           mic_summary <- mic %>%
-            dplyr::filter(!is.na(study), study %in% c("DA", "DP")) %>%
             dplyr::group_by(study) %>%
-            dplyr::summarise(positivity = mean(.data[[pos_col]] == TRUE, na.rm = TRUE) * 100, .groups = "drop") %>%
+            dplyr::summarise(
+              positivity = mean(FinalCall %in% c("Positive", "Positive_DNA", "Positive_RNA", "LatePositive"), na.rm = TRUE) * 100,
+              n = dplyr::n(),
+              .groups = "drop"
+            ) %>%
             dplyr::mutate(test = "MIC")
           results[[length(results) + 1]] <- mic_summary
         }
@@ -786,18 +880,15 @@ mod_study_comparison_server <- function(id,
 
       # ELISA-PE
       pe <- linked_elisa_pe_data()
-      if (!is.null(pe) && nrow(pe) > 0 && "study" %in% names(pe)) {
-        pos_col <- intersect(c("positive", "is_positive", "status_final"), names(pe))[1]
-        if (!is.na(pos_col)) {
+      if (!is.null(pe) && nrow(pe) > 0) {
+        pos_col <- if ("sample_positive" %in% names(pe)) "sample_positive" else NULL
+        if (is.null(pos_col)) pos_col <- intersect(c("positive", "is_positive"), names(pe))[1]
+        if (!is.na(pos_col) && !is.null(pos_col)) {
           pe_summary <- pe %>%
-            dplyr::filter(!is.na(study), study %in% c("DA", "DP")) %>%
             dplyr::group_by(study) %>%
             dplyr::summarise(
-              positivity = if (pos_col == "status_final") {
-                mean(.data[[pos_col]] == "Positive", na.rm = TRUE) * 100
-              } else {
-                mean(.data[[pos_col]] == TRUE, na.rm = TRUE) * 100
-              },
+              positivity = mean(.data[[pos_col]] == TRUE, na.rm = TRUE) * 100,
+              n = dplyr::n(),
               .groups = "drop"
             ) %>%
             dplyr::mutate(test = "ELISA-PE")
@@ -807,18 +898,15 @@ mod_study_comparison_server <- function(id,
 
       # ELISA-VSG
       vsg <- linked_elisa_vsg_data()
-      if (!is.null(vsg) && nrow(vsg) > 0 && "study" %in% names(vsg)) {
-        pos_col <- intersect(c("positive", "is_positive", "status_final"), names(vsg))[1]
-        if (!is.na(pos_col)) {
+      if (!is.null(vsg) && nrow(vsg) > 0) {
+        pos_col <- if ("sample_positive" %in% names(vsg)) "sample_positive" else NULL
+        if (is.null(pos_col)) pos_col <- intersect(c("positive", "is_positive"), names(vsg))[1]
+        if (!is.na(pos_col) && !is.null(pos_col)) {
           vsg_summary <- vsg %>%
-            dplyr::filter(!is.na(study), study %in% c("DA", "DP")) %>%
             dplyr::group_by(study) %>%
             dplyr::summarise(
-              positivity = if (pos_col == "status_final") {
-                mean(.data[[pos_col]] == "Positive", na.rm = TRUE) * 100
-              } else {
-                mean(.data[[pos_col]] == TRUE, na.rm = TRUE) * 100
-              },
+              positivity = mean(.data[[pos_col]] == TRUE, na.rm = TRUE) * 100,
+              n = dplyr::n(),
               .groups = "drop"
             ) %>%
             dplyr::mutate(test = "ELISA-VSG")
@@ -828,13 +916,16 @@ mod_study_comparison_server <- function(id,
 
       # iELISA
       ielisa <- linked_ielisa_data()
-      if (!is.null(ielisa) && nrow(ielisa) > 0 && "study" %in% names(ielisa)) {
+      if (!is.null(ielisa) && nrow(ielisa) > 0) {
         pos_col <- intersect(c("positive_L13", "positive", "is_positive"), names(ielisa))[1]
         if (!is.na(pos_col)) {
           ielisa_summary <- ielisa %>%
-            dplyr::filter(!is.na(study), study %in% c("DA", "DP")) %>%
             dplyr::group_by(study) %>%
-            dplyr::summarise(positivity = mean(.data[[pos_col]] == TRUE, na.rm = TRUE) * 100, .groups = "drop") %>%
+            dplyr::summarise(
+              positivity = mean(.data[[pos_col]] == TRUE, na.rm = TRUE) * 100,
+              n = dplyr::n(),
+              .groups = "drop"
+            ) %>%
             dplyr::mutate(test = "iELISA")
           results[[length(results) + 1]] <- ielisa_summary
         }
@@ -846,49 +937,52 @@ mod_study_comparison_server <- function(id,
 
       plotly::plot_ly(all_results, x = ~test, y = ~positivity, color = ~study,
                       colors = study_colors, type = "bar",
-                      text = ~sprintf("%.1f%%", positivity), textposition = "auto",
+                      text = ~sprintf("%.1f%% (n=%d)", positivity, n), textposition = "auto",
                       hovertemplate = "Test: %{x}<br>Study: %{fullData.name}<br>Positivity: %{y:.1f}%<extra></extra>") %>%
         plotly::layout(
           barmode = "group",
           xaxis = list(title = "Test Type"),
-          yaxis = list(title = "Positivity Rate (%)", range = c(0, max(all_results$positivity, na.rm = TRUE) * 1.2)),
+          yaxis = list(title = "Positivity Rate (%)", range = c(0, max(all_results$positivity, na.rm = TRUE) * 1.3)),
           legend = list(orientation = "h", y = -0.15)
         )
     })
 
     output$mic_comparison_plot <- plotly::renderPlotly({
       mic <- linked_mic_data()
-      if (is.null(mic) || nrow(mic) == 0 || !"study" %in% names(mic)) return(plotly::plotly_empty())
+      if (is.null(mic) || nrow(mic) == 0) return(plotly::plotly_empty())
 
-      # Find Cq column
-      cq_col <- intersect(c("cq_177t", "Cq_177T", "cq"), names(mic))[1]
-      if (is.na(cq_col)) return(plotly::plotly_empty())
+      # Create summary for MIC results
+      if ("FinalCall" %in% names(mic)) {
+        mic_summary <- mic %>%
+          dplyr::count(study, FinalCall) %>%
+          dplyr::group_by(study) %>%
+          dplyr::mutate(pct = n / sum(n) * 100) %>%
+          dplyr::ungroup()
 
-      mic_filtered <- mic %>%
-        dplyr::filter(!is.na(study), study %in% c("DA", "DP"), !is.na(.data[[cq_col]]))
+        if (nrow(mic_summary) == 0) return(plotly::plotly_empty())
 
-      if (nrow(mic_filtered) == 0) return(plotly::plotly_empty())
-
-      plotly::plot_ly(mic_filtered, x = ~study, y = ~.data[[cq_col]], color = ~study,
-                      colors = study_colors, type = "box",
-                      hovertemplate = "Study: %{x}<br>Cq: %{y:.1f}<extra></extra>") %>%
-        plotly::layout(
-          xaxis = list(title = "Study Type"),
-          yaxis = list(title = "Cq Value (177T)"),
-          showlegend = FALSE
-        )
+        plotly::plot_ly(mic_summary, x = ~FinalCall, y = ~pct, color = ~study,
+                        colors = study_colors, type = "bar",
+                        hovertemplate = "Result: %{x}<br>Study: %{fullData.name}<br>%{y:.1f}%<extra></extra>") %>%
+          plotly::layout(
+            barmode = "group",
+            xaxis = list(title = "MIC Result"),
+            yaxis = list(title = "Percentage (%)"),
+            legend = list(orientation = "h", y = -0.15)
+          )
+      } else {
+        return(plotly::plotly_empty())
+      }
     })
 
     output$elisa_pe_comparison_plot <- plotly::renderPlotly({
       pe <- linked_elisa_pe_data()
-      if (is.null(pe) || nrow(pe) == 0 || !"study" %in% names(pe)) return(plotly::plotly_empty())
+      if (is.null(pe) || nrow(pe) == 0) return(plotly::plotly_empty())
 
       pp_col <- intersect(c("PP_percent", "pp_percent", "PP"), names(pe))[1]
       if (is.na(pp_col)) return(plotly::plotly_empty())
 
-      pe_filtered <- pe %>%
-        dplyr::filter(!is.na(study), study %in% c("DA", "DP"), !is.na(.data[[pp_col]]))
-
+      pe_filtered <- pe %>% dplyr::filter(!is.na(.data[[pp_col]]))
       if (nrow(pe_filtered) == 0) return(plotly::plotly_empty())
 
       plotly::plot_ly(pe_filtered, x = ~study, y = ~.data[[pp_col]], color = ~study,
@@ -903,14 +997,12 @@ mod_study_comparison_server <- function(id,
 
     output$elisa_vsg_comparison_plot <- plotly::renderPlotly({
       vsg <- linked_elisa_vsg_data()
-      if (is.null(vsg) || nrow(vsg) == 0 || !"study" %in% names(vsg)) return(plotly::plotly_empty())
+      if (is.null(vsg) || nrow(vsg) == 0) return(plotly::plotly_empty())
 
       pp_col <- intersect(c("PP_percent", "pp_percent", "PP"), names(vsg))[1]
       if (is.na(pp_col)) return(plotly::plotly_empty())
 
-      vsg_filtered <- vsg %>%
-        dplyr::filter(!is.na(study), study %in% c("DA", "DP"), !is.na(.data[[pp_col]]))
-
+      vsg_filtered <- vsg %>% dplyr::filter(!is.na(.data[[pp_col]]))
       if (nrow(vsg_filtered) == 0) return(plotly::plotly_empty())
 
       plotly::plot_ly(vsg_filtered, x = ~study, y = ~.data[[pp_col]], color = ~study,
@@ -925,14 +1017,12 @@ mod_study_comparison_server <- function(id,
 
     output$ielisa_comparison_plot <- plotly::renderPlotly({
       ielisa <- linked_ielisa_data()
-      if (is.null(ielisa) || nrow(ielisa) == 0 || !"study" %in% names(ielisa)) return(plotly::plotly_empty())
+      if (is.null(ielisa) || nrow(ielisa) == 0) return(plotly::plotly_empty())
 
       inh_col <- intersect(c("pct_inh_f2_13", "pct_inhibition", "inhibition"), names(ielisa))[1]
       if (is.na(inh_col)) return(plotly::plotly_empty())
 
-      ielisa_filtered <- ielisa %>%
-        dplyr::filter(!is.na(study), study %in% c("DA", "DP"), !is.na(.data[[inh_col]]))
-
+      ielisa_filtered <- ielisa %>% dplyr::filter(!is.na(.data[[inh_col]]))
       if (nrow(ielisa_filtered) == 0) return(plotly::plotly_empty())
 
       plotly::plot_ly(ielisa_filtered, x = ~study, y = ~.data[[inh_col]], color = ~study,
@@ -951,20 +1041,48 @@ mod_study_comparison_server <- function(id,
 
       # MIC statistics
       mic <- linked_mic_data()
-      if (!is.null(mic) && nrow(mic) > 0 && "study" %in% names(mic)) {
-        pos_col <- intersect(c("positive", "is_positive", "overall_positive"), names(mic))[1]
-        if (!is.na(pos_col)) {
-          da_pos <- sum(mic$study == "DA" & mic[[pos_col]] == TRUE, na.rm = TRUE)
-          da_total <- sum(mic$study == "DA", na.rm = TRUE)
-          dp_pos <- sum(mic$study == "DP" & mic[[pos_col]] == TRUE, na.rm = TRUE)
-          dp_total <- sum(mic$study == "DP", na.rm = TRUE)
+      if (!is.null(mic) && nrow(mic) > 0 && "FinalCall" %in% names(mic)) {
+        is_positive <- mic$FinalCall %in% c("Positive", "Positive_DNA", "Positive_RNA", "LatePositive")
+        da_pos <- sum(mic$study == "DA" & is_positive, na.rm = TRUE)
+        da_total <- sum(mic$study == "DA", na.rm = TRUE)
+        dp_pos <- sum(mic$study == "DP" & is_positive, na.rm = TRUE)
+        dp_total <- sum(mic$study == "DP", na.rm = TRUE)
+
+        if (da_total > 0 && dp_total > 0) {
+          tbl <- matrix(c(da_pos, da_total - da_pos, dp_pos, dp_total - dp_pos), nrow = 2)
+          chi_test <- tryCatch(chisq.test(tbl), error = function(e) NULL)
+
+          stats_list[[length(stats_list) + 1]] <- data.frame(
+            Test = "MIC qPCR",
+            DA_N = da_total,
+            DA_Positive = da_pos,
+            DA_Rate = sprintf("%.1f%%", da_pos / da_total * 100),
+            DP_N = dp_total,
+            DP_Positive = dp_pos,
+            DP_Rate = sprintf("%.1f%%", dp_pos / dp_total * 100),
+            P_Value = if (!is.null(chi_test)) sprintf("%.4f", chi_test$p.value) else "N/A",
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+
+      # ELISA-PE statistics
+      pe <- linked_elisa_pe_data()
+      if (!is.null(pe) && nrow(pe) > 0) {
+        pos_col <- if ("sample_positive" %in% names(pe)) "sample_positive" else intersect(c("positive", "is_positive"), names(pe))[1]
+        if (!is.na(pos_col) && !is.null(pos_col)) {
+          is_positive <- pe[[pos_col]] == TRUE
+          da_pos <- sum(pe$study == "DA" & is_positive, na.rm = TRUE)
+          da_total <- sum(pe$study == "DA", na.rm = TRUE)
+          dp_pos <- sum(pe$study == "DP" & is_positive, na.rm = TRUE)
+          dp_total <- sum(pe$study == "DP", na.rm = TRUE)
 
           if (da_total > 0 && dp_total > 0) {
             tbl <- matrix(c(da_pos, da_total - da_pos, dp_pos, dp_total - dp_pos), nrow = 2)
             chi_test <- tryCatch(chisq.test(tbl), error = function(e) NULL)
 
             stats_list[[length(stats_list) + 1]] <- data.frame(
-              Test = "MIC qPCR",
+              Test = "ELISA-PE",
               DA_N = da_total,
               DA_Positive = da_pos,
               DA_Rate = sprintf("%.1f%%", da_pos / da_total * 100),
@@ -978,23 +1096,53 @@ mod_study_comparison_server <- function(id,
         }
       }
 
-      # Similar for ELISA-PE, ELISA-VSG, iELISA...
-      pe <- linked_elisa_pe_data()
-      if (!is.null(pe) && nrow(pe) > 0 && "study" %in% names(pe)) {
-        pos_col <- intersect(c("positive", "is_positive", "status_final"), names(pe))[1]
-        if (!is.na(pos_col)) {
-          is_positive <- if (pos_col == "status_final") pe[[pos_col]] == "Positive" else pe[[pos_col]] == TRUE
-          da_pos <- sum(pe$study == "DA" & is_positive, na.rm = TRUE)
-          da_total <- sum(pe$study == "DA", na.rm = TRUE)
-          dp_pos <- sum(pe$study == "DP" & is_positive, na.rm = TRUE)
-          dp_total <- sum(pe$study == "DP", na.rm = TRUE)
+      # ELISA-VSG statistics
+      vsg <- linked_elisa_vsg_data()
+      if (!is.null(vsg) && nrow(vsg) > 0) {
+        pos_col <- if ("sample_positive" %in% names(vsg)) "sample_positive" else intersect(c("positive", "is_positive"), names(vsg))[1]
+        if (!is.na(pos_col) && !is.null(pos_col)) {
+          is_positive <- vsg[[pos_col]] == TRUE
+          da_pos <- sum(vsg$study == "DA" & is_positive, na.rm = TRUE)
+          da_total <- sum(vsg$study == "DA", na.rm = TRUE)
+          dp_pos <- sum(vsg$study == "DP" & is_positive, na.rm = TRUE)
+          dp_total <- sum(vsg$study == "DP", na.rm = TRUE)
 
           if (da_total > 0 && dp_total > 0) {
             tbl <- matrix(c(da_pos, da_total - da_pos, dp_pos, dp_total - dp_pos), nrow = 2)
             chi_test <- tryCatch(chisq.test(tbl), error = function(e) NULL)
 
             stats_list[[length(stats_list) + 1]] <- data.frame(
-              Test = "ELISA-PE",
+              Test = "ELISA-VSG",
+              DA_N = da_total,
+              DA_Positive = da_pos,
+              DA_Rate = sprintf("%.1f%%", da_pos / da_total * 100),
+              DP_N = dp_total,
+              DP_Positive = dp_pos,
+              DP_Rate = sprintf("%.1f%%", dp_pos / dp_total * 100),
+              P_Value = if (!is.null(chi_test)) sprintf("%.4f", chi_test$p.value) else "N/A",
+              stringsAsFactors = FALSE
+            )
+          }
+        }
+      }
+
+      # iELISA statistics
+      ielisa <- linked_ielisa_data()
+      if (!is.null(ielisa) && nrow(ielisa) > 0) {
+        pos_col <- intersect(c("positive_L13", "positive", "is_positive"), names(ielisa))[1]
+        if (!is.na(pos_col)) {
+          is_positive <- ielisa[[pos_col]] == TRUE
+          da_pos <- sum(ielisa$study == "DA" & is_positive, na.rm = TRUE)
+          da_total <- sum(ielisa$study == "DA", na.rm = TRUE)
+          dp_pos <- sum(ielisa$study == "DP" & is_positive, na.rm = TRUE)
+          dp_total <- sum(ielisa$study == "DP", na.rm = TRUE)
+
+          if (da_total > 0 && dp_total > 0) {
+            tbl <- matrix(c(da_pos, da_total - da_pos, dp_pos, dp_total - dp_pos), nrow = 2)
+            chi_test <- tryCatch(chisq.test(tbl), error = function(e) NULL)
+
+            stats_list[[length(stats_list) + 1]] <- data.frame(
+              Test = "iELISA",
               DA_N = da_total,
               DA_Positive = da_pos,
               DA_Rate = sprintf("%.1f%%", da_pos / da_total * 100),
@@ -1030,15 +1178,13 @@ mod_study_comparison_server <- function(id,
     # ========================================================================
 
     output$transport_time_plot <- plotly::renderPlotly({
-      data <- study_data()$all
-      if (nrow(data) == 0) return(plotly::plotly_empty())
+      data <- biobank_data()
+      if (is.null(data)) return(plotly::plotly_empty())
 
-      time_col <- intersect(c("transport_time", "transport_days", "days_to_extraction"), names(data))[1]
+      time_col <- intersect(c("transport_time", "transport_days", "days_to_extraction", "delai_transport"), names(data))[1]
       if (is.na(time_col)) return(plotly::plotly_empty())
 
-      data_filtered <- data %>%
-        dplyr::filter(!is.na(study), !is.na(.data[[time_col]]))
-
+      data_filtered <- data %>% dplyr::filter(!is.na(.data[[time_col]]))
       if (nrow(data_filtered) == 0) return(plotly::plotly_empty())
 
       plotly::plot_ly(data_filtered, x = ~study, y = ~.data[[time_col]], color = ~study,
@@ -1053,14 +1199,12 @@ mod_study_comparison_server <- function(id,
 
     output$drs_volume_plot <- plotly::renderPlotly({
       extract <- linked_extraction_data()
-      if (is.null(extract) || nrow(extract) == 0 || !"study" %in% names(extract)) return(plotly::plotly_empty())
+      if (is.null(extract) || nrow(extract) == 0) return(plotly::plotly_empty())
 
-      vol_col <- intersect(c("drs_volume_ml", "volume_ml", "volume"), names(extract))[1]
+      vol_col <- intersect(c("drs_volume_ml", "volume_ml", "volume", "vol_dbs"), names(extract))[1]
       if (is.na(vol_col)) return(plotly::plotly_empty())
 
-      extract_filtered <- extract %>%
-        dplyr::filter(!is.na(study), study %in% c("DA", "DP"), !is.na(.data[[vol_col]]))
-
+      extract_filtered <- extract %>% dplyr::filter(!is.na(.data[[vol_col]]))
       if (nrow(extract_filtered) == 0) return(plotly::plotly_empty())
 
       plotly::plot_ly(extract_filtered, x = ~study, y = ~.data[[vol_col]], color = ~study,
@@ -1075,13 +1219,13 @@ mod_study_comparison_server <- function(id,
 
     output$drs_state_plot <- plotly::renderPlotly({
       extract <- linked_extraction_data()
-      if (is.null(extract) || nrow(extract) == 0 || !"study" %in% names(extract)) return(plotly::plotly_empty())
+      if (is.null(extract) || nrow(extract) == 0) return(plotly::plotly_empty())
 
-      state_col <- intersect(c("drs_state", "state", "etat_dbs"), names(extract))[1]
+      state_col <- intersect(c("drs_state", "state", "etat_dbs", "etat"), names(extract))[1]
       if (is.na(state_col)) return(plotly::plotly_empty())
 
       state_data <- extract %>%
-        dplyr::filter(!is.na(study), study %in% c("DA", "DP"), !is.na(.data[[state_col]])) %>%
+        dplyr::filter(!is.na(.data[[state_col]])) %>%
         dplyr::count(study, state = .data[[state_col]]) %>%
         dplyr::group_by(study) %>%
         dplyr::mutate(pct = n / sum(n) * 100) %>%
@@ -1102,13 +1246,13 @@ mod_study_comparison_server <- function(id,
 
     output$extract_quality_plot <- plotly::renderPlotly({
       extract <- linked_extraction_data()
-      if (is.null(extract) || nrow(extract) == 0 || !"study" %in% names(extract)) return(plotly::plotly_empty())
+      if (is.null(extract) || nrow(extract) == 0) return(plotly::plotly_empty())
 
-      qual_col <- intersect(c("extract_quality", "quality", "qualite"), names(extract))[1]
+      qual_col <- intersect(c("extract_quality", "quality", "qualite", "qualite_extrait"), names(extract))[1]
       if (is.na(qual_col)) return(plotly::plotly_empty())
 
       qual_data <- extract %>%
-        dplyr::filter(!is.na(study), study %in% c("DA", "DP"), !is.na(.data[[qual_col]])) %>%
+        dplyr::filter(!is.na(.data[[qual_col]])) %>%
         dplyr::count(study, quality = .data[[qual_col]]) %>%
         dplyr::group_by(study) %>%
         dplyr::mutate(pct = n / sum(n) * 100) %>%
@@ -1130,30 +1274,32 @@ mod_study_comparison_server <- function(id,
     output$transport_stats_table <- DT::renderDT({
       stats_list <- list()
 
-      # Transport time
-      data <- study_data()$all
-      time_col <- intersect(c("transport_time", "transport_days", "days_to_extraction"), names(data))[1]
-      if (!is.na(time_col)) {
-        da_times <- data[[time_col]][data$study == "DA" & !is.na(data[[time_col]])]
-        dp_times <- data[[time_col]][data$study == "DP" & !is.na(data[[time_col]])]
+      # Transport time from biobank
+      data <- biobank_data()
+      if (!is.null(data)) {
+        time_col <- intersect(c("transport_time", "transport_days", "days_to_extraction", "delai_transport"), names(data))[1]
+        if (!is.na(time_col)) {
+          da_times <- data[[time_col]][data$study == "DA" & !is.na(data[[time_col]])]
+          dp_times <- data[[time_col]][data$study == "DP" & !is.na(data[[time_col]])]
 
-        if (length(da_times) > 0 && length(dp_times) > 0) {
-          wilcox_test <- tryCatch(wilcox.test(da_times, dp_times), error = function(e) NULL)
-          stats_list[[length(stats_list) + 1]] <- data.frame(
-            Variable = "Transport Time (days)",
-            DA_Value = sprintf("%.1f (%.1f-%.1f)", median(da_times), quantile(da_times, 0.25), quantile(da_times, 0.75)),
-            DP_Value = sprintf("%.1f (%.1f-%.1f)", median(dp_times), quantile(dp_times, 0.25), quantile(dp_times, 0.75)),
-            Test = "Mann-Whitney U",
-            P_Value = if (!is.null(wilcox_test)) sprintf("%.4f", wilcox_test$p.value) else "N/A",
-            stringsAsFactors = FALSE
-          )
+          if (length(da_times) > 0 && length(dp_times) > 0) {
+            wilcox_test <- tryCatch(wilcox.test(da_times, dp_times), error = function(e) NULL)
+            stats_list[[length(stats_list) + 1]] <- data.frame(
+              Variable = "Transport Time (days)",
+              DA_Value = sprintf("%.1f (%.1f-%.1f)", median(da_times), quantile(da_times, 0.25), quantile(da_times, 0.75)),
+              DP_Value = sprintf("%.1f (%.1f-%.1f)", median(dp_times), quantile(dp_times, 0.25), quantile(dp_times, 0.75)),
+              Test = "Mann-Whitney U",
+              P_Value = if (!is.null(wilcox_test)) sprintf("%.4f", wilcox_test$p.value) else "N/A",
+              stringsAsFactors = FALSE
+            )
+          }
         }
       }
 
-      # DRS Volume
+      # DRS Volume from extraction
       extract <- linked_extraction_data()
-      if (!is.null(extract) && "study" %in% names(extract)) {
-        vol_col <- intersect(c("drs_volume_ml", "volume_ml", "volume"), names(extract))[1]
+      if (!is.null(extract) && nrow(extract) > 0) {
+        vol_col <- intersect(c("drs_volume_ml", "volume_ml", "volume", "vol_dbs"), names(extract))[1]
         if (!is.na(vol_col)) {
           da_vols <- extract[[vol_col]][extract$study == "DA" & !is.na(extract[[vol_col]])]
           dp_vols <- extract[[vol_col]][extract$study == "DP" & !is.na(extract[[vol_col]])]
@@ -1173,7 +1319,7 @@ mod_study_comparison_server <- function(id,
       }
 
       if (length(stats_list) == 0) {
-        return(DT::datatable(data.frame(Message = "No transport/extraction data")))
+        return(DT::datatable(data.frame(Message = "No transport/extraction data available")))
       }
 
       stats_df <- do.call(rbind, stats_list)
@@ -1194,14 +1340,21 @@ mod_study_comparison_server <- function(id,
     # ========================================================================
 
     output$full_summary_table <- DT::renderDT({
-      data <- study_data()
+      data <- biobank_data()
+      if (is.null(data)) {
+        return(DT::datatable(data.frame(Message = "No data available")))
+      }
+
+      da_n <- sum(data$study == "DA", na.rm = TRUE)
+      dp_n <- sum(data$study == "DP", na.rm = TRUE)
+      total_n <- da_n + dp_n
 
       summary_df <- data.frame(
         Category = c("Total Samples", "Active Screening (DA)", "Passive Screening (DP)"),
-        Count = c(nrow(data$all), nrow(data$da), nrow(data$dp)),
+        Count = c(total_n, da_n, dp_n),
         Percentage = c("100%",
-                      sprintf("%.1f%%", nrow(data$da) / max(nrow(data$all), 1) * 100),
-                      sprintf("%.1f%%", nrow(data$dp) / max(nrow(data$all), 1) * 100)),
+                      sprintf("%.1f%%", da_n / max(total_n, 1) * 100),
+                      sprintf("%.1f%%", dp_n / max(total_n, 1) * 100)),
         stringsAsFactors = FALSE
       )
 
@@ -1214,36 +1367,73 @@ mod_study_comparison_server <- function(id,
     })
 
     output$statistical_tests_table <- DT::renderDT({
-      # Compile all statistical tests
       all_tests <- list()
+      data <- biobank_data()
 
-      data <- study_data()$all
+      if (!is.null(data)) {
+        # Age test
+        if ("age" %in% names(data)) {
+          da_ages <- data$age[data$study == "DA" & !is.na(data$age)]
+          dp_ages <- data$age[data$study == "DP" & !is.na(data$age)]
+          if (length(da_ages) > 0 && length(dp_ages) > 0) {
+            test <- tryCatch(wilcox.test(da_ages, dp_ages), error = function(e) NULL)
+            all_tests[[length(all_tests) + 1]] <- data.frame(
+              Category = "Demographics",
+              Variable = "Age",
+              Test_Type = "Mann-Whitney U",
+              Statistic = if (!is.null(test)) sprintf("W = %.0f", test$statistic) else "N/A",
+              P_Value = if (!is.null(test)) test$p.value else NA,
+              Significant = if (!is.null(test) && test$p.value < 0.05) "Yes" else "No",
+              stringsAsFactors = FALSE
+            )
+          }
+        }
 
-      # Demographics tests
-      if ("age" %in% names(data)) {
-        da_ages <- data$age[data$study == "DA" & !is.na(data$age)]
-        dp_ages <- data$age[data$study == "DP" & !is.na(data$age)]
-        if (length(da_ages) > 0 && length(dp_ages) > 0) {
-          test <- tryCatch(wilcox.test(da_ages, dp_ages), error = function(e) NULL)
-          all_tests[[length(all_tests) + 1]] <- data.frame(
-            Category = "Demographics",
-            Variable = "Age",
-            Test_Type = "Mann-Whitney U",
-            Statistic = if (!is.null(test)) sprintf("W = %.0f", test$statistic) else "N/A",
-            P_Value = if (!is.null(test)) test$p.value else NA,
-            Significant = if (!is.null(test) && test$p.value < 0.05) "Yes" else "No",
-            stringsAsFactors = FALSE
-          )
+        # Sex test
+        if ("sex" %in% names(data)) {
+          tbl <- table(data$study, data$sex)
+          if (all(dim(tbl) >= 2)) {
+            test <- tryCatch(chisq.test(tbl), error = function(e) NULL)
+            all_tests[[length(all_tests) + 1]] <- data.frame(
+              Category = "Demographics",
+              Variable = "Sex",
+              Test_Type = "Chi-squared",
+              Statistic = if (!is.null(test)) sprintf("X² = %.2f", test$statistic) else "N/A",
+              P_Value = if (!is.null(test)) test$p.value else NA,
+              Significant = if (!is.null(test) && test$p.value < 0.05) "Yes" else "No",
+              stringsAsFactors = FALSE
+            )
+          }
+        }
+
+        # Health zone test
+        if ("health_zone" %in% names(data)) {
+          tbl <- table(data$study, data$health_zone)
+          if (all(dim(tbl) >= 2)) {
+            test <- tryCatch(chisq.test(tbl), error = function(e) NULL)
+            all_tests[[length(all_tests) + 1]] <- data.frame(
+              Category = "Geographic",
+              Variable = "Health Zone",
+              Test_Type = "Chi-squared",
+              Statistic = if (!is.null(test)) sprintf("X² = %.2f", test$statistic) else "N/A",
+              P_Value = if (!is.null(test)) test$p.value else NA,
+              Significant = if (!is.null(test) && test$p.value < 0.05) "Yes" else "No",
+              stringsAsFactors = FALSE
+            )
+          }
         }
       }
 
-      if ("sex" %in% names(data)) {
-        tbl <- table(data$study, data$sex)
+      # MIC positivity test
+      mic <- linked_mic_data()
+      if (!is.null(mic) && nrow(mic) > 0 && "FinalCall" %in% names(mic)) {
+        is_positive <- mic$FinalCall %in% c("Positive", "Positive_DNA", "Positive_RNA", "LatePositive")
+        tbl <- table(mic$study, is_positive)
         if (all(dim(tbl) >= 2)) {
           test <- tryCatch(chisq.test(tbl), error = function(e) NULL)
           all_tests[[length(all_tests) + 1]] <- data.frame(
-            Category = "Demographics",
-            Variable = "Sex",
+            Category = "Test Results",
+            Variable = "MIC Positivity",
             Test_Type = "Chi-squared",
             Statistic = if (!is.null(test)) sprintf("X² = %.2f", test$statistic) else "N/A",
             P_Value = if (!is.null(test)) test$p.value else NA,

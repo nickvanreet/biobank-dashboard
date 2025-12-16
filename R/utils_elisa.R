@@ -358,7 +358,9 @@ ensure_elisa_columns <- function(df) {
     sample = NA_character_,      # NOTE: This is PLATE POSITION, not sample ID
     sample_code = NA_character_,
     numero_labo = NA_character_, # Actual sample ID (lab numero)
-    code_barres_kps = NA_character_ # Actual sample ID (barcode)
+    code_barres_kps = NA_character_, # Actual sample ID (barcode)
+    status_raw = NA_character_,  # CRITICAL: Required for consolidation
+    status_final = NA_character_ # CRITICAL: Required for reporting
   )
 
   for (col_name in names(required_cols)) {
@@ -423,7 +425,7 @@ elisa_cache_is_fresh <- function(elisa_file, cache_path) {
 .elisa_cache_env <- new.env(parent = emptyenv())
 
 # Cache version - increment this when data structure changes to invalidate old caches
-.elisa_cache_version <- "v13_modular_pipeline"
+.elisa_cache_version <- "v14_status_raw_fix"
 
 #' Ensure ELISA modular pipeline is loaded
 ensure_elisa_parser <- function() {

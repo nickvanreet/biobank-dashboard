@@ -10,6 +10,14 @@ suppressPackageStartupMessages({
   library(plotly)
 })
 
+#' Safely get column from data frame (returns NULL if not present)
+#' @param df Data frame
+#' @param col_name Column name
+#' @return Column values or NULL if column doesn't exist
+safe_get_col <- function(df, col_name) {
+  if (col_name %in% names(df)) df[[col_name]] else NULL
+}
+
 #' Normalize sample ID for consistent matching across datasets
 #'
 #' Less aggressive normalization to prevent sample ID collisions.
@@ -262,12 +270,19 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         # We need to create a lookup from biobank data to match lab numbers to barcodes
         biobank_lookup <- NULL
         if (nrow(biobank) > 0) {
-          # Extract lab numbers from biobank
-          biobank_lab_numbers_raw <- coalesce(
-            biobank$numero_labo,
-            biobank$lab_id,
-            biobank$numero
-          )
+          # Extract lab numbers from biobank (safely access columns that may not exist)
+          col_numero_labo <- safe_get_col(biobank, "numero_labo")
+          col_lab_id <- safe_get_col(biobank, "lab_id")
+          col_numero <- safe_get_col(biobank, "numero")
+
+          # Build list of non-NULL columns for coalesce
+          cols_to_coalesce <- Filter(Negate(is.null), list(col_numero_labo, col_lab_id, col_numero))
+          biobank_lab_numbers_raw <- if (length(cols_to_coalesce) > 0) {
+            do.call(coalesce, cols_to_coalesce)
+          } else {
+            rep(NA_character_, nrow(biobank))
+          }
+
           # Normalize lab numbers (just trim and lowercase: "1" → "1")
           biobank_lab_numbers_norm <- sapply(biobank_lab_numbers_raw, function(x) {
             if (is.na(x) || x == "") return(NA_character_)
@@ -283,12 +298,18 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             distinct(lab_number_norm, .keep_all = TRUE)
         }
 
-        # Extract lab numbers from MIC data
-        mic_lab_numbers_raw <- coalesce(
-          mic_data$SampleID,
-          mic_data$SampleName,
-          mic_data$Name
-        )
+        # Extract lab numbers from MIC data (safely access columns that may not exist)
+        mic_col_sampleid <- safe_get_col(mic_data, "SampleID")
+        mic_col_samplename <- safe_get_col(mic_data, "SampleName")
+        mic_col_name <- safe_get_col(mic_data, "Name")
+
+        # Build list of non-NULL columns for coalesce
+        mic_cols_to_coalesce <- Filter(Negate(is.null), list(mic_col_sampleid, mic_col_samplename, mic_col_name))
+        mic_lab_numbers_raw <- if (length(mic_cols_to_coalesce) > 0) {
+          do.call(coalesce, mic_cols_to_coalesce)
+        } else {
+          rep(NA_character_, nrow(mic_data))
+        }
         mic_lab_numbers_norm <- sapply(mic_lab_numbers_raw, function(x) {
           if (is.na(x) || x == "") return(NA_character_)
           trimws(tolower(as.character(x)))

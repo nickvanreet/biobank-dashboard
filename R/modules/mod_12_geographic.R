@@ -110,6 +110,12 @@ mod_geographic_ui <- function(id) {
                 label = span(icon("hospital"), " Show Structures"),
                 value = TRUE,
                 width = "160px"
+              ),
+              checkboxInput(
+                ns("show_mobile_units"),
+                label = span(icon("truck-medical"), " Mobile Units"),
+                value = TRUE,
+                width = "160px"
               )
             )
           ),
@@ -272,6 +278,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
 
     selected_zone <- reactiveVal(NULL)
     selected_structure <- reactiveVal(NULL)
+    selected_mobile_unit <- reactiveVal(NULL)
 
     # ========================================================================
     # LOAD MAP DATA
@@ -424,6 +431,162 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         23.58201333, 23.62184745, 23.57444875
       )
     )
+
+    # ========================================================================
+    # MOBILE UNITS DATA (extracted from biobank - structures starting with UM)
+    # ========================================================================
+
+    mobile_units_data <- reactive({
+      data <- filtered_data()
+      if (is.null(data) || nrow(data) == 0) {
+        return(tibble::tibble(
+          structure_name = character(),
+          health_zone = character(),
+          health_zone_norm = character(),
+          province = character(),
+          n_samples = integer(),
+          latitude = numeric(),
+          longitude = numeric()
+        ))
+      }
+
+      # Find structure column
+      structure_col <- NULL
+      candidate_cols <- c("structure_sanitaire", "health_structure", "health_facility")
+      for (col in candidate_cols) {
+        if (col %in% names(data)) {
+          structure_col <- col
+          break
+        }
+      }
+
+      if (is.null(structure_col)) {
+        return(tibble::tibble(
+          structure_name = character(),
+          health_zone = character(),
+          health_zone_norm = character(),
+          province = character(),
+          n_samples = integer(),
+          latitude = numeric(),
+          longitude = numeric()
+        ))
+      }
+
+      # Extract mobile units (structures starting with "UM")
+      mobile_data <- data %>%
+        dplyr::filter(!is.na(.data[[structure_col]]) &
+                        grepl("^UM", .data[[structure_col]], ignore.case = FALSE)) %>%
+        dplyr::mutate(
+          structure_name = .data[[structure_col]],
+          health_zone_norm = normalize_zone_name(health_zone)
+        )
+
+      if (nrow(mobile_data) == 0) {
+        return(tibble::tibble(
+          structure_name = character(),
+          health_zone = character(),
+          health_zone_norm = character(),
+          province = character(),
+          n_samples = integer(),
+          latitude = numeric(),
+          longitude = numeric()
+        ))
+      }
+
+      # Get province column if available
+      province_col <- if ("province" %in% names(mobile_data)) "province" else NULL
+
+      # Aggregate by structure and zone
+      mobile_summary <- mobile_data %>%
+        dplyr::group_by(structure_name, health_zone, health_zone_norm) %>%
+        dplyr::summarise(
+          province = if (!is.null(province_col)) dplyr::first(.data[[province_col]]) else NA_character_,
+          n_samples = dplyr::n(),
+          .groups = "drop"
+        ) %>%
+        dplyr::distinct()
+
+      # Add approximate coordinates based on health zone centroids from map
+      map <- map_data()
+      if (!is.null(map) && nrow(map) > 0) {
+        # Get centroids for each zone
+        zone_centroids <- map %>%
+          dplyr::mutate(
+            centroid = sf::st_centroid(geometry),
+            longitude = sf::st_coordinates(centroid)[, 1],
+            latitude = sf::st_coordinates(centroid)[, 2]
+          ) %>%
+          sf::st_drop_geometry() %>%
+          dplyr::select(zonesante, latitude, longitude)
+
+        # Join centroids to mobile units, with slight offset for multiple units
+        mobile_summary <- mobile_summary %>%
+          dplyr::left_join(zone_centroids, by = c("health_zone_norm" = "zonesante")) %>%
+          dplyr::group_by(health_zone_norm) %>%
+          dplyr::mutate(
+            # Add small offset for multiple mobile units in same zone
+            row_num = dplyr::row_number(),
+            latitude = latitude + (row_num - 1) * 0.02,
+            longitude = longitude + (row_num - 1) * 0.015
+          ) %>%
+          dplyr::ungroup() %>%
+          dplyr::select(-row_num)
+      } else {
+        mobile_summary <- mobile_summary %>%
+          dplyr::mutate(latitude = NA_real_, longitude = NA_real_)
+      }
+
+      mobile_summary
+    })
+
+    # ========================================================================
+    # BIOBANK STRUCTURES BY ZONE (all structures from biobank data)
+    # ========================================================================
+
+    biobank_structures_by_zone <- reactive({
+      data <- filtered_data()
+      if (is.null(data) || nrow(data) == 0) {
+        return(tibble::tibble(
+          structure_name = character(),
+          health_zone = character(),
+          health_zone_norm = character(),
+          n_samples = integer(),
+          is_mobile_unit = logical()
+        ))
+      }
+
+      # Find structure column
+      structure_col <- NULL
+      candidate_cols <- c("structure_sanitaire", "health_structure", "health_facility")
+      for (col in candidate_cols) {
+        if (col %in% names(data)) {
+          structure_col <- col
+          break
+        }
+      }
+
+      if (is.null(structure_col) || !"health_zone" %in% names(data)) {
+        return(tibble::tibble(
+          structure_name = character(),
+          health_zone = character(),
+          health_zone_norm = character(),
+          n_samples = integer(),
+          is_mobile_unit = logical()
+        ))
+      }
+
+      # Get all structures with their zones
+      data %>%
+        dplyr::filter(!is.na(.data[[structure_col]]) & !is.na(health_zone)) %>%
+        dplyr::mutate(
+          structure_name = .data[[structure_col]],
+          health_zone_norm = normalize_zone_name(health_zone),
+          is_mobile_unit = grepl("^UM", .data[[structure_col]], ignore.case = FALSE)
+        ) %>%
+        dplyr::group_by(structure_name, health_zone, health_zone_norm, is_mobile_unit) %>%
+        dplyr::summarise(n_samples = dplyr::n(), .groups = "drop") %>%
+        dplyr::arrange(health_zone_norm, dplyr::desc(n_samples))
+    })
 
     # ========================================================================
     # AGGREGATE BIOBANK DATA BY HEALTH ZONE
@@ -1418,6 +1581,45 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         # Legend removed - colors are self-explanatory (red=high, orange=medium, green=low endemicity)
       }
 
+      # Add mobile unit markers if enabled
+      show_mobile <- input$show_mobile_units %||% TRUE
+      mobile_data <- mobile_units_data()
+      if (show_mobile && nrow(mobile_data) > 0) {
+        # Filter to only those with valid coordinates
+        mobile_with_coords <- mobile_data %>%
+          dplyr::filter(!is.na(latitude) & !is.na(longitude))
+
+        if (nrow(mobile_with_coords) > 0) {
+          # Add row index for layerId
+          mobile_with_coords$mobile_id <- paste0("mobile_", seq_len(nrow(mobile_with_coords)))
+
+          base_map <- base_map %>%
+            leaflet::addMarkers(
+              data = mobile_with_coords,
+              layerId = ~mobile_id,
+              group = "mobile_units",
+              lng = ~longitude,
+              lat = ~latitude,
+              icon = leaflet::makeIcon(
+                iconUrl = "https://cdn-icons-png.flaticon.com/512/3097/3097180.png",
+                iconWidth = 28, iconHeight = 28,
+                iconAnchorX = 14, iconAnchorY = 14
+              ),
+              label = ~paste0(structure_name, " (", health_zone_norm, ") - ", n_samples, " samples"),
+              labelOptions = leaflet::labelOptions(
+                style = list(
+                  "font-family" = "Inter, sans-serif",
+                  "font-size" = "12px",
+                  "font-weight" = "bold",
+                  "padding" = "6px 10px",
+                  "background-color" = "#E0F2FE",
+                  "border" = "2px solid #0284C7"
+                )
+              )
+            )
+        }
+      }
+
       base_map %>%
         leaflet::setView(lng = 23.8, lat = -6.0, zoom = 8)
     })
@@ -1433,10 +1635,11 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         # Zone polygon click
         selected_zone(click$id)
         selected_structure(NULL)
+        selected_mobile_unit(NULL)
       }
     })
 
-    # Observe clicks on structure markers (CircleMarkers)
+    # Observe clicks on structure markers (CircleMarkers) and mobile unit markers
     observeEvent(input$main_map_marker_click, {
       click <- input$main_map_marker_click
       if (!is.null(click) && !is.null(click$id)) {
@@ -1446,6 +1649,19 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           if (idx > 0 && idx <= nrow(health_structures_data)) {
             selected_structure(health_structures_data[idx, ])
             selected_zone(NULL)
+            selected_mobile_unit(NULL)
+          }
+        } else if (grepl("^mobile_", click$id)) {
+          # Mobile unit click - extract index
+          idx <- as.integer(gsub("mobile_", "", click$id))
+          mobile_data <- mobile_units_data()
+          # Filter to get the same data used for markers
+          mobile_with_coords <- mobile_data %>%
+            dplyr::filter(!is.na(latitude) & !is.na(longitude))
+          if (idx > 0 && idx <= nrow(mobile_with_coords)) {
+            selected_mobile_unit(mobile_with_coords[idx, ])
+            selected_zone(NULL)
+            selected_structure(NULL)
           }
         }
       }
@@ -1458,6 +1674,57 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
     output$zone_details_panel <- renderUI({
       zone_name <- selected_zone()
       structure_info <- selected_structure()
+      mobile_unit_info <- selected_mobile_unit()
+
+      # If mobile unit is selected, show mobile unit details
+      if (!is.null(mobile_unit_info) && is.data.frame(mobile_unit_info) && nrow(mobile_unit_info) > 0) {
+        return(
+          div(
+            class = "row",
+            div(
+              class = "col-md-4",
+              h5(
+                icon("truck-medical", style = "color: #0284C7;"),
+                " ",
+                mobile_unit_info$structure_name[1]
+              ),
+              tags$table(
+                class = "table table-sm table-borderless mb-0",
+                tags$tr(tags$td(tags$strong("Zone de Sant\u00e9:")), tags$td(mobile_unit_info$health_zone_norm[1])),
+                tags$tr(tags$td(tags$strong("Province:")), tags$td(mobile_unit_info$province[1])),
+                tags$tr(
+                  tags$td(tags$strong("Type:")),
+                  tags$td(
+                    span(
+                      style = "color: #0284C7; font-weight: bold;",
+                      icon("truck-medical", style = "margin-right: 4px;"),
+                      "Unit\u00e9 Mobile"
+                    )
+                  )
+                ),
+                tags$tr(
+                  tags$td(tags$strong("Samples:")),
+                  tags$td(
+                    tags$strong(
+                      style = "color: #0284C7;",
+                      scales::comma(mobile_unit_info$n_samples[1])
+                    )
+                  )
+                )
+              )
+            ),
+            div(
+              class = "col-md-8",
+              div(
+                style = "background: #E0F2FE; border-left: 3px solid #0284C7; padding: 10px; border-radius: 4px;",
+                icon("info-circle", style = "color: #0284C7; margin-right: 8px;"),
+                "Mobile units (Unit\u00e9s Mobiles) are identified by the prefix 'UM' in their name. ",
+                "They collect samples across multiple locations within their assigned health zone."
+              )
+            )
+          )
+        )
+      }
 
       # If structure is selected, show structure details
       if (!is.null(structure_info) && is.data.frame(structure_info) && nrow(structure_info) > 0) {
@@ -1506,10 +1773,25 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           if (nrow(zone_data) > 0) {
             zd <- zone_data[1, ]
 
-            # Find all health structures in this zone
+            # Find all health structures in this zone (from hardcoded data)
             zone_search_pattern <- paste0("ZS ", zone_name)
             zone_structures <- health_structures_data %>%
               dplyr::filter(zone_sante == zone_search_pattern)
+
+            # Get biobank structures for this zone (including mobile units)
+            biobank_structs <- biobank_structures_by_zone()
+            zone_biobank_structs <- biobank_structs %>%
+              dplyr::filter(health_zone_norm == zone_name)
+
+            # Get mobile units for this zone
+            zone_mobile_units <- zone_biobank_structs %>%
+              dplyr::filter(is_mobile_unit == TRUE)
+
+            # Get other biobank structures (not mobile units and not in hardcoded list)
+            hardcoded_names <- toupper(trimws(zone_structures$structure))
+            zone_other_structs <- zone_biobank_structs %>%
+              dplyr::filter(is_mobile_unit == FALSE) %>%
+              dplyr::filter(!toupper(trimws(structure_name)) %in% hardcoded_names)
 
             # Endemicity styling
             endemicity_colors <- c("A" = "#DC2626", "B" = "#F59E0B", "C" = "#10B981")
@@ -1517,7 +1799,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
             endemicity_icons <- c("A" = "exclamation-triangle", "B" = "exclamation-circle", "C" = "check-circle")
             endemicity_bg <- c("A" = "rgba(220, 38, 38, 0.1)", "B" = "rgba(245, 158, 11, 0.1)", "C" = "rgba(16, 185, 129, 0.1)")
 
-            # Build health structures UI
+            # Build health structures UI from hardcoded data
             structures_ui <- if (nrow(zone_structures) > 0) {
               structure_items <- lapply(seq_len(nrow(zone_structures)), function(i) {
                 s <- zone_structures[i, ]
@@ -1558,6 +1840,89 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
                 )
               })
               div(structure_items)
+            } else {
+              NULL
+            }
+
+            # Build other biobank structures UI (not in hardcoded list)
+            other_structs_ui <- if (nrow(zone_other_structs) > 0) {
+              other_items <- lapply(seq_len(nrow(zone_other_structs)), function(i) {
+                s <- zone_other_structs[i, ]
+
+                # Determine structure type icon
+                struct_icon <- if (grepl("^HGR", s$structure_name)) {
+                  "hospital"
+                } else if (grepl("^CS", s$structure_name)) {
+                  "clinic-medical"
+                } else if (grepl("^HS", s$structure_name)) {
+                  "house-medical"
+                } else {
+                  "building"
+                }
+
+                div(
+                  style = paste0(
+                    "background: rgba(107, 114, 128, 0.1); ",
+                    "border-left: 3px solid #6B7280; ",
+                    "padding: 6px 10px; margin-bottom: 6px; border-radius: 4px;"
+                  ),
+                  div(
+                    style = "display: flex; align-items: center; justify-content: space-between;",
+                    div(
+                      icon(struct_icon, style = "color: #6B7280; margin-right: 8px;"),
+                      tags$span(style = "font-weight: 500;", s$structure_name)
+                    ),
+                    div(
+                      style = "color: #6B7280; font-size: 0.85em;",
+                      tags$span(paste0(s$n_samples, " samples"))
+                    )
+                  )
+                )
+              })
+              div(other_items)
+            } else {
+              NULL
+            }
+
+            # Build mobile units UI
+            mobile_units_ui <- if (nrow(zone_mobile_units) > 0) {
+              mobile_items <- lapply(seq_len(nrow(zone_mobile_units)), function(i) {
+                m <- zone_mobile_units[i, ]
+                div(
+                  style = paste0(
+                    "background: rgba(2, 132, 199, 0.1); ",
+                    "border-left: 3px solid #0284C7; ",
+                    "padding: 6px 10px; margin-bottom: 6px; border-radius: 4px;"
+                  ),
+                  div(
+                    style = "display: flex; align-items: center; justify-content: space-between;",
+                    div(
+                      icon("truck-medical", style = "color: #0284C7; margin-right: 8px;"),
+                      tags$span(style = "font-weight: 500;", m$structure_name)
+                    ),
+                    div(
+                      style = "color: #0284C7; font-size: 0.85em;",
+                      icon("vial", style = "margin-right: 4px;"),
+                      tags$span(paste0(m$n_samples, " samples"))
+                    )
+                  )
+                )
+              })
+              div(mobile_items)
+            } else {
+              NULL
+            }
+
+            # Check if we have any structures to display
+            has_any_structures <- nrow(zone_structures) > 0 || nrow(zone_other_structs) > 0 || nrow(zone_mobile_units) > 0
+
+            # Combine all structure types or show empty message
+            combined_structures_ui <- if (has_any_structures) {
+              div(
+                structures_ui,
+                other_structs_ui,
+                mobile_units_ui
+              )
             } else {
               div(
                 class = "text-muted",
@@ -1619,22 +1984,29 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
                     )
                   )
                 ),
-                # Second row: Health Structures in this zone
+                # Second row: Health Structures and Mobile Units in this zone
                 tags$hr(style = "margin: 12px 0 10px 0;"),
                 div(
                   h6(
                     icon("hospital-alt", style = "color: #6366F1;"),
-                    " Structures Sanitaires in ", tags$strong(zone_name),
-                    if (nrow(zone_structures) > 0) {
+                    " Structures Sanitaires ",
+                    if (nrow(zone_mobile_units) > 0) {
+                      span(
+                        icon("truck-medical", style = "color: #0284C7; margin-left: 8px;"),
+                        " & Unit\u00e9s Mobiles"
+                      )
+                    },
+                    " in ", tags$strong(zone_name),
+                    if (has_any_structures) {
                       tags$span(
                         class = "badge bg-secondary ms-2",
-                        nrow(zone_structures)
+                        nrow(zone_structures) + nrow(zone_other_structs) + nrow(zone_mobile_units)
                       )
                     }
                   ),
                   div(
                     style = "display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;",
-                    structures_ui
+                    combined_structures_ui
                   )
                 )
               )

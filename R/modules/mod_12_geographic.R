@@ -493,35 +493,38 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         ))
       }
 
-      # Get province column if available
-      province_col <- if ("province" %in% names(mobile_data)) "province" else NULL
-
       # Aggregate by structure and zone
       mobile_summary <- mobile_data %>%
         dplyr::group_by(structure_name, health_zone, health_zone_norm) %>%
         dplyr::summarise(
-          province = if (!is.null(province_col)) dplyr::first(.data[[province_col]]) else NA_character_,
           n_samples = dplyr::n(),
           .groups = "drop"
         ) %>%
         dplyr::distinct()
 
-      # Add approximate coordinates based on health zone centroids from map
+      # Add approximate coordinates and province based on health zone from map
       map <- map_data()
       if (!is.null(map) && nrow(map) > 0) {
-        # Get centroids for each zone
-        zone_centroids <- map %>%
+        # Get centroids and province for each zone
+        zone_info <- map %>%
           dplyr::mutate(
             centroid = sf::st_centroid(geometry),
             longitude = sf::st_coordinates(centroid)[, 1],
-            latitude = sf::st_coordinates(centroid)[, 2]
+            latitude = sf::st_coordinates(centroid)[, 2],
+            zone_norm = normalize_zone_name(zonesante)
           ) %>%
-          sf::st_drop_geometry() %>%
-          dplyr::select(zonesante, latitude, longitude)
+          sf::st_drop_geometry()
 
-        # Join centroids to mobile units, with slight offset for multiple units
+        # Add province column if it exists in map, otherwise set to NA
+        if (!"province" %in% names(zone_info)) {
+          zone_info$province <- NA_character_
+        }
+        zone_info <- zone_info %>%
+          dplyr::select(zone_norm, province, latitude, longitude)
+
+        # Join zone info to mobile units, with slight offset for multiple units
         mobile_summary <- mobile_summary %>%
-          dplyr::left_join(zone_centroids, by = c("health_zone_norm" = "zonesante")) %>%
+          dplyr::left_join(zone_info, by = c("health_zone_norm" = "zone_norm")) %>%
           dplyr::group_by(health_zone_norm) %>%
           dplyr::mutate(
             # Add small offset for multiple mobile units in same zone
@@ -533,10 +536,12 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           dplyr::select(-row_num)
       } else {
         mobile_summary <- mobile_summary %>%
-          dplyr::mutate(latitude = NA_real_, longitude = NA_real_)
+          dplyr::mutate(province = NA_character_, latitude = NA_real_, longitude = NA_real_)
       }
 
-      mobile_summary
+      # Ensure consistent column order
+      mobile_summary %>%
+        dplyr::select(structure_name, health_zone, health_zone_norm, province, n_samples, latitude, longitude)
     })
 
     # ========================================================================
@@ -1808,6 +1813,18 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
 
           if (nrow(zone_data) > 0) {
             zd <- zone_data[1, ]
+
+            # Look up province from map data
+            map <- map_data()
+            if (!is.null(map) && "province" %in% names(map)) {
+              map_zone <- map %>%
+                sf::st_drop_geometry() %>%
+                dplyr::filter(normalize_zone_name(zonesante) == zone_name) %>%
+                dplyr::slice(1)
+              zd$province <- if (nrow(map_zone) > 0) map_zone$province else NA_character_
+            } else {
+              zd$province <- NA_character_
+            }
 
             # Find all health structures in this zone (from hardcoded data)
             zone_search_pattern <- paste0("ZS ", zone_name)

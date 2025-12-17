@@ -1548,24 +1548,28 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       # Add health structure markers if enabled
       show_structures <- input$show_structures %||% TRUE
       if (show_structures && nrow(health_structures_data) > 0) {
-        # Color palette for endemicity levels - solid colors (no black border)
-        endemicity_colors <- c("A" = "#DC2626", "B" = "#F59E0B", "C" = "#10B981")
+        # Color palette for endemicity levels
+        endemicity_colors <- c("A" = "red", "B" = "orange", "C" = "green")
 
         # Add row index for layerId
         health_structures_data$structure_id <- paste0("struct_", seq_len(nrow(health_structures_data)))
 
+        # Create hospital icons with endemicity colors
+        hospital_icons <- leaflet::awesomeIcons(
+          icon = "hospital",
+          iconColor = "white",
+          library = "fa",
+          markerColor = endemicity_colors[health_structures_data$endemicite]
+        )
+
         base_map <- base_map %>%
-          leaflet::addCircleMarkers(
+          leaflet::addAwesomeMarkers(
             data = health_structures_data,
             layerId = ~structure_id,
             group = "structures",
             lng = ~longitude,
             lat = ~latitude,
-            radius = 9,
-            color = ~endemicity_colors[endemicite],
-            weight = 2,
-            fillColor = ~endemicity_colors[endemicite],
-            fillOpacity = 1,
+            icon = hospital_icons,
             label = ~paste0(structure, " (", zone_sante, ")"),
             labelOptions = leaflet::labelOptions(
               style = list(
@@ -1578,7 +1582,6 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
               )
             )
           )
-        # Legend removed - colors are self-explanatory (red=high, orange=medium, green=low endemicity)
       }
 
       # Add mobile unit markers if enabled
@@ -1593,18 +1596,22 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           # Add row index for layerId
           mobile_with_coords$mobile_id <- paste0("mobile_", seq_len(nrow(mobile_with_coords)))
 
+          # Create truck-medical icons for mobile units
+          mobile_icons <- leaflet::awesomeIcons(
+            icon = "truck-medical",
+            iconColor = "white",
+            library = "fa",
+            markerColor = "blue"
+          )
+
           base_map <- base_map %>%
-            leaflet::addMarkers(
+            leaflet::addAwesomeMarkers(
               data = mobile_with_coords,
               layerId = ~mobile_id,
               group = "mobile_units",
               lng = ~longitude,
               lat = ~latitude,
-              icon = leaflet::makeIcon(
-                iconUrl = "https://cdn-icons-png.flaticon.com/512/3097/3097180.png",
-                iconWidth = 28, iconHeight = 28,
-                iconAnchorX = 14, iconAnchorY = 14
-              ),
+              icon = mobile_icons,
               label = ~paste0(structure_name, " (", health_zone_norm, ") - ", n_samples, " samples"),
               labelOptions = leaflet::labelOptions(
                 style = list(

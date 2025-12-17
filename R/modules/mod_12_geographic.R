@@ -1811,8 +1811,6 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
               structure_items <- lapply(seq_len(nrow(zone_structures)), function(i) {
                 s <- zone_structures[i, ]
                 end_color <- endemicity_colors[s$endemicite]
-                end_label <- endemicity_labels[s$endemicite]
-                end_icon <- endemicity_icons[s$endemicite]
                 end_bg <- endemicity_bg[s$endemicite]
 
                 # Determine structure type icon
@@ -1824,6 +1822,16 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
                   "house-medical"
                 } else {
                   "plus-square"
+                }
+
+                # Get sample count from biobank data by matching structure name
+                struct_name_upper <- toupper(trimws(s$structure))
+                matching_biobank <- zone_biobank_structs %>%
+                  dplyr::filter(toupper(trimws(structure_name)) == struct_name_upper)
+                sample_count <- if (nrow(matching_biobank) > 0) {
+                  sum(matching_biobank$n_samples)
+                } else {
+                  0
                 }
 
                 div(
@@ -1840,8 +1848,8 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
                     ),
                     div(
                       style = paste0("color: ", end_color, "; font-size: 0.85em;"),
-                      icon(end_icon, style = "margin-right: 4px;"),
-                      tags$span(paste0(s$endemicite, " - ", end_label))
+                      icon("vial", style = "margin-right: 4px;"),
+                      tags$span(paste0(sample_count, " samples"))
                     )
                   )
                 )

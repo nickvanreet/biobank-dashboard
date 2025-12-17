@@ -1545,26 +1545,50 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           position = "bottomright"
         )
 
-      # Add health structure markers if enabled
+      # NOTE: Markers are added via leafletProxy in separate observers below
+      # This prevents full map re-render when only markers change
+
+      base_map %>%
+        leaflet::setView(lng = 23.8, lat = -6.0, zoom = 8)
+    })
+
+    # ========================================================================
+    # MARKER UPDATES VIA LEAFLET PROXY (prevents blinking)
+    # ========================================================================
+
+    # Debounced reactive for mobile units to prevent rapid updates
+    mobile_units_debounced <- reactive({
+      mobile_units_data()
+    }) %>% shiny::debounce(300)
+
+    # Update health structure markers
+    observeEvent(list(input$show_structures), {
       show_structures <- input$show_structures %||% TRUE
+
+      proxy <- leaflet::leafletProxy("main_map")
+
+      # Clear existing structure markers
+      proxy <- proxy %>% leaflet::clearGroup("structures")
+
       if (show_structures && nrow(health_structures_data) > 0) {
         # Color palette for endemicity levels
         endemicity_colors <- c("A" = "red", "B" = "orange", "C" = "green")
 
         # Add row index for layerId
-        health_structures_data$structure_id <- paste0("struct_", seq_len(nrow(health_structures_data)))
+        struct_data <- health_structures_data
+        struct_data$structure_id <- paste0("struct_", seq_len(nrow(struct_data)))
 
         # Create hospital icons with endemicity colors
         hospital_icons <- leaflet::awesomeIcons(
           icon = "hospital",
           iconColor = "white",
           library = "fa",
-          markerColor = endemicity_colors[health_structures_data$endemicite]
+          markerColor = endemicity_colors[struct_data$endemicite]
         )
 
-        base_map <- base_map %>%
+        proxy %>%
           leaflet::addAwesomeMarkers(
-            data = health_structures_data,
+            data = struct_data,
             layerId = ~structure_id,
             group = "structures",
             lng = ~longitude,
@@ -1583,11 +1607,19 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
             )
           )
       }
+    }, ignoreNULL = FALSE, ignoreInit = FALSE)
 
-      # Add mobile unit markers if enabled
+    # Update mobile unit markers (debounced to prevent rapid re-renders)
+    observeEvent(list(input$show_mobile_units, mobile_units_debounced()), {
       show_mobile <- input$show_mobile_units %||% TRUE
-      mobile_data <- mobile_units_data()
-      if (show_mobile && nrow(mobile_data) > 0) {
+      mobile_data <- mobile_units_debounced()
+
+      proxy <- leaflet::leafletProxy("main_map")
+
+      # Clear existing mobile unit markers
+      proxy <- proxy %>% leaflet::clearGroup("mobile_units")
+
+      if (show_mobile && !is.null(mobile_data) && nrow(mobile_data) > 0) {
         # Filter to only those with valid coordinates
         mobile_with_coords <- mobile_data %>%
           dplyr::filter(!is.na(latitude) & !is.na(longitude))
@@ -1604,7 +1636,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
             markerColor = "blue"
           )
 
-          base_map <- base_map %>%
+          proxy %>%
             leaflet::addAwesomeMarkers(
               data = mobile_with_coords,
               layerId = ~mobile_id,
@@ -1626,10 +1658,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
             )
         }
       }
-
-      base_map %>%
-        leaflet::setView(lng = 23.8, lat = -6.0, zoom = 8)
-    })
+    }, ignoreNULL = FALSE, ignoreInit = FALSE)
 
     # ========================================================================
     # MAP CLICK OBSERVERS
@@ -1782,13 +1811,19 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
 
             # Find all health structures in this zone (from hardcoded data)
             zone_search_pattern <- paste0("ZS ", zone_name)
-            zone_structures <- health_structures_data %>%
+            all_zone_structures <- health_structures_data %>%
               dplyr::filter(zone_sante == zone_search_pattern)
 
             # Get biobank structures for this zone (including mobile units)
             biobank_structs <- biobank_structures_by_zone()
             zone_biobank_structs <- biobank_structs %>%
               dplyr::filter(health_zone_norm == zone_name)
+
+            # Filter hardcoded structures to only show those with samples in filtered data
+            # This ensures Zone Details respects the global structure filter
+            biobank_struct_names <- toupper(trimws(zone_biobank_structs$structure_name))
+            zone_structures <- all_zone_structures %>%
+              dplyr::filter(toupper(trimws(structure)) %in% biobank_struct_names)
 
             # Get mobile units for this zone
             zone_mobile_units <- zone_biobank_structs %>%

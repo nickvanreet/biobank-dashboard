@@ -747,6 +747,42 @@ mod_study_comparison_ui <- function(id) {
   final_call %in% positive_values
 }
 
+#' Determine if an ELISA result is positive based on filter settings
+#' @param sample_positive Logical vector of positivity
+#' @param sample_borderline Logical vector of borderline status (optional)
+#' @param include_borderline Whether to treat borderline as positive
+.is_elisa_positive <- function(sample_positive, sample_borderline = NULL, include_borderline = FALSE) {
+  result <- sample_positive == TRUE
+  if (include_borderline && !is.null(sample_borderline)) {
+    result <- result | (sample_borderline == TRUE)
+  }
+  result
+}
+
+#' Determine if an iELISA L13 result is positive based on filter settings
+#' @param positive_L13 Logical vector of L13 positivity
+#' @param status_L13 Character vector of L13 status (optional)
+#' @param include_borderline Whether to treat borderline as positive
+.is_ielisa_L13_positive <- function(positive_L13, status_L13 = NULL, include_borderline = FALSE) {
+  result <- positive_L13 == TRUE
+  if (include_borderline && !is.null(status_L13)) {
+    result <- result | (status_L13 == "Borderline")
+  }
+  result
+}
+
+#' Determine if an iELISA L15 result is positive based on filter settings
+#' @param positive_L15 Logical vector of L15 positivity
+#' @param status_L15 Character vector of L15 status (optional)
+#' @param include_borderline Whether to treat borderline as positive
+.is_ielisa_L15_positive <- function(positive_L15, status_L15 = NULL, include_borderline = FALSE) {
+  result <- positive_L15 == TRUE
+  if (include_borderline && !is.null(status_L15)) {
+    result <- result | (status_L15 == "Borderline")
+  }
+  result
+}
+
 #' Filter out invalid results
 .filter_invalid <- function(data, exclude_invalid = TRUE, final_call_col = "FinalCall") {
 
@@ -1092,7 +1128,7 @@ mod_study_comparison_server <- function(id,
       sprintf("DNA:%d RNA:%d", dna_pos, rna_pos)
     })
 
-    # ELISA KPIs (combined PE and VSG)
+    # ELISA KPIs (combined PE and VSG) - with borderline handling
     output$kpi_da_elisa <- renderText({
       pe <- linked_elisa_pe_data()
       vsg <- linked_elisa_vsg_data()
@@ -1101,19 +1137,21 @@ mod_study_comparison_server <- function(id,
       da_total <- 0
 
       if (!is.null(pe) && nrow(pe) > 0) {
-        pos_col <- if ("sample_positive" %in% names(pe)) "sample_positive" else intersect(c("positive", "is_positive"), names(pe))[1]
-        if (!is.na(pos_col)) {
-          da_pe <- pe %>% dplyr::filter(study == "DA")
-          da_pos <- da_pos + sum(da_pe[[pos_col]] == TRUE, na.rm = TRUE)
+        da_pe <- pe %>% dplyr::filter(study == "DA")
+        if (nrow(da_pe) > 0 && "sample_positive" %in% names(da_pe)) {
+          borderline_col <- if ("sample_borderline" %in% names(da_pe)) da_pe$sample_borderline else NULL
+          is_pos <- .is_elisa_positive(da_pe$sample_positive, borderline_col, input$include_borderline)
+          da_pos <- da_pos + sum(is_pos, na.rm = TRUE)
           da_total <- da_total + nrow(da_pe)
         }
       }
 
       if (!is.null(vsg) && nrow(vsg) > 0) {
-        pos_col <- if ("sample_positive" %in% names(vsg)) "sample_positive" else intersect(c("positive", "is_positive"), names(vsg))[1]
-        if (!is.na(pos_col)) {
-          da_vsg <- vsg %>% dplyr::filter(study == "DA")
-          da_pos <- da_pos + sum(da_vsg[[pos_col]] == TRUE, na.rm = TRUE)
+        da_vsg <- vsg %>% dplyr::filter(study == "DA")
+        if (nrow(da_vsg) > 0 && "sample_positive" %in% names(da_vsg)) {
+          borderline_col <- if ("sample_borderline" %in% names(da_vsg)) da_vsg$sample_borderline else NULL
+          is_pos <- .is_elisa_positive(da_vsg$sample_positive, borderline_col, input$include_borderline)
+          da_pos <- da_pos + sum(is_pos, na.rm = TRUE)
           da_total <- da_total + nrow(da_vsg)
         }
       }
@@ -1130,19 +1168,21 @@ mod_study_comparison_server <- function(id,
       dp_total <- 0
 
       if (!is.null(pe) && nrow(pe) > 0) {
-        pos_col <- if ("sample_positive" %in% names(pe)) "sample_positive" else intersect(c("positive", "is_positive"), names(pe))[1]
-        if (!is.na(pos_col)) {
-          dp_pe <- pe %>% dplyr::filter(study == "DP")
-          dp_pos <- dp_pos + sum(dp_pe[[pos_col]] == TRUE, na.rm = TRUE)
+        dp_pe <- pe %>% dplyr::filter(study == "DP")
+        if (nrow(dp_pe) > 0 && "sample_positive" %in% names(dp_pe)) {
+          borderline_col <- if ("sample_borderline" %in% names(dp_pe)) dp_pe$sample_borderline else NULL
+          is_pos <- .is_elisa_positive(dp_pe$sample_positive, borderline_col, input$include_borderline)
+          dp_pos <- dp_pos + sum(is_pos, na.rm = TRUE)
           dp_total <- dp_total + nrow(dp_pe)
         }
       }
 
       if (!is.null(vsg) && nrow(vsg) > 0) {
-        pos_col <- if ("sample_positive" %in% names(vsg)) "sample_positive" else intersect(c("positive", "is_positive"), names(vsg))[1]
-        if (!is.na(pos_col)) {
-          dp_vsg <- vsg %>% dplyr::filter(study == "DP")
-          dp_pos <- dp_pos + sum(dp_vsg[[pos_col]] == TRUE, na.rm = TRUE)
+        dp_vsg <- vsg %>% dplyr::filter(study == "DP")
+        if (nrow(dp_vsg) > 0 && "sample_positive" %in% names(dp_vsg)) {
+          borderline_col <- if ("sample_borderline" %in% names(dp_vsg)) dp_vsg$sample_borderline else NULL
+          is_pos <- .is_elisa_positive(dp_vsg$sample_positive, borderline_col, input$include_borderline)
+          dp_pos <- dp_pos + sum(is_pos, na.rm = TRUE)
           dp_total <- dp_total + nrow(dp_vsg)
         }
       }
@@ -1151,7 +1191,7 @@ mod_study_comparison_server <- function(id,
       sprintf("%.1f%%", dp_pos / dp_total * 100)
     })
 
-    # iELISA KPIs
+    # iELISA KPIs - with borderline handling
     output$kpi_da_ielisa <- renderText({
       ielisa <- linked_ielisa_data()
       if (is.null(ielisa) || nrow(ielisa) == 0) return("N/A")
@@ -1159,12 +1199,22 @@ mod_study_comparison_server <- function(id,
       da_ielisa <- ielisa %>% dplyr::filter(study == "DA")
       if (nrow(da_ielisa) == 0) return("N/A")
 
-      # Check for L13 or L15 positive
-      pos_col <- intersect(c("sample_positive", "positive_L13", "positive"), names(ielisa))[1]
-      if (is.na(pos_col)) return("N/A")
+      # Use L13 or L15 with borderline handling
+      da_pos <- 0
+      da_n <- nrow(da_ielisa)
+      if ("positive_L13" %in% names(da_ielisa)) {
+        status_col <- if ("status_L13" %in% names(da_ielisa)) da_ielisa$status_L13 else NULL
+        is_pos <- .is_ielisa_L13_positive(da_ielisa$positive_L13, status_col, input$include_borderline)
+        da_pos <- max(da_pos, sum(is_pos, na.rm = TRUE))
+      }
+      if ("positive_L15" %in% names(da_ielisa)) {
+        status_col <- if ("status_L15" %in% names(da_ielisa)) da_ielisa$status_L15 else NULL
+        is_pos <- .is_ielisa_L15_positive(da_ielisa$positive_L15, status_col, input$include_borderline)
+        da_pos <- max(da_pos, sum(is_pos, na.rm = TRUE))
+      }
 
-      pos_rate <- mean(da_ielisa[[pos_col]] == TRUE, na.rm = TRUE) * 100
-      sprintf("%.1f%%", pos_rate)
+      if (da_n == 0) return("N/A")
+      sprintf("%.1f%%", da_pos / da_n * 100)
     })
 
     output$kpi_dp_ielisa <- renderText({
@@ -1174,11 +1224,22 @@ mod_study_comparison_server <- function(id,
       dp_ielisa <- ielisa %>% dplyr::filter(study == "DP")
       if (nrow(dp_ielisa) == 0) return("N/A")
 
-      pos_col <- intersect(c("sample_positive", "positive_L13", "positive"), names(ielisa))[1]
-      if (is.na(pos_col)) return("N/A")
+      # Use L13 or L15 with borderline handling
+      dp_pos <- 0
+      dp_n <- nrow(dp_ielisa)
+      if ("positive_L13" %in% names(dp_ielisa)) {
+        status_col <- if ("status_L13" %in% names(dp_ielisa)) dp_ielisa$status_L13 else NULL
+        is_pos <- .is_ielisa_L13_positive(dp_ielisa$positive_L13, status_col, input$include_borderline)
+        dp_pos <- max(dp_pos, sum(is_pos, na.rm = TRUE))
+      }
+      if ("positive_L15" %in% names(dp_ielisa)) {
+        status_col <- if ("status_L15" %in% names(dp_ielisa)) dp_ielisa$status_L15 else NULL
+        is_pos <- .is_ielisa_L15_positive(dp_ielisa$positive_L15, status_col, input$include_borderline)
+        dp_pos <- max(dp_pos, sum(is_pos, na.rm = TRUE))
+      }
 
-      pos_rate <- mean(dp_ielisa[[pos_col]] == TRUE, na.rm = TRUE) * 100
-      sprintf("%.1f%%", pos_rate)
+      if (dp_n == 0) return("N/A")
+      sprintf("%.1f%%", dp_pos / dp_n * 100)
     })
 
     # ========================================================================
@@ -1446,10 +1507,13 @@ mod_study_comparison_server <- function(id,
           )
         }
 
-        # L13
+        # L13 - with borderline handling
         if ("positive_L13" %in% names(ielisa)) {
-          da_pos <- sum(ielisa$study == "DA" & ielisa$positive_L13 == TRUE, na.rm = TRUE)
-          dp_pos <- sum(ielisa$study == "DP" & ielisa$positive_L13 == TRUE, na.rm = TRUE)
+          status_L13 <- if ("status_L13" %in% names(ielisa)) ielisa$status_L13 else NULL
+          da_is_pos <- .is_ielisa_L13_positive(ielisa$positive_L13, status_L13, input$include_borderline) & ielisa$study == "DA"
+          dp_is_pos <- .is_ielisa_L13_positive(ielisa$positive_L13, status_L13, input$include_borderline) & ielisa$study == "DP"
+          da_pos <- sum(da_is_pos, na.rm = TRUE)
+          dp_pos <- sum(dp_is_pos, na.rm = TRUE)
           results[[length(results) + 1]] <- data.frame(
             Test = "  - LiTat 1.3",
             DA_N = "",
@@ -1462,10 +1526,13 @@ mod_study_comparison_server <- function(id,
           )
         }
 
-        # L15
+        # L15 - with borderline handling
         if ("positive_L15" %in% names(ielisa)) {
-          da_pos <- sum(ielisa$study == "DA" & ielisa$positive_L15 == TRUE, na.rm = TRUE)
-          dp_pos <- sum(ielisa$study == "DP" & ielisa$positive_L15 == TRUE, na.rm = TRUE)
+          status_L15 <- if ("status_L15" %in% names(ielisa)) ielisa$status_L15 else NULL
+          da_is_pos <- .is_ielisa_L15_positive(ielisa$positive_L15, status_L15, input$include_borderline) & ielisa$study == "DA"
+          dp_is_pos <- .is_ielisa_L15_positive(ielisa$positive_L15, status_L15, input$include_borderline) & ielisa$study == "DP"
+          da_pos <- sum(da_is_pos, na.rm = TRUE)
+          dp_pos <- sum(dp_is_pos, na.rm = TRUE)
           results[[length(results) + 1]] <- data.frame(
             Test = "  - LiTat 1.5",
             DA_N = "",
@@ -2516,11 +2583,15 @@ mod_study_comparison_server <- function(id,
       ielisa <- linked_ielisa_data()
       if (is.null(ielisa) || nrow(ielisa) == 0 || !"positive_L13" %in% names(ielisa)) return(plotly::plotly_empty())
 
+      # Apply borderline handling
+      status_L13 <- if ("status_L13" %in% names(ielisa)) ielisa$status_L13 else NULL
+      ielisa$is_pos_L13 <- .is_ielisa_L13_positive(ielisa$positive_L13, status_L13, input$include_borderline)
+
       pos_data <- ielisa %>%
         dplyr::group_by(study) %>%
         dplyr::summarise(
           n = dplyr::n(),
-          pos = sum(positive_L13 == TRUE, na.rm = TRUE),
+          pos = sum(is_pos_L13, na.rm = TRUE),
           rate = pos / n * 100,
           .groups = "drop"
         )
@@ -2535,11 +2606,15 @@ mod_study_comparison_server <- function(id,
       ielisa <- linked_ielisa_data()
       if (is.null(ielisa) || nrow(ielisa) == 0 || !"positive_L15" %in% names(ielisa)) return(plotly::plotly_empty())
 
+      # Apply borderline handling
+      status_L15 <- if ("status_L15" %in% names(ielisa)) ielisa$status_L15 else NULL
+      ielisa$is_pos_L15 <- .is_ielisa_L15_positive(ielisa$positive_L15, status_L15, input$include_borderline)
+
       pos_data <- ielisa %>%
         dplyr::group_by(study) %>%
         dplyr::summarise(
           n = dplyr::n(),
-          pos = sum(positive_L15 == TRUE, na.rm = TRUE),
+          pos = sum(is_pos_L15, na.rm = TRUE),
           rate = pos / n * 100,
           .groups = "drop"
         )
@@ -2591,10 +2666,12 @@ mod_study_comparison_server <- function(id,
       da_n <- sum(ielisa$study == "DA", na.rm = TRUE)
       dp_n <- sum(ielisa$study == "DP", na.rm = TRUE)
 
-      # L13 positivity
+      # L13 positivity - with borderline handling
       if ("positive_L13" %in% names(ielisa)) {
-        da_pos <- sum(ielisa$study == "DA" & ielisa$positive_L13 == TRUE, na.rm = TRUE)
-        dp_pos <- sum(ielisa$study == "DP" & ielisa$positive_L13 == TRUE, na.rm = TRUE)
+        status_L13 <- if ("status_L13" %in% names(ielisa)) ielisa$status_L13 else NULL
+        is_pos_L13 <- .is_ielisa_L13_positive(ielisa$positive_L13, status_L13, input$include_borderline)
+        da_pos <- sum(ielisa$study == "DA" & is_pos_L13, na.rm = TRUE)
+        dp_pos <- sum(ielisa$study == "DP" & is_pos_L13, na.rm = TRUE)
         if (da_n > 0 && dp_n > 0) {
           tbl <- matrix(c(da_pos, da_n - da_pos, dp_pos, dp_n - dp_pos), nrow = 2)
           chi <- tryCatch(chisq.test(tbl), error = function(e) NULL)
@@ -2609,10 +2686,12 @@ mod_study_comparison_server <- function(id,
         }
       }
 
-      # L15 positivity
+      # L15 positivity - with borderline handling
       if ("positive_L15" %in% names(ielisa)) {
-        da_pos <- sum(ielisa$study == "DA" & ielisa$positive_L15 == TRUE, na.rm = TRUE)
-        dp_pos <- sum(ielisa$study == "DP" & ielisa$positive_L15 == TRUE, na.rm = TRUE)
+        status_L15 <- if ("status_L15" %in% names(ielisa)) ielisa$status_L15 else NULL
+        is_pos_L15 <- .is_ielisa_L15_positive(ielisa$positive_L15, status_L15, input$include_borderline)
+        da_pos <- sum(ielisa$study == "DA" & is_pos_L15, na.rm = TRUE)
+        dp_pos <- sum(ielisa$study == "DP" & is_pos_L15, na.rm = TRUE)
         if (da_n > 0 && dp_n > 0) {
           tbl <- matrix(c(da_pos, da_n - da_pos, dp_pos, dp_n - dp_pos), nrow = 2)
           chi <- tryCatch(chisq.test(tbl), error = function(e) NULL)
@@ -2891,16 +2970,15 @@ mod_study_comparison_server <- function(id,
           Category = "MIC qPCR", Metric = "Borderline (n)", DA = as.character(borderline_da), DP = as.character(borderline_dp), stringsAsFactors = FALSE)
       }
 
-      # ELISA-PE
+      # ELISA-PE - with borderline handling
       pe <- linked_elisa_pe_data()
-      if (!is.null(pe) && nrow(pe) > 0) {
-        pos_col <- if ("sample_positive" %in% names(pe)) "sample_positive" else intersect(c("positive", "is_positive"), names(pe))[1]
-        if (!is.na(pos_col)) {
-          da_pos <- mean(pe[[pos_col]][pe$study == "DA"] == TRUE, na.rm = TRUE) * 100
-          dp_pos <- mean(pe[[pos_col]][pe$study == "DP"] == TRUE, na.rm = TRUE) * 100
-          results[[length(results) + 1]] <- data.frame(
-            Category = "ELISA-PE", Metric = "Positivity", DA = sprintf("%.1f%%", da_pos), DP = sprintf("%.1f%%", dp_pos), stringsAsFactors = FALSE)
-        }
+      if (!is.null(pe) && nrow(pe) > 0 && "sample_positive" %in% names(pe)) {
+        borderline_col <- if ("sample_borderline" %in% names(pe)) pe$sample_borderline else NULL
+        is_pos_pe <- .is_elisa_positive(pe$sample_positive, borderline_col, input$include_borderline)
+        da_pos <- mean(is_pos_pe[pe$study == "DA"], na.rm = TRUE) * 100
+        dp_pos <- mean(is_pos_pe[pe$study == "DP"], na.rm = TRUE) * 100
+        results[[length(results) + 1]] <- data.frame(
+          Category = "ELISA-PE", Metric = "Positivity", DA = sprintf("%.1f%%", da_pos), DP = sprintf("%.1f%%", dp_pos), stringsAsFactors = FALSE)
         pp_col <- intersect(c("PP_percent", "pp_percent", "PP"), names(pe))[1]
         if (!is.na(pp_col)) {
           da_pp <- median(pe[[pp_col]][pe$study == "DA"], na.rm = TRUE)
@@ -2910,16 +2988,15 @@ mod_study_comparison_server <- function(id,
         }
       }
 
-      # ELISA-VSG
+      # ELISA-VSG - with borderline handling
       vsg <- linked_elisa_vsg_data()
-      if (!is.null(vsg) && nrow(vsg) > 0) {
-        pos_col <- if ("sample_positive" %in% names(vsg)) "sample_positive" else intersect(c("positive", "is_positive"), names(vsg))[1]
-        if (!is.na(pos_col)) {
-          da_pos <- mean(vsg[[pos_col]][vsg$study == "DA"] == TRUE, na.rm = TRUE) * 100
-          dp_pos <- mean(vsg[[pos_col]][vsg$study == "DP"] == TRUE, na.rm = TRUE) * 100
-          results[[length(results) + 1]] <- data.frame(
-            Category = "ELISA-VSG", Metric = "Positivity", DA = sprintf("%.1f%%", da_pos), DP = sprintf("%.1f%%", dp_pos), stringsAsFactors = FALSE)
-        }
+      if (!is.null(vsg) && nrow(vsg) > 0 && "sample_positive" %in% names(vsg)) {
+        borderline_col <- if ("sample_borderline" %in% names(vsg)) vsg$sample_borderline else NULL
+        is_pos_vsg <- .is_elisa_positive(vsg$sample_positive, borderline_col, input$include_borderline)
+        da_pos <- mean(is_pos_vsg[vsg$study == "DA"], na.rm = TRUE) * 100
+        dp_pos <- mean(is_pos_vsg[vsg$study == "DP"], na.rm = TRUE) * 100
+        results[[length(results) + 1]] <- data.frame(
+          Category = "ELISA-VSG", Metric = "Positivity", DA = sprintf("%.1f%%", da_pos), DP = sprintf("%.1f%%", dp_pos), stringsAsFactors = FALSE)
         pp_col <- intersect(c("PP_percent", "pp_percent", "PP"), names(vsg))[1]
         if (!is.na(pp_col)) {
           da_pp <- median(vsg[[pp_col]][vsg$study == "DA"], na.rm = TRUE)
@@ -2929,18 +3006,22 @@ mod_study_comparison_server <- function(id,
         }
       }
 
-      # iELISA
+      # iELISA - with borderline handling
       ielisa <- linked_ielisa_data()
       if (!is.null(ielisa) && nrow(ielisa) > 0) {
         if ("positive_L13" %in% names(ielisa)) {
-          da_pos <- mean(ielisa$positive_L13[ielisa$study == "DA"] == TRUE, na.rm = TRUE) * 100
-          dp_pos <- mean(ielisa$positive_L13[ielisa$study == "DP"] == TRUE, na.rm = TRUE) * 100
+          status_L13 <- if ("status_L13" %in% names(ielisa)) ielisa$status_L13 else NULL
+          is_pos_L13 <- .is_ielisa_L13_positive(ielisa$positive_L13, status_L13, input$include_borderline)
+          da_pos <- mean(is_pos_L13[ielisa$study == "DA"], na.rm = TRUE) * 100
+          dp_pos <- mean(is_pos_L13[ielisa$study == "DP"], na.rm = TRUE) * 100
           results[[length(results) + 1]] <- data.frame(
             Category = "iELISA", Metric = "LiTat 1.3 Positivity", DA = sprintf("%.1f%%", da_pos), DP = sprintf("%.1f%%", dp_pos), stringsAsFactors = FALSE)
         }
         if ("positive_L15" %in% names(ielisa)) {
-          da_pos <- mean(ielisa$positive_L15[ielisa$study == "DA"] == TRUE, na.rm = TRUE) * 100
-          dp_pos <- mean(ielisa$positive_L15[ielisa$study == "DP"] == TRUE, na.rm = TRUE) * 100
+          status_L15 <- if ("status_L15" %in% names(ielisa)) ielisa$status_L15 else NULL
+          is_pos_L15 <- .is_ielisa_L15_positive(ielisa$positive_L15, status_L15, input$include_borderline)
+          da_pos <- mean(is_pos_L15[ielisa$study == "DA"], na.rm = TRUE) * 100
+          dp_pos <- mean(is_pos_L15[ielisa$study == "DP"], na.rm = TRUE) * 100
           results[[length(results) + 1]] <- data.frame(
             Category = "iELISA", Metric = "LiTat 1.5 Positivity", DA = sprintf("%.1f%%", da_pos), DP = sprintf("%.1f%%", dp_pos), stringsAsFactors = FALSE)
         }

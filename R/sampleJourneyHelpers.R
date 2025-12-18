@@ -245,22 +245,9 @@ create_sample_timeline <- function(journey_data) {
           details_parts <- c(details_parts, sprintf("DRS: %s", row$drs_state))
         }
 
-        # Re-extraction flag
-        is_reext <- if ("is_reextraction" %in% names(row)) {
-          isTRUE(row$is_reextraction)
-        } else {
-          FALSE
-        }
-
-        # Event name
-        event_name <- if (is_reext) {
-          sprintf("Re-extraction #%d", i)
-        } else {
-          sprintf("Extraction #%d", i)
-        }
-
+        # Always use "Extraction #N" numbering
         events[[length(events) + 1]] <- tibble(
-          event = event_name,
+          event = sprintf("Extraction #%d", i),
           date = ext_date,
           category = "Extraction",
           details = paste(details_parts, collapse = " | ")
@@ -472,16 +459,17 @@ generate_sample_alerts <- function(journey_data) {
         }
       }
 
-      # Check if this is a re-extraction
-      if ("is_reextraction" %in% names(row) && isTRUE(row$is_reextraction)) {
-        alerts[[length(alerts) + 1]] <- list(
-          type = "info",
-          category = "Extraction",
-          message = sprintf("Sample was re-extracted (extraction #%d)", i),
-          test_number = i
-        )
-      }
     }
+  }
+
+  # Note if there are multiple extractions for this sample
+  if (nrow(journey_data$extraction_data) > 1) {
+    alerts[[length(alerts) + 1]] <- list(
+      type = "info",
+      category = "Extraction",
+      message = sprintf("Multiple extractions found (%d total)", nrow(journey_data$extraction_data)),
+      test_number = NA
+    )
   }
 
   # Check RNAseP Ct values (high Ct alert if > 35)

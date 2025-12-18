@@ -721,12 +721,23 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           ))
         }
 
+        # Create a sample identifier for grouping and add extraction sequence number
         display_df <- reext_df %>%
-          dplyr::arrange(dplyr::coalesce(reextraction_group, 0L), extraction_date) %>%
+          dplyr::mutate(
+            .sample_key = dplyr::coalesce(
+              stringr::str_trim(tolower(barcode)),
+              stringr::str_trim(tolower(numero)),
+              stringr::str_trim(tolower(sample_id))
+            )
+          ) %>%
+          dplyr::arrange(.sample_key, extraction_date) %>%
+          dplyr::group_by(.sample_key) %>%
+          dplyr::mutate(`Extraction #` = dplyr::row_number()) %>%
+          dplyr::ungroup() %>%
           dplyr::transmute(
-            `Sample Group` = dplyr::coalesce(as.character(reextraction_group), ""),
             `Numéro` = dplyr::coalesce(numero, record_number, ""),
             `Barcode (KPS)` = dplyr::coalesce(barcode, sample_id, ""),
+            `Extraction #` = `Extraction #`,
             `Extraction Date` = dplyr::if_else(
               is.na(extraction_date),
               "",

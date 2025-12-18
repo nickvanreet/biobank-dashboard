@@ -528,6 +528,93 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
         }
       }
 
+      # ---- Join biobank data for transport temperature ----
+      # The extraction data doesn't have transport_temperature - need to get it from biobank
+      if (!is.null(biobank_df)) {
+        biobank <- tryCatch(biobank_df(), error = function(e) NULL)
+        if (!is.null(biobank) && nrow(biobank) > 0) {
+          # Normalize biobank barcodes and lab_ids
+          biobank_bc_col <- intersect(c("barcode", "code_barres_kps"), names(biobank))[1]
+          biobank_num_col <- intersect(c("lab_id", "numero"), names(biobank))[1]
+
+          if (!is.na(biobank_bc_col) || !is.na(biobank_num_col)) {
+            biobank_transport <- biobank
+
+            if (!is.na(biobank_bc_col)) {
+              biobank_transport$barcode_norm <- normalize_barcode(biobank_transport[[biobank_bc_col]])
+            } else {
+              biobank_transport$barcode_norm <- NA_character_
+            }
+
+            if (!is.na(biobank_num_col)) {
+              biobank_transport$numero_norm <- normalize_barcode(as.character(biobank_transport[[biobank_num_col]]))
+            } else {
+              biobank_transport$numero_norm <- NA_character_
+            }
+
+            # Select transport columns we need
+            biobank_transport <- biobank_transport %>%
+              dplyr::select(
+                barcode_norm, numero_norm,
+                dplyr::any_of(c("date_sample", "date_received_cpltha", "transport_temperature", "storage_temp_cpltha"))
+              ) %>%
+              dplyr::distinct(barcode_norm, numero_norm, .keep_all = TRUE)
+
+            # Initialize columns if they don't exist
+            if (!"date_sample" %in% names(ext_data)) ext_data$date_sample <- as.Date(NA)
+            if (!"date_received_cpltha" %in% names(ext_data)) ext_data$date_received_cpltha <- as.Date(NA)
+            if (!"transport_temperature" %in% names(ext_data)) ext_data$transport_temperature <- NA_character_
+            if (!"storage_temp_cpltha" %in% names(ext_data)) ext_data$storage_temp_cpltha <- NA_character_
+
+            # Match biobank transport data to extraction data
+            for (i in seq_len(nrow(ext_data))) {
+              # Skip if already has transport data
+              if (!is.na(ext_data$transport_temperature[i])) next
+
+              bc <- ext_data$barcode_norm[i]
+              bc_alt <- ext_data$barcode_alt_norm[i]
+              num <- ext_data$numero_norm[i]
+
+              match_row <- NULL
+
+              # Try barcode_norm first
+              if (!is.na(bc)) {
+                match_row <- biobank_transport[biobank_transport$barcode_norm == bc & !is.na(biobank_transport$barcode_norm), ]
+                if (nrow(match_row) > 0) match_row <- match_row[1, ]
+              }
+
+              # Try barcode_alt_norm
+              if ((is.null(match_row) || nrow(match_row) == 0) && !is.na(bc_alt) && bc_alt != bc) {
+                match_row <- biobank_transport[biobank_transport$barcode_norm == bc_alt & !is.na(biobank_transport$barcode_norm), ]
+                if (nrow(match_row) > 0) match_row <- match_row[1, ]
+              }
+
+              # Try numero_norm
+              if ((is.null(match_row) || nrow(match_row) == 0) && !is.na(num)) {
+                match_row <- biobank_transport[biobank_transport$numero_norm == num & !is.na(biobank_transport$numero_norm), ]
+                if (nrow(match_row) > 0) match_row <- match_row[1, ]
+              }
+
+              # Fill in transport data if found
+              if (!is.null(match_row) && nrow(match_row) > 0) {
+                if (is.na(ext_data$date_sample[i]) && "date_sample" %in% names(match_row)) {
+                  ext_data$date_sample[i] <- match_row$date_sample[1]
+                }
+                if (is.na(ext_data$date_received_cpltha[i]) && "date_received_cpltha" %in% names(match_row)) {
+                  ext_data$date_received_cpltha[i] <- match_row$date_received_cpltha[1]
+                }
+                if (is.na(ext_data$transport_temperature[i]) && "transport_temperature" %in% names(match_row)) {
+                  ext_data$transport_temperature[i] <- match_row$transport_temperature[1]
+                }
+                if (is.na(ext_data$storage_temp_cpltha[i]) && "storage_temp_cpltha" %in% names(match_row)) {
+                  ext_data$storage_temp_cpltha[i] <- match_row$storage_temp_cpltha[1]
+                }
+              }
+            }
+          }
+        }
+      }
+
       # ---- Use existing biobank-linked columns for transport data ----
       # The extraction data already has biobank columns from data_manager linking
       # Use biobank_date_sample if date_sample doesn't exist

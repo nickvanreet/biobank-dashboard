@@ -909,9 +909,11 @@ mod_data_manager_server <- function(id) {
         structure_select_choices <- c("All" = "all")
 
         if (nrow(structure_choices)) {
+          # Use key as value (sent to server) and label as name (displayed)
+          # This ensures filter comparisons work with normalized keys
           structure_select_choices <- c(
             structure_select_choices,
-            stats::setNames(structure_choices$label, structure_choices$key)
+            stats::setNames(structure_choices$key, structure_choices$label)
           )
         }
 

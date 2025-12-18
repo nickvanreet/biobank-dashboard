@@ -68,6 +68,181 @@ mod_sample_journey_ui <- function(id) {
         .alert-card.alert-info {
           border-left-color: #06B6D4;
         }
+
+        /* Unified info box styling for consistent look */
+        .sj-info-box {
+          background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          padding: 12px 16px;
+          margin-bottom: 12px;
+          transition: all 0.2s ease;
+        }
+
+        .sj-info-box:hover {
+          border-color: #cbd5e1;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .sj-info-box .sj-label {
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-bottom: 4px;
+        }
+
+        .sj-info-box .sj-value {
+          font-size: 0.95rem;
+          font-weight: 500;
+          color: #1e293b;
+        }
+
+        .sj-info-box.sj-highlight {
+          border-left: 4px solid;
+        }
+
+        .sj-info-box.sj-highlight-primary { border-left-color: #4F46E5; }
+        .sj-info-box.sj-highlight-success { border-left-color: #10B981; }
+        .sj-info-box.sj-highlight-warning { border-left-color: #F59E0B; }
+        .sj-info-box.sj-highlight-danger { border-left-color: #e41a1c; }
+        .sj-info-box.sj-highlight-info { border-left-color: #06B6D4; }
+
+        /* Case status badges */
+        .sj-case-badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 6px 12px;
+          border-radius: 20px;
+          font-size: 0.85rem;
+          font-weight: 600;
+        }
+
+        .sj-case-badge.new-case {
+          background-color: rgba(16, 185, 129, 0.15);
+          color: #059669;
+        }
+
+        .sj-case-badge.treated-case {
+          background-color: rgba(245, 158, 11, 0.15);
+          color: #D97706;
+        }
+
+        .sj-case-badge.ancient-case {
+          background-color: rgba(139, 92, 246, 0.15);
+          color: #7C3AED;
+        }
+
+        .sj-case-badge.unknown-case {
+          background-color: rgba(100, 116, 139, 0.15);
+          color: #475569;
+        }
+
+        /* Extraction item styling */
+        .sj-extraction-item {
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          padding: 12px;
+          margin-bottom: 8px;
+        }
+
+        .sj-extraction-item:last-child {
+          margin-bottom: 0;
+        }
+
+        .sj-extraction-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 8px;
+          padding-bottom: 8px;
+          border-bottom: 1px solid #f1f5f9;
+        }
+
+        /* DRS state indicators */
+        .sj-drs-indicator {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 3px 8px;
+          border-radius: 4px;
+          font-size: 0.75rem;
+          font-weight: 600;
+        }
+
+        .sj-drs-liquid { background: rgba(16, 185, 129, 0.15); color: #059669; }
+        .sj-drs-viscous { background: rgba(245, 158, 11, 0.15); color: #D97706; }
+        .sj-drs-coagulated { background: rgba(228, 26, 28, 0.15); color: #e41a1c; }
+        .sj-drs-unknown { background: rgba(100, 116, 139, 0.15); color: #475569; }
+
+        .sj-quality-clear { background: rgba(16, 185, 129, 0.15); color: #059669; }
+        .sj-quality-fonce { background: rgba(245, 158, 11, 0.15); color: #D97706; }
+        .sj-quality-echec { background: rgba(228, 26, 28, 0.15); color: #e41a1c; }
+        .sj-quality-unknown { background: rgba(100, 116, 139, 0.15); color: #475569; }
+
+        /* Compact test result cards */
+        .sj-test-card {
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          margin-bottom: 10px;
+          overflow: hidden;
+        }
+
+        .sj-test-card-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 10px 14px;
+          background: #f8fafc;
+          border-bottom: 1px solid #e5e7eb;
+        }
+
+        .sj-test-card-body {
+          padding: 12px 14px;
+        }
+
+        .sj-test-card-body .row {
+          margin-left: -6px;
+          margin-right: -6px;
+        }
+
+        .sj-test-card-body .row > div {
+          padding-left: 6px;
+          padding-right: 6px;
+        }
+
+        .sj-metric {
+          margin-bottom: 8px;
+        }
+
+        .sj-metric-label {
+          font-size: 0.7rem;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+        }
+
+        .sj-metric-value {
+          font-size: 0.9rem;
+          font-weight: 600;
+          color: #1e293b;
+        }
+
+        /* Section cards */
+        .sj-section-card {
+          margin-bottom: 16px;
+        }
+
+        .sj-section-card .card-header {
+          padding: 10px 16px;
+        }
+
+        .sj-section-card .card-body {
+          padding: 16px;
+        }
       ")),
 
       div(
@@ -488,31 +663,42 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
       }
 
       tagList(
-        # Row 1: Biobank & Extraction/QC
+        # Row 1: Biobank Information (enhanced)
         card(
-          class = "mb-3",
+          class = "sj-section-card mb-3",
           card_header(
             class = "bg-primary text-white",
-            icon("database"), " Biobank & Extraction"
+            div(
+              class = "d-flex justify-content-between align-items-center",
+              div(icon("database"), " Biobank Information"),
+              uiOutput(ns("case_status_badge"))
+            )
           ),
           card_body(
-            div(
-              class = "row",
-              div(
-                class = "col-md-6",
-                uiOutput(ns("biobank_info"))
-              ),
-              div(
-                class = "col-md-6",
-                uiOutput(ns("extraction_info"))
-              )
-            )
+            uiOutput(ns("biobank_info"))
           )
         ),
 
-        # Row 2: MIC qPCR
+        # Row 2: Extractions (dedicated section)
         card(
-          class = "mb-3",
+          class = "sj-section-card mb-3",
+          card_header(
+            class = "text-white",
+            style = "background-color: #10B981 !important;",
+            div(
+              class = "d-flex justify-content-between align-items-center",
+              div(icon("flask-vial"), " Extractions & DRS Status"),
+              uiOutput(ns("extraction_count_badge"))
+            )
+          ),
+          card_body(
+            uiOutput(ns("extraction_section"))
+          )
+        ),
+
+        # Row 3: MIC qPCR (condensed)
+        card(
+          class = "sj-section-card mb-3",
           card_header(
             class = "bg-warning",
             icon("dna"), " MIC qPCR (Molecular)"
@@ -522,9 +708,9 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
           )
         ),
 
-        # Row 3: ELISA (PE/VSG)
+        # Row 4: ELISA (PE/VSG) - condensed
         card(
-          class = "mb-3",
+          class = "sj-section-card mb-3",
           card_header(
             class = "bg-info text-white",
             icon("vial"), " ELISA (PE/VSG)"
@@ -534,9 +720,9 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
           )
         ),
 
-        # Row 4: iELISA
+        # Row 5: iELISA - condensed
         card(
-          class = "mb-3",
+          class = "sj-section-card mb-3",
           card_header(
             class = "bg-purple text-white",
             style = "background-color: #8B5CF6 !important;",
@@ -549,17 +735,97 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
       )
     })
 
-    # Biobank info
+    # Case status badge for header
+    output$case_status_badge <- renderUI({
+      data <- journey_data()
+      req(data)
+
+      if (is.null(data$biobank_info) || nrow(data$biobank_info) == 0) {
+        return(NULL)
+      }
+
+      info <- data$biobank_info[1, ]
+
+      # Determine case status
+      previous_case <- if ("previous_case" %in% names(info)) info$previous_case else NA
+      treated <- if ("treated" %in% names(info)) info$treated else NA
+      case_category <- if ("case_category" %in% names(info)) info$case_category else NA
+
+      # Derive case status
+      case_status <- if (!is.na(case_category) && case_category != "") {
+        case_category
+      } else if (!is.na(previous_case) || !is.na(treated)) {
+        prev_yes <- !is.na(previous_case) && tolower(previous_case) %in% c("oui", "yes", "true", "1")
+        treat_yes <- !is.na(treated) && tolower(treated) %in% c("oui", "yes", "true", "1")
+        prev_no <- !is.na(previous_case) && tolower(previous_case) %in% c("non", "no", "false", "0")
+        treat_no <- !is.na(treated) && tolower(treated) %in% c("non", "no", "false", "0")
+
+        if (prev_yes || treat_yes) {
+          "Previous/Treated"
+        } else if (prev_no && treat_no) {
+          "New Case"
+        } else {
+          "Unknown"
+        }
+      } else {
+        "Unknown"
+      }
+
+      badge_class <- dplyr::case_when(
+        case_status == "New Case" ~ "new-case",
+        case_status %in% c("Previous/Treated", "Treated", "Previous") ~ "treated-case",
+        case_status == "Ancient" ~ "ancient-case",
+        TRUE ~ "unknown-case"
+      )
+
+      badge_icon <- dplyr::case_when(
+        case_status == "New Case" ~ "plus-circle",
+        case_status %in% c("Previous/Treated", "Treated", "Previous") ~ "history",
+        case_status == "Ancient" ~ "clock-rotate-left",
+        TRUE ~ "question-circle"
+      )
+
+      tags$span(
+        class = paste("sj-case-badge", badge_class),
+        icon(badge_icon),
+        " ",
+        case_status
+      )
+    })
+
+    # Extraction count badge
+    output$extraction_count_badge <- renderUI({
+      data <- journey_data()
+      req(data)
+
+      num_extractions <- nrow(data$extraction_data)
+
+      if (num_extractions == 0) {
+        return(tags$span(class = "badge bg-secondary", "No extractions"))
+      }
+
+      tags$span(
+        class = "badge bg-light text-dark",
+        sprintf("%d extraction%s", num_extractions, if(num_extractions > 1) "s" else "")
+      )
+    })
+
+    # Biobank info - Enhanced version
     output$biobank_info <- renderUI({
       data <- journey_data()
       req(data)
 
       if (is.null(data$biobank_info) || nrow(data$biobank_info) == 0) {
-        return(tags$p(class = "text-muted", "No biobank record"))
+        return(tags$div(
+          class = "text-center text-muted py-4",
+          icon("database", class = "fa-2x mb-2"),
+          tags$p("No biobank record found")
+        ))
       }
 
       info <- data$biobank_info[1, ]
 
+      # Extract all available info
       province <- if ("province" %in% names(info)) info$province else "Unknown"
       health_zone <- if ("health_zone" %in% names(info)) info$health_zone else "Unknown"
       structure <- if ("health_structure" %in% names(info)) {
@@ -588,96 +854,354 @@ mod_sample_journey_server <- function(id, biobank_data, extraction_data, mic_dat
         "Not recorded"
       }
 
-      tagList(
-        tags$h6("Biobank Information", class = "fw-bold"),
-        tags$p(tags$strong("Province: "), province),
-        tags$p(tags$strong("Health Zone: "), health_zone),
-        tags$p(tags$strong("Structure: "), structure),
-        tags$p(tags$strong("Collection Date: "), date_sample),
-        tags$p(tags$strong("Date sent to INRB: "), date_sent_inrb)
-      )
-    })
-
-    # Extraction info with DRS gauge
-    output$extraction_info <- renderUI({
-      data <- journey_data()
-      req(data)
-
-      num_extractions <- nrow(data$extraction_data)
-
-      if (num_extractions == 0) {
-        return(tags$p(class = "text-muted", "No extraction records"))
-      }
-
-      # Show most recent extraction
-      extraction <- data$extraction_data[num_extractions, ]
-
-      ext_date <- if ("extraction_date" %in% names(extraction)) {
-        format(as.Date(extraction$extraction_date), "%Y-%m-%d")
+      # Extract barcode and numero
+      barcode <- if ("code_barres_kps" %in% names(info) && !is.na(info$code_barres_kps)) {
+        as.character(info$code_barres_kps)
+      } else if ("barcode" %in% names(info) && !is.na(info$barcode)) {
+        as.character(info$barcode)
       } else {
-        "Unknown"
+        NA
       }
 
-      # Get sample identifiers
-      ext_barcode <- if ("barcode" %in% names(extraction) && !is.na(extraction$barcode)) {
-        as.character(extraction$barcode)
+      numero <- if ("numero_labo" %in% names(info) && !is.na(info$numero_labo)) {
+        as.character(info$numero_labo)
+      } else if ("numero" %in% names(info) && !is.na(info$numero)) {
+        as.character(info$numero)
       } else {
-        NA_character_
+        NA
       }
 
-      ext_numero <- if ("numero" %in% names(extraction) && !is.na(extraction$numero)) {
-        as.character(extraction$numero)
+      # Sex and age if available
+      sex <- if ("sex" %in% names(info) && !is.na(info$sex)) {
+        info$sex
+      } else if ("sexe" %in% names(info) && !is.na(info$sexe)) {
+        info$sexe
       } else {
-        NA_character_
+        NA
       }
 
-      ext_sample_id <- if ("sample_id" %in% names(extraction) && !is.na(extraction$sample_id)) {
-        as.character(extraction$sample_id)
+      age <- if ("age" %in% names(info) && !is.na(info$age)) {
+        info$age
       } else {
-        NA_character_
+        NA
       }
+
+      # Case status details
+      previous_case <- if ("previous_case" %in% names(info)) info$previous_case else NA
+      treated <- if ("treated" %in% names(info)) info$treated else NA
+      study <- if ("study" %in% names(info) && !is.na(info$study)) info$study else NA
 
       tagList(
-        tags$h6(sprintf("Extractions (%d performed)", num_extractions), class = "fw-bold"),
-        tags$p(tags$strong("Latest Date: "), ext_date),
-
-        # Sample Identifiers Section
-        if (!is.na(ext_barcode) || !is.na(ext_numero) || !is.na(ext_sample_id)) {
-          tags$div(
-            class = "mb-3 p-2",
-            style = "background-color: rgba(16, 185, 129, 0.05); border-left: 3px solid #10B981;",
-            if (!is.na(ext_barcode)) {
-              tags$p(
-                class = "mb-1",
-                tags$small(
-                  tags$strong("Barcode: "),
-                  tags$code(class = "text-success", ext_barcode)
+        # Sample IDs row
+        if (!is.na(barcode) || !is.na(numero)) {
+          div(
+            class = "row mb-3",
+            if (!is.na(barcode)) {
+              div(
+                class = "col-md-6",
+                div(
+                  class = "sj-info-box sj-highlight sj-highlight-primary",
+                  div(class = "sj-label", icon("barcode"), " Barcode"),
+                  div(class = "sj-value", tags$code(barcode))
                 )
               )
             },
-            if (!is.na(ext_numero)) {
-              tags$p(
-                class = "mb-1",
-                tags$small(
-                  tags$strong("Lab Number: "),
-                  tags$code(class = "text-success", ext_numero)
-                )
-              )
-            },
-            if (!is.na(ext_sample_id) && ext_sample_id != ext_barcode && ext_sample_id != ext_numero) {
-              tags$p(
-                class = "mb-0",
-                tags$small(
-                  tags$strong("Sample ID: "),
-                  tags$code(class = "text-success", ext_sample_id)
+            if (!is.na(numero)) {
+              div(
+                class = "col-md-6",
+                div(
+                  class = "sj-info-box sj-highlight sj-highlight-primary",
+                  div(class = "sj-label", icon("hashtag"), " Lab Number"),
+                  div(class = "sj-value", tags$code(numero))
                 )
               )
             }
           )
         },
 
-        # DRS Volume Gauge - shows initial volume (from data) minus 300µL per extraction
-        plotlyOutput(ns("drs_gauge"), height = "280px")
+        # Location row
+        div(
+          class = "row mb-3",
+          div(
+            class = "col-md-4",
+            div(
+              class = "sj-info-box",
+              div(class = "sj-label", icon("map-location-dot"), " Province"),
+              div(class = "sj-value", province)
+            )
+          ),
+          div(
+            class = "col-md-4",
+            div(
+              class = "sj-info-box",
+              div(class = "sj-label", icon("map-pin"), " Health Zone"),
+              div(class = "sj-value", health_zone)
+            )
+          ),
+          div(
+            class = "col-md-4",
+            div(
+              class = "sj-info-box",
+              div(class = "sj-label", icon("hospital"), " Structure"),
+              div(class = "sj-value", structure)
+            )
+          )
+        ),
+
+        # Dates and patient info row
+        div(
+          class = "row",
+          div(
+            class = "col-md-3",
+            div(
+              class = "sj-info-box sj-highlight sj-highlight-info",
+              div(class = "sj-label", icon("calendar"), " Collection"),
+              div(class = "sj-value", date_sample)
+            )
+          ),
+          div(
+            class = "col-md-3",
+            div(
+              class = "sj-info-box sj-highlight sj-highlight-info",
+              div(class = "sj-label", icon("paper-plane"), " Sent to INRB"),
+              div(class = "sj-value", date_sent_inrb)
+            )
+          ),
+          if (!is.na(sex) || !is.na(age)) {
+            div(
+              class = "col-md-3",
+              div(
+                class = "sj-info-box",
+                div(class = "sj-label", icon("user"), " Patient Info"),
+                div(class = "sj-value",
+                  if (!is.na(sex) && !is.na(age)) {
+                    sprintf("%s, %d yrs", sex, as.integer(age))
+                  } else if (!is.na(sex)) {
+                    sex
+                  } else {
+                    sprintf("%d years", as.integer(age))
+                  }
+                )
+              )
+            )
+          },
+          if (!is.na(study)) {
+            div(
+              class = "col-md-3",
+              div(
+                class = "sj-info-box",
+                div(class = "sj-label", icon("clipboard-list"), " Study"),
+                div(class = "sj-value", study)
+              )
+            )
+          }
+        ),
+
+        # Case history details if available
+        if (!is.na(previous_case) || !is.na(treated)) {
+          div(
+            class = "row mt-3",
+            div(
+              class = "col-12",
+              div(
+                class = "sj-info-box",
+                style = "background: rgba(139, 92, 246, 0.05);",
+                div(class = "sj-label", icon("clock-rotate-left"), " Case History"),
+                div(
+                  class = "d-flex gap-4 mt-2",
+                  if (!is.na(previous_case)) {
+                    tags$span(
+                      tags$strong("Previous Case: "),
+                      tags$span(
+                        class = if (tolower(previous_case) %in% c("oui", "yes")) "text-warning" else "text-success",
+                        previous_case
+                      )
+                    )
+                  },
+                  if (!is.na(treated)) {
+                    tags$span(
+                      tags$strong("Previously Treated: "),
+                      tags$span(
+                        class = if (tolower(treated) %in% c("oui", "yes")) "text-warning" else "text-success",
+                        treated
+                      )
+                    )
+                  }
+                )
+              )
+            )
+          )
+        }
+      )
+    })
+
+    # New dedicated Extraction section with each extraction listed
+    output$extraction_section <- renderUI({
+      data <- journey_data()
+      req(data)
+
+      num_extractions <- nrow(data$extraction_data)
+
+      if (num_extractions == 0) {
+        return(tags$div(
+          class = "text-center text-muted py-4",
+          icon("flask-vial", class = "fa-2x mb-2"),
+          tags$p("No extraction records found")
+        ))
+      }
+
+      # Build extraction list items
+      extraction_items <- lapply(1:num_extractions, function(i) {
+        extraction <- data$extraction_data[i, ]
+
+        ext_date <- if ("extraction_date" %in% names(extraction) && !is.na(extraction$extraction_date)) {
+          format(as.Date(extraction$extraction_date), "%Y-%m-%d")
+        } else {
+          "Unknown"
+        }
+
+        # DRS Volume
+        volume_ml <- if ("drs_volume_ml" %in% names(extraction) && !is.na(extraction$drs_volume_ml)) {
+          extraction$drs_volume_ml
+        } else {
+          NA
+        }
+
+        volume_ul <- if (!is.na(volume_ml)) round(volume_ml * 1000) else NA
+
+        # DRS State (Liquid, Viscous, Coagulated)
+        drs_state <- if ("drs_state" %in% names(extraction) && !is.na(extraction$drs_state)) {
+          extraction$drs_state
+        } else {
+          "Unknown"
+        }
+
+        drs_state_class <- dplyr::case_when(
+          drs_state == "Liquid" ~ "sj-drs-liquid",
+          drs_state == "Viscous" ~ "sj-drs-viscous",
+          drs_state == "Coagulated" ~ "sj-drs-coagulated",
+          TRUE ~ "sj-drs-unknown"
+        )
+
+        drs_state_icon <- dplyr::case_when(
+          drs_state == "Liquid" ~ "droplet",
+          drs_state == "Viscous" ~ "water",
+          drs_state == "Coagulated" ~ "plug",
+          TRUE ~ "question"
+        )
+
+        # Extract Quality (Clear, Foncé, Échec)
+        extract_quality <- if ("extract_quality" %in% names(extraction) && !is.na(extraction$extract_quality)) {
+          extraction$extract_quality
+        } else {
+          "Unknown"
+        }
+
+        quality_class <- dplyr::case_when(
+          extract_quality == "Clear" ~ "sj-quality-clear",
+          extract_quality == "Foncé" ~ "sj-quality-fonce",
+          extract_quality == "Échec" ~ "sj-quality-echec",
+          TRUE ~ "sj-quality-unknown"
+        )
+
+        quality_icon <- dplyr::case_when(
+          extract_quality == "Clear" ~ "check-circle",
+          extract_quality == "Foncé" ~ "circle-half-stroke",
+          extract_quality == "Échec" ~ "times-circle",
+          TRUE ~ "question-circle"
+        )
+
+        # Technician
+        technician <- if ("technician" %in% names(extraction) && !is.na(extraction$technician)) {
+          extraction$technician
+        } else {
+          NA
+        }
+
+        tags$div(
+          class = "sj-extraction-item",
+          # Header
+          div(
+            class = "sj-extraction-header",
+            div(
+              tags$strong(sprintf("Extraction #%d", i)),
+              tags$span(class = "text-muted ms-2", ext_date)
+            ),
+            div(
+              class = "d-flex gap-2",
+              tags$span(class = paste("sj-drs-indicator", drs_state_class), icon(drs_state_icon), " ", drs_state),
+              tags$span(class = paste("sj-drs-indicator", quality_class), icon(quality_icon), " ", extract_quality)
+            )
+          ),
+          # Body with metrics
+          div(
+            class = "row",
+            div(
+              class = "col-4",
+              div(
+                class = "sj-metric",
+                div(class = "sj-metric-label", "Volume"),
+                div(class = "sj-metric-value",
+                  if (!is.na(volume_ul)) {
+                    tags$span(
+                      sprintf("%d", volume_ul),
+                      tags$small(class = "text-muted", " µL")
+                    )
+                  } else {
+                    tags$span(class = "text-muted", "N/A")
+                  }
+                )
+              )
+            ),
+            div(
+              class = "col-4",
+              div(
+                class = "sj-metric",
+                div(class = "sj-metric-label", "DRS State"),
+                div(class = "sj-metric-value", drs_state)
+              )
+            ),
+            div(
+              class = "col-4",
+              div(
+                class = "sj-metric",
+                div(class = "sj-metric-label", "Quality"),
+                div(class = "sj-metric-value", extract_quality)
+              )
+            )
+          ),
+          if (!is.na(technician)) {
+            div(
+              class = "mt-2 pt-2",
+              style = "border-top: 1px dashed #e5e7eb;",
+              tags$small(class = "text-muted", icon("user"), " Technician: ", technician)
+            )
+          }
+        )
+      })
+
+      tagList(
+        # Gauge and extraction list side by side on larger screens
+        div(
+          class = "row",
+          # Left column: DRS Volume Gauge
+          div(
+            class = "col-lg-5",
+            tags$div(
+              class = "sj-info-box",
+              style = "padding: 8px; min-height: 320px;",
+              plotlyOutput(ns("drs_gauge"), height = "300px")
+            )
+          ),
+          # Right column: Extraction list
+          div(
+            class = "col-lg-7",
+            tags$div(
+              style = "max-height: 320px; overflow-y: auto;",
+              extraction_items
+            )
+          )
+        )
       )
     })
 

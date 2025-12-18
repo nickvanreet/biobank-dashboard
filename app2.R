@@ -26,13 +26,12 @@ ui <- do.call(
       mod_overview_demographics_ui("overview_demographics"),
       mod_geographic_ui("geographic"),
       mod_transport_ui("transport"),
-      mod_extractions_ui("extractions"),
+      mod_drs_ui("drs"),
       mod_mic_qpcr_coordinator_ui("mic"),
       mod_ielisa_coordinator_ui("ielisa"),
       mod_elisa_pe_ui("elisa_pe"),
       mod_elisa_vsg_ui("elisa_vsg"),
       mod_elisa_concordance_ui("concordance"),
-      mod_drs_rnasep_ui("drs_rnasep"),
       # New comprehensive analysis modules
       mod_sample_journey_ui("sample_journey"),
       mod_sample_processing_ui("sample_processing"),
@@ -74,19 +73,22 @@ server <- function(input, output, session) {
     filtered_data = data$filtered_data
   )
 
-  # Extraction quality module (uses shared data manager reactives)
-  mod_extractions_server(
-    "extractions",
-    filtered_data = data$filtered_extractions,
-    biobank_data = data$clean_data
-  )
-
   # MIC qPCR module - FIXED to use new coordinator architecture
   mic_data <- mod_mic_qpcr_coordinator_server(
     "mic",
     biobank_df = data$clean_data,              # ← Biobank data from data manager
     extractions_df = data$filtered_extractions, # ← Extractions data from data manager
     filters = data$filters                      # ← Filters from data manager (FIXED)
+  )
+
+  # Unified DRS module (extraction quality + RNAseP + QC warnings)
+  # Now initialized after MIC module so qPCR data is available
+  mod_drs_server(
+    "drs",
+    extractions_df = data$filtered_extractions,
+    qpcr_data = mic_data$qpcr_samples,
+    biobank_df = data$filtered_data,
+    filters = data$filters
   )
 
   # iELISA module - Inhibition ELISA for LiTat 1.3 and 1.5
@@ -181,14 +183,8 @@ server <- function(input, output, session) {
     filters = data$filters
   )
 
-  # Pre-Analytical Factors & RNAseP Quality module
-  mod_drs_rnasep_server(
-    "drs_rnasep",
-    extractions_df = data$filtered_extractions, # ← Extractions data from data manager
-    qpcr_data = mic_data$qpcr_samples,          # ← qPCR data from MIC module
-    biobank_df = data$filtered_data,            # ← Biobank data for transport fields
-    filters = data$filters                      # ← Filters from data manager
-  )
+  # Update DRS module with qPCR data (now that MIC module is initialized)
+  # Note: The DRS module will receive qPCR data through the reactive data flow
 
   # Sample Journey module (comprehensive sample tracking)
   mod_sample_journey_server(

@@ -4,11 +4,6 @@
 # Combines extraction quality monitoring, RNAseP analysis, and QC warnings
 # into a single comprehensive module with structure sanitaire statistics
 
-# Source QC utilities
-source_if_exists <- function(path) {
-  if (file.exists(path)) source(path)
-}
-
 # ============================================================================
 # MODULE UI
 # ============================================================================
@@ -387,6 +382,17 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
       bc
     }
 
+    # Extract numeric part of barcode for threshold comparison
+    extract_barcode_num <- function(x) {
+      if (is.null(x)) return(NA_real_)
+      bc <- as.character(x)
+      bc <- gsub("^[Kk][Pp][Ss][-_ ]*", "", bc)
+      bc <- gsub("[^0-9]", "", bc)
+      num <- suppressWarnings(as.numeric(bc))
+      num[is.na(num) | bc == ""] <- NA_real_
+      num
+    }
+
     # ========================================================================
     # COMBINED DATA REACTIVE
     # ========================================================================
@@ -399,21 +405,20 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
         return(tibble::tibble())
       }
 
-      # Normalize barcodes for matching
-      ext_data$barcode_norm <- normalize_barcode(ext_data$sample_id)
-      if ("barcode" %in% names(ext_data)) {
-        ext_data$barcode_alt_norm <- normalize_barcode(ext_data$barcode)
-      }
-      if ("numero" %in% names(ext_data)) {
-        ext_data$numero_norm <- normalize_barcode(ext_data$numero)
-      }
-
-      # Extract barcode number for volume thresholds
-      ext_data$barcode_number <- extract_barcode_number(
-        dplyr::coalesce(ext_data$barcode, ext_data$sample_id, ext_data$numero)
+      # Keep a display barcode (string) for charts
+      ext_data$barcode_display <- dplyr::coalesce(
+        ext_data$barcode,
+        ext_data$sample_id,
+        ext_data$numero
       )
 
-      # Determine expected volume based on barcode
+      # Normalize barcodes for matching
+      ext_data$barcode_norm <- normalize_barcode(ext_data$barcode_display)
+
+      # Extract numeric barcode for volume thresholds
+      ext_data$barcode_number <- extract_barcode_num(ext_data$barcode_display)
+
+      # Determine expected volume based on barcode number
       ext_data$expected_volume_ml <- dplyr::case_when(
         is.na(ext_data$barcode_number) ~ NA_real_,
         ext_data$barcode_number < 2501500 ~ 2.0,
@@ -421,9 +426,18 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
       )
 
       # Classify volume status
-      ext_data$volume_status <- classify_drs_volume_status(
-        ext_data$drs_volume_ml,
-        dplyr::coalesce(ext_data$barcode, ext_data$sample_id, ext_data$numero)
+      ext_data$volume_status <- dplyr::case_when(
+        is.na(ext_data$drs_volume_ml) ~ "Missing",
+        is.na(ext_data$expected_volume_ml) ~ "Unknown",
+        ext_data$expected_volume_ml == 2.0 & ext_data$drs_volume_ml < 1.0 ~ "Critical Low",
+        ext_data$expected_volume_ml == 2.0 & ext_data$drs_volume_ml < 1.5 ~ "Low",
+        ext_data$expected_volume_ml == 2.0 & ext_data$drs_volume_ml > 3.0 ~ "Critical High",
+        ext_data$expected_volume_ml == 2.0 & ext_data$drs_volume_ml > 2.5 ~ "High",
+        ext_data$expected_volume_ml == 4.0 & ext_data$drs_volume_ml < 2.5 ~ "Critical Low",
+        ext_data$expected_volume_ml == 4.0 & ext_data$drs_volume_ml < 3.5 ~ "Low",
+        ext_data$expected_volume_ml == 4.0 & ext_data$drs_volume_ml > 5.0 ~ "Critical High",
+        ext_data$expected_volume_ml == 4.0 & ext_data$drs_volume_ml > 4.5 ~ "High",
+        TRUE ~ "Normal"
       )
 
       # Calculate volume deviation
@@ -436,29 +450,35 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
         TRUE ~ "New (>=2501500, 4mL)"
       )
 
-      # Join qPCR data if available
-      if (!is.null(qpcr_data) && !is.null(qpcr_data()) && nrow(qpcr_data()) > 0) {
-        qpcr <- qpcr_data()
-        qpcr$barcode_norm <- normalize_barcode(qpcr$SampleID)
+      # ---- Join qPCR data if available ----
+      if (!is.null(qpcr_data)) {
+        qpcr_df <- tryCatch(qpcr_data(), error = function(e) NULL)
+        if (!is.null(qpcr_df) && nrow(qpcr_df) > 0) {
+          qpcr_df$barcode_norm <- normalize_barcode(qpcr_df$SampleID)
 
-        has_dna <- "Cq_median_RNAseP_DNA" %in% names(qpcr)
-        has_rna <- "Cq_median_RNAseP_RNA" %in% names(qpcr)
+          has_dna <- "Cq_median_RNAseP_DNA" %in% names(qpcr_df)
+          has_rna <- "Cq_median_RNAseP_RNA" %in% names(qpcr_df)
 
-        if (has_dna || has_rna) {
-          qpcr_summary <- qpcr %>%
-            dplyr::group_by(barcode_norm) %>%
-            dplyr::summarise(
-              rnasep_dna_cq = if (has_dna) mean(Cq_median_RNAseP_DNA, na.rm = TRUE) else NA_real_,
-              rnasep_rna_cq = if (has_rna) mean(Cq_median_RNAseP_RNA, na.rm = TRUE) else NA_real_,
-              .groups = "drop"
-            ) %>%
-            dplyr::mutate(
-              rnasep_dna_cq = dplyr::if_else(is.infinite(rnasep_dna_cq), NA_real_, rnasep_dna_cq),
-              rnasep_rna_cq = dplyr::if_else(is.infinite(rnasep_rna_cq), NA_real_, rnasep_rna_cq)
-            )
+          if (has_dna || has_rna) {
+            qpcr_summary <- qpcr_df %>%
+              dplyr::filter(!is.na(barcode_norm)) %>%
+              dplyr::group_by(barcode_norm) %>%
+              dplyr::summarise(
+                rnasep_dna_cq = if (has_dna) mean(Cq_median_RNAseP_DNA, na.rm = TRUE) else NA_real_,
+                rnasep_rna_cq = if (has_rna) mean(Cq_median_RNAseP_RNA, na.rm = TRUE) else NA_real_,
+                .groups = "drop"
+              ) %>%
+              dplyr::mutate(
+                rnasep_dna_cq = dplyr::if_else(is.infinite(rnasep_dna_cq), NA_real_, rnasep_dna_cq),
+                rnasep_rna_cq = dplyr::if_else(is.infinite(rnasep_rna_cq), NA_real_, rnasep_rna_cq)
+              )
 
-          ext_data <- ext_data %>%
-            dplyr::left_join(qpcr_summary, by = "barcode_norm")
+            # Only join if we have data
+            if (nrow(qpcr_summary) > 0) {
+              ext_data <- ext_data %>%
+                dplyr::left_join(qpcr_summary, by = "barcode_norm", suffix = c("", "_qpcr"))
+            }
+          }
         }
       }
 
@@ -466,39 +486,67 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
       if (!"rnasep_dna_cq" %in% names(ext_data)) ext_data$rnasep_dna_cq <- NA_real_
       if (!"rnasep_rna_cq" %in% names(ext_data)) ext_data$rnasep_rna_cq <- NA_real_
 
-      # Join biobank transport data if available
-      if (!is.null(biobank_df) && !is.null(biobank_df()) && nrow(biobank_df()) > 0) {
-        biobank <- biobank_df()
+      # ---- Get transport data from biobank if available ----
+      if (!is.null(biobank_df)) {
+        biobank <- tryCatch(biobank_df(), error = function(e) NULL)
+        if (!is.null(biobank) && nrow(biobank) > 0) {
+          # Find barcode column in biobank
+          biobank_bc_col <- intersect(c("barcode", "code_barres_kps"), names(biobank))[1]
+          if (!is.na(biobank_bc_col)) {
+            biobank$barcode_norm <- normalize_barcode(biobank[[biobank_bc_col]])
 
-        # Find barcode column
-        biobank_bc_col <- intersect(c("barcode", "code_barres_kps"), names(biobank))[1]
-        if (!is.na(biobank_bc_col)) {
-          biobank$barcode_norm <- normalize_barcode(biobank[[biobank_bc_col]])
+            # Select transport columns
+            transport_cols <- c("barcode_norm", "date_sample", "date_received_cpltha",
+                               "transport_temperature", "storage_temp_cpltha")
+            available_cols <- intersect(transport_cols, names(biobank))
 
-          biobank_transport <- biobank %>%
-            dplyr::select(
-              barcode_norm,
-              dplyr::any_of(c("date_sample", "date_received_cpltha", "transport_temperature",
-                             "storage_before_cpltha", "storage_temp_cpltha",
-                             "temperature_de_stockage_au_structure_sanitaire_ambiante_frigo_congelateur"))
-            ) %>%
-            dplyr::distinct(barcode_norm, .keep_all = TRUE)
+            if (length(available_cols) > 1) {
+              biobank_transport <- biobank %>%
+                dplyr::select(dplyr::all_of(available_cols)) %>%
+                dplyr::filter(!is.na(barcode_norm)) %>%
+                dplyr::distinct(barcode_norm, .keep_all = TRUE)
 
-          ext_data <- ext_data %>%
-            dplyr::left_join(biobank_transport, by = "barcode_norm", suffix = c("", "_bio"))
+              # Only join columns that don't already exist
+              existing_cols <- intersect(names(ext_data), names(biobank_transport))
+              existing_cols <- setdiff(existing_cols, "barcode_norm")
+
+              if (length(existing_cols) > 0) {
+                biobank_transport <- biobank_transport %>%
+                  dplyr::select(-dplyr::all_of(existing_cols))
+              }
+
+              if (ncol(biobank_transport) > 1) {
+                ext_data <- ext_data %>%
+                  dplyr::left_join(biobank_transport, by = "barcode_norm", suffix = c("", "_bio"))
+              }
+            }
+          }
         }
       }
 
-      # Ensure transport columns exist
+      # ---- Ensure all required columns exist ----
       if (!"date_sample" %in% names(ext_data)) ext_data$date_sample <- as.Date(NA)
       if (!"date_received_cpltha" %in% names(ext_data)) ext_data$date_received_cpltha <- as.Date(NA)
       if (!"transport_temperature" %in% names(ext_data)) ext_data$transport_temperature <- NA_character_
       if (!"storage_temp_cpltha" %in% names(ext_data)) ext_data$storage_temp_cpltha <- NA_character_
-      if (!"storage_before_cpltha" %in% names(ext_data)) ext_data$storage_before_cpltha <- NA_character_
 
-      # Calculate pre-analytical metrics
+      # Get health_structure - use existing or from biobank columns
+      if (!"health_structure" %in% names(ext_data) || all(is.na(ext_data$health_structure))) {
+        fallback_cols <- c("biobank_health_facility", "biobank_structure_sanitaire",
+                          "structure_sanitaire", "health_facility")
+        for (col in fallback_cols) {
+          if (col %in% names(ext_data) && !all(is.na(ext_data[[col]]))) {
+            ext_data$health_structure <- ext_data[[col]]
+            break
+          }
+        }
+      }
+      if (!"health_structure" %in% names(ext_data)) ext_data$health_structure <- NA_character_
+
+      # ---- Calculate derived metrics ----
       ext_data <- ext_data %>%
         dplyr::mutate(
+          # Pre-analytical time
           preanalytical_days = as.numeric(difftime(
             dplyr::coalesce(date_received_cpltha, extraction_date),
             date_sample,
@@ -510,26 +558,42 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
             preanalytical_days
           ),
 
-          # Use all possible temperature columns
-          effective_temperature = dplyr::coalesce(
-            transport_temperature,
-            storage_temp_cpltha,
-            storage_before_cpltha
-          ),
+          # Temperature category
+          effective_temperature = dplyr::coalesce(transport_temperature, storage_temp_cpltha),
           temp_category = dplyr::case_when(
             effective_temperature %in% c("Frigo", "Congelateur") ~ "Optimal",
             effective_temperature == "Ambiante" ~ "Suboptimal",
             TRUE ~ "Unknown"
           ),
 
-          time_category = classify_preanalytical_time(preanalytical_days),
+          # Time category
+          time_category = dplyr::case_when(
+            is.na(preanalytical_days) ~ "Unknown",
+            preanalytical_days <= 7 ~ "Optimal",
+            preanalytical_days <= 14 ~ "Acceptable",
+            preanalytical_days <= 30 ~ "Caution",
+            preanalytical_days <= 60 ~ "Problematic",
+            TRUE ~ "Critical"
+          ),
 
+          # Delta RP
           delta_rp = rnasep_rna_cq - rnasep_dna_cq,
 
           # RNAseP status classifications
-          rnasep_dna_status = classify_rnasep_dna_cq(rnasep_dna_cq),
-          rnasep_rna_status = classify_rnasep_rna_cq(rnasep_rna_cq),
-          delta_rp_status = classify_delta_rp(delta_rp),
+          rnasep_dna_status = dplyr::case_when(
+            is.na(rnasep_dna_cq) | is.infinite(rnasep_dna_cq) ~ "No Data",
+            rnasep_dna_cq <= 25 ~ "Optimal",
+            rnasep_dna_cq <= 30 ~ "Acceptable",
+            rnasep_dna_cq <= 35 ~ "Degraded",
+            TRUE ~ "Critical"
+          ),
+          rnasep_rna_status = dplyr::case_when(
+            is.na(rnasep_rna_cq) | is.infinite(rnasep_rna_cq) ~ "No Data",
+            rnasep_rna_cq <= 28 ~ "Optimal",
+            rnasep_rna_cq <= 33 ~ "Acceptable",
+            rnasep_rna_cq <= 38 ~ "Degraded",
+            TRUE ~ "Critical"
+          ),
 
           # Overall QC status
           qc_status = dplyr::case_when(
@@ -559,19 +623,13 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
       df <- combined_data()
       if (is.null(df) || !nrow(df)) return(tibble::tibble())
 
-      # Ensure health_structure column exists
-      if (!"health_structure" %in% names(df)) {
-        fallback_cols <- c("structure_sanitaire", "health_facility", "structure", "facility")
-        available <- fallback_cols[fallback_cols %in% names(df)]
-        if (length(available) > 0) {
-          df$health_structure <- df[[available[1]]]
-        } else {
-          df$health_structure <- "Unspecified"
-        }
-      }
+      # Filter to valid structures
+      df_valid <- df %>%
+        dplyr::filter(!is.na(health_structure) & health_structure != "" & health_structure != "Unspecified")
 
-      df %>%
-        dplyr::filter(!is.na(health_structure) & health_structure != "" & health_structure != "Unspecified") %>%
+      if (!nrow(df_valid)) return(tibble::tibble())
+
+      df_valid %>%
         dplyr::group_by(health_structure) %>%
         dplyr::summarise(
           n_samples = dplyr::n(),
@@ -749,7 +807,7 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
         dplyr::count(volume_status) %>%
         dplyr::mutate(
           volume_status = factor(volume_status,
-            levels = c("Normal", "Low", "High", "Critical Low", "Critical High", "Missing"))
+            levels = c("Normal", "Low", "High", "Critical Low", "Critical High", "Missing", "Unknown"))
         )
 
       status_colors <- c(
@@ -758,7 +816,8 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
         "High" = "#E67E22",
         "Critical Low" = "#E74C3C",
         "Critical High" = "#C0392B",
-        "Missing" = "#95A5A6"
+        "Missing" = "#95A5A6",
+        "Unknown" = "#BDC3C7"
       )
 
       plotly::plot_ly(
@@ -784,7 +843,8 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
 
       plot_data <- df %>%
         dplyr::filter(!is.na(drs_volume_ml), !is.na(expected_volume_ml)) %>%
-        dplyr::arrange(barcode_number)
+        dplyr::arrange(extraction_date) %>%
+        dplyr::mutate(row_idx = dplyr::row_number())
 
       if (!nrow(plot_data)) {
         return(plotly::plot_ly() %>% plotly::layout(title = "No volume data"))
@@ -795,12 +855,13 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
         "Low" = "#F39C12",
         "High" = "#E67E22",
         "Critical Low" = "#E74C3C",
-        "Critical High" = "#C0392B"
+        "Critical High" = "#C0392B",
+        "Unknown" = "#BDC3C7"
       )
 
       plotly::plot_ly(
         plot_data,
-        x = ~barcode_number,
+        x = ~row_idx,
         y = ~drs_volume_ml,
         type = "scatter",
         mode = "markers",
@@ -808,30 +869,30 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
         colors = status_colors,
         marker = list(size = 6, opacity = 0.7),
         text = ~paste0(
-          "Barcode: ", dplyr::coalesce(barcode, sample_id, numero), "<br>",
+          "Barcode: ", barcode_display, "<br>",
           "Volume: ", round(drs_volume_ml, 2), " mL<br>",
           "Expected: ", expected_volume_ml, " mL<br>",
-          "Deviation: ", round(volume_deviation_ml, 2), " mL"
+          "Deviation: ", round(volume_deviation_ml, 2), " mL<br>",
+          "Date: ", extraction_date
         ),
         hoverinfo = "text"
       ) %>%
         plotly::layout(
-          xaxis = list(title = "Barcode Number"),
+          xaxis = list(title = "Sample (ordered by date)"),
           yaxis = list(title = "DRS Volume (mL)"),
           shapes = list(
-            # Old barcode threshold line at 2 mL (up to 2501500)
-            list(type = "line", x0 = 0, x1 = 2501500, y0 = 2, y1 = 2,
-                 line = list(color = "#3498DB", dash = "dash", width = 2)),
-            # New barcode threshold line at 4 mL (from 2501500)
-            list(type = "line", x0 = 2501500, x1 = max(plot_data$barcode_number, na.rm = TRUE) * 1.1,
-                 y0 = 4, y1 = 4, line = list(color = "#E74C3C", dash = "dash", width = 2)),
-            # Vertical line at barcode cutoff
-            list(type = "line", x0 = 2501500, x1 = 2501500, y0 = 0, y1 = 6,
-                 line = list(color = "#7F8C8D", dash = "dot", width = 1))
+            # 2 mL reference line
+            list(type = "line", xref = "paper", x0 = 0, x1 = 1, y0 = 2, y1 = 2,
+                 line = list(color = "#3498DB", dash = "dash", width = 1)),
+            # 4 mL reference line
+            list(type = "line", xref = "paper", x0 = 0, x1 = 1, y0 = 4, y1 = 4,
+                 line = list(color = "#E74C3C", dash = "dash", width = 1))
           ),
           annotations = list(
-            list(x = 2501500, y = 5.5, text = "Barcode 2501500 cutoff",
-                 showarrow = FALSE, font = list(size = 10, color = "#7F8C8D"))
+            list(x = 1, xref = "paper", y = 2, text = "2 mL (old)", showarrow = FALSE,
+                 xanchor = "left", font = list(size = 10, color = "#3498DB")),
+            list(x = 1, xref = "paper", y = 4, text = "4 mL (new)", showarrow = FALSE,
+                 xanchor = "left", font = list(size = 10, color = "#E74C3C"))
           )
         )
     })
@@ -1029,12 +1090,6 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
                  line = list(color = "#F39C12", dash = "dash", width = 2)),
             list(type = "line", x0 = 5, x1 = 5, y0 = 0, y1 = 1, yref = "paper",
                  line = list(color = "#E74C3C", dash = "dash", width = 2))
-          ),
-          annotations = list(
-            list(x = 3, y = 1, yref = "paper", text = "Warning", showarrow = FALSE,
-                 font = list(color = "#F39C12", size = 10)),
-            list(x = 5, y = 1, yref = "paper", text = "Critical", showarrow = FALSE,
-                 font = list(color = "#E74C3C", size = 10))
           )
         )
     })
@@ -1067,7 +1122,7 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
         mode = "markers",
         marker = list(size = 8, opacity = 0.7),
         text = ~paste0(
-          "Sample: ", dplyr::coalesce(barcode, sample_id), "<br>",
+          "Sample: ", barcode_display, "<br>",
           "DNA Cq: ", round(rnasep_dna_cq, 2), "<br>",
           "RNA Cq: ", round(rnasep_rna_cq, 2), "<br>",
           "Delta RP: ", round(delta_rp, 2), "<br>",
@@ -1079,7 +1134,6 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
           xaxis = list(title = "RNAseP DNA Cq"),
           yaxis = list(title = "RNAseP RNA Cq"),
           shapes = list(
-            # Diagonal line y = x (Delta RP = 0)
             list(type = "line", x0 = 20, x1 = 40, y0 = 20, y1 = 40,
                  line = list(color = "#95A5A6", dash = "dot", width = 1))
           )
@@ -1125,7 +1179,6 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
         return(plotly::plot_ly() %>% plotly::layout(title = "No structure data"))
       }
 
-      # Top 15 structures by sample count
       plot_data <- stats %>%
         dplyr::slice_head(n = 15) %>%
         dplyr::mutate(health_structure = factor(health_structure, levels = rev(health_structure)))
@@ -1157,7 +1210,6 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
         return(plotly::plot_ly() %>% plotly::layout(title = "No structure data"))
       }
 
-      # Top 15 structures by sample count
       plot_data <- stats %>%
         dplyr::slice_head(n = 15) %>%
         dplyr::arrange(qc_score) %>%
@@ -1305,7 +1357,7 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
         dplyr::arrange(dplyr::desc(qc_status == "Critical"), dplyr::desc(extraction_date)) %>%
         dplyr::transmute(
           `Status` = qc_status,
-          `Barcode` = dplyr::coalesce(barcode, sample_id, numero),
+          `Barcode` = barcode_display,
           `Date` = format(extraction_date, "%Y-%m-%d"),
           `Volume (mL)` = round(drs_volume_ml, 2),
           `Expected (mL)` = expected_volume_ml,
@@ -1347,7 +1399,7 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
 
       results <- df %>%
         dplyr::mutate(
-          .search_col = tolower(gsub("[^a-z0-9]", "", dplyr::coalesce(barcode, sample_id, numero, "")))
+          .search_col = tolower(gsub("[^a-z0-9]", "", dplyr::coalesce(barcode_display, numero, "")))
         ) %>%
         dplyr::filter(grepl(search_norm, .search_col, fixed = TRUE)) %>%
         dplyr::select(-.search_col)
@@ -1363,7 +1415,7 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
 
       display_df <- results %>%
         dplyr::transmute(
-          `Barcode` = dplyr::coalesce(barcode, sample_id),
+          `Barcode` = barcode_display,
           `Numero` = numero,
           `Date` = format(extraction_date, "%Y-%m-%d"),
           `Volume (mL)` = round(drs_volume_ml, 2),
@@ -1386,7 +1438,7 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
         dplyr::arrange(dplyr::desc(extraction_date)) %>%
         dplyr::transmute(
           `QC` = qc_status,
-          `Barcode` = dplyr::coalesce(barcode, sample_id),
+          `Barcode` = barcode_display,
           `Numero` = numero,
           `Date` = format(extraction_date, "%Y-%m-%d"),
           `Volume (mL)` = round(drs_volume_ml, 2),

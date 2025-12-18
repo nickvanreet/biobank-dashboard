@@ -174,9 +174,9 @@ source("R/modules/mod_01_data_quality.R")
 source("R/modules/mod_02_overview_demographics.R")
 source("R/modules/mod_03_transport.R")
 source("R/modules/mod_overview_assays.R")
-source("R/modules/mod_04_extractions.R")
+source("R/core/drs_qc_utils.R")             # DRS QC utilities (volume thresholds, RNAseP anomaly detection)
+source("R/modules/mod_drs.R")               # Unified DRS module (extraction + RNAseP + QC warnings)
 source("R/modules/mod_05_mic_qpcr.R")       # The rebuilt module
-source("R/modules/mod_06_drs_rnasep.R")     # DRS volume vs RNAseP analysis
 
 # ELISA modules (rebuilt architecture)
 source("R/modules/mod_elisa_coordinator.R")

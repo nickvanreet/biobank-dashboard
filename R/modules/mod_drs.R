@@ -478,7 +478,9 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
           biobank_transport <- biobank %>%
             dplyr::select(
               barcode_norm,
-              dplyr::any_of(c("date_sample", "date_received_cpltha", "transport_temperature", "storage_before_cpltha"))
+              dplyr::any_of(c("date_sample", "date_received_cpltha", "transport_temperature",
+                             "storage_before_cpltha", "storage_temp_cpltha",
+                             "temperature_de_stockage_au_structure_sanitaire_ambiante_frigo_congelateur"))
             ) %>%
             dplyr::distinct(barcode_norm, .keep_all = TRUE)
 
@@ -491,6 +493,8 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
       if (!"date_sample" %in% names(ext_data)) ext_data$date_sample <- as.Date(NA)
       if (!"date_received_cpltha" %in% names(ext_data)) ext_data$date_received_cpltha <- as.Date(NA)
       if (!"transport_temperature" %in% names(ext_data)) ext_data$transport_temperature <- NA_character_
+      if (!"storage_temp_cpltha" %in% names(ext_data)) ext_data$storage_temp_cpltha <- NA_character_
+      if (!"storage_before_cpltha" %in% names(ext_data)) ext_data$storage_before_cpltha <- NA_character_
 
       # Calculate pre-analytical metrics
       ext_data <- ext_data %>%
@@ -506,7 +510,12 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
             preanalytical_days
           ),
 
-          effective_temperature = dplyr::coalesce(transport_temperature, storage_before_cpltha),
+          # Use all possible temperature columns
+          effective_temperature = dplyr::coalesce(
+            transport_temperature,
+            storage_temp_cpltha,
+            storage_before_cpltha
+          ),
           temp_category = dplyr::case_when(
             effective_temperature %in% c("Frigo", "Congelateur") ~ "Optimal",
             effective_temperature == "Ambiante" ~ "Suboptimal",

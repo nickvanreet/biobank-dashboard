@@ -412,8 +412,18 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
         ext_data$numero
       )
 
-      # Normalize barcodes for matching
-      ext_data$barcode_norm <- normalize_barcode(ext_data$barcode_display)
+      # Normalize barcodes for matching - multiple columns
+      ext_data$barcode_norm <- normalize_barcode(ext_data$sample_id)
+      if ("barcode" %in% names(ext_data)) {
+        ext_data$barcode_alt_norm <- normalize_barcode(ext_data$barcode)
+      } else {
+        ext_data$barcode_alt_norm <- ext_data$barcode_norm
+      }
+      if ("numero" %in% names(ext_data)) {
+        ext_data$numero_norm <- normalize_barcode(as.character(ext_data$numero))
+      } else {
+        ext_data$numero_norm <- NA_character_
+      }
 
       # Extract numeric barcode for volume thresholds
       ext_data$barcode_number <- extract_barcode_num(ext_data$barcode_display)
@@ -451,15 +461,21 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
       )
 
       # ---- Join qPCR data if available ----
+      # Initialize RNAseP columns
+      ext_data$rnasep_dna_cq <- NA_real_
+      ext_data$rnasep_rna_cq <- NA_real_
+
       if (!is.null(qpcr_data)) {
         qpcr_df <- tryCatch(qpcr_data(), error = function(e) NULL)
         if (!is.null(qpcr_df) && nrow(qpcr_df) > 0) {
+          # Normalize qPCR sample IDs
           qpcr_df$barcode_norm <- normalize_barcode(qpcr_df$SampleID)
 
           has_dna <- "Cq_median_RNAseP_DNA" %in% names(qpcr_df)
           has_rna <- "Cq_median_RNAseP_RNA" %in% names(qpcr_df)
 
           if (has_dna || has_rna) {
+            # Summarize qPCR data by barcode
             qpcr_summary <- qpcr_df %>%
               dplyr::filter(!is.na(barcode_norm)) %>%
               dplyr::group_by(barcode_norm) %>%
@@ -473,71 +489,75 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
                 rnasep_rna_cq = dplyr::if_else(is.infinite(rnasep_rna_cq), NA_real_, rnasep_rna_cq)
               )
 
-            # Only join if we have data
-            if (nrow(qpcr_summary) > 0) {
-              ext_data <- ext_data %>%
-                dplyr::left_join(qpcr_summary, by = "barcode_norm", suffix = c("", "_qpcr"))
-            }
-          }
-        }
-      }
+            # Match by barcode_norm first
+            for (i in seq_len(nrow(ext_data))) {
+              bc <- ext_data$barcode_norm[i]
+              bc_alt <- ext_data$barcode_alt_norm[i]
+              num <- ext_data$numero_norm[i]
 
-      # Ensure RNAseP columns exist
-      if (!"rnasep_dna_cq" %in% names(ext_data)) ext_data$rnasep_dna_cq <- NA_real_
-      if (!"rnasep_rna_cq" %in% names(ext_data)) ext_data$rnasep_rna_cq <- NA_real_
-
-      # ---- Get transport data from biobank if available ----
-      if (!is.null(biobank_df)) {
-        biobank <- tryCatch(biobank_df(), error = function(e) NULL)
-        if (!is.null(biobank) && nrow(biobank) > 0) {
-          # Find barcode column in biobank
-          biobank_bc_col <- intersect(c("barcode", "code_barres_kps"), names(biobank))[1]
-          if (!is.na(biobank_bc_col)) {
-            biobank$barcode_norm <- normalize_barcode(biobank[[biobank_bc_col]])
-
-            # Select transport columns
-            transport_cols <- c("barcode_norm", "date_sample", "date_received_cpltha",
-                               "transport_temperature", "storage_temp_cpltha")
-            available_cols <- intersect(transport_cols, names(biobank))
-
-            if (length(available_cols) > 1) {
-              biobank_transport <- biobank %>%
-                dplyr::select(dplyr::all_of(available_cols)) %>%
-                dplyr::filter(!is.na(barcode_norm)) %>%
-                dplyr::distinct(barcode_norm, .keep_all = TRUE)
-
-              # Only join columns that don't already exist
-              existing_cols <- intersect(names(ext_data), names(biobank_transport))
-              existing_cols <- setdiff(existing_cols, "barcode_norm")
-
-              if (length(existing_cols) > 0) {
-                biobank_transport <- biobank_transport %>%
-                  dplyr::select(-dplyr::all_of(existing_cols))
+              # Try barcode_norm
+              if (!is.na(bc)) {
+                match_row <- qpcr_summary[qpcr_summary$barcode_norm == bc, ]
+                if (nrow(match_row) > 0) {
+                  ext_data$rnasep_dna_cq[i] <- match_row$rnasep_dna_cq[1]
+                  ext_data$rnasep_rna_cq[i] <- match_row$rnasep_rna_cq[1]
+                  next
+                }
               }
 
-              if (ncol(biobank_transport) > 1) {
-                ext_data <- ext_data %>%
-                  dplyr::left_join(biobank_transport, by = "barcode_norm", suffix = c("", "_bio"))
+              # Try barcode_alt_norm
+              if (!is.na(bc_alt) && bc_alt != bc) {
+                match_row <- qpcr_summary[qpcr_summary$barcode_norm == bc_alt, ]
+                if (nrow(match_row) > 0) {
+                  ext_data$rnasep_dna_cq[i] <- match_row$rnasep_dna_cq[1]
+                  ext_data$rnasep_rna_cq[i] <- match_row$rnasep_rna_cq[1]
+                  next
+                }
+              }
+
+              # Try numero_norm
+              if (!is.na(num)) {
+                match_row <- qpcr_summary[qpcr_summary$barcode_norm == num, ]
+                if (nrow(match_row) > 0) {
+                  ext_data$rnasep_dna_cq[i] <- match_row$rnasep_dna_cq[1]
+                  ext_data$rnasep_rna_cq[i] <- match_row$rnasep_rna_cq[1]
+                }
               }
             }
           }
         }
       }
 
-      # ---- Ensure all required columns exist ----
-      if (!"date_sample" %in% names(ext_data)) ext_data$date_sample <- as.Date(NA)
+      # ---- Use existing biobank-linked columns for transport data ----
+      # The extraction data already has biobank columns from data_manager linking
+      # Use biobank_date_sample if date_sample doesn't exist
+      if (!"date_sample" %in% names(ext_data) || all(is.na(ext_data$date_sample))) {
+        if ("biobank_date_sample" %in% names(ext_data)) {
+          ext_data$date_sample <- ext_data$biobank_date_sample
+        } else {
+          ext_data$date_sample <- as.Date(NA)
+        }
+      }
+
+      # Ensure other columns exist
       if (!"date_received_cpltha" %in% names(ext_data)) ext_data$date_received_cpltha <- as.Date(NA)
       if (!"transport_temperature" %in% names(ext_data)) ext_data$transport_temperature <- NA_character_
       if (!"storage_temp_cpltha" %in% names(ext_data)) ext_data$storage_temp_cpltha <- NA_character_
 
-      # Get health_structure - use existing or from biobank columns
-      if (!"health_structure" %in% names(ext_data) || all(is.na(ext_data$health_structure))) {
+      # Get health_structure - use existing columns from extraction data
+      # The data_manager already linked biobank data, so use those columns
+      if (!"health_structure" %in% names(ext_data) || all(is.na(ext_data$health_structure)) ||
+          all(ext_data$health_structure == "Unspecified", na.rm = TRUE)) {
+        # Try fallback columns
         fallback_cols <- c("biobank_health_facility", "biobank_structure_sanitaire",
                           "structure_sanitaire", "health_facility")
         for (col in fallback_cols) {
-          if (col %in% names(ext_data) && !all(is.na(ext_data[[col]]))) {
-            ext_data$health_structure <- ext_data[[col]]
-            break
+          if (col %in% names(ext_data)) {
+            valid_vals <- !is.na(ext_data[[col]]) & ext_data[[col]] != "" & ext_data[[col]] != "Unspecified"
+            if (any(valid_vals)) {
+              ext_data$health_structure <- ext_data[[col]]
+              break
+            }
           }
         }
       }

@@ -16,19 +16,21 @@ mod_extractions_ui <- function(id) {
     div(
       class = "container-fluid",
 
+      # Row 1: Core sample metrics
+      h5("Sample Overview", class = "mt-3 mb-2"),
       layout_column_wrap(
-        width = 1/6, fixed_width = TRUE, heights_equal = "row", gap = "12px",
+        width = 1/5, fixed_width = TRUE, heights_equal = "row", gap = "12px",
         value_box(
-          title = "Files with Barcodes",
-          value = textOutput(ns("kpi_file_count")),
-          showcase = icon("folder-open"),
-          theme = "secondary"
-        ),
-        value_box(
-          title = "Total Samples",
+          title = "Total Records",
           value = textOutput(ns("kpi_total")),
           showcase = icon("vial"),
           theme = "primary"
+        ),
+        value_box(
+          title = "Unique Samples",
+          value = textOutput(ns("kpi_unique_samples")),
+          showcase = icon("fingerprint"),
+          theme = "info"
         ),
         value_box(
           title = "Linked to Biobank",
@@ -37,65 +39,118 @@ mod_extractions_ui <- function(id) {
           theme = "success"
         ),
         value_box(
-          title = "Matched",
-          value = textOutput(ns("kpi_matched")),
+          title = "Re-extractions",
+          value = textOutput(ns("kpi_reextractions")),
+          showcase = icon("rotate"),
+          theme = "warning"
+        ),
+        value_box(
+          title = "Negative Controls",
+          value = textOutput(ns("kpi_cn")),
+          showcase = icon("flask-vial"),
+          theme = "secondary"
+        )
+      ),
+
+      # Row 2: Quality metrics
+      h5("Extraction Quality", class = "mt-3 mb-2"),
+      layout_column_wrap(
+        width = 1/5, fixed_width = TRUE, heights_equal = "row", gap = "12px",
+        value_box(
+          title = "Clear (Clair)",
+          value = textOutput(ns("kpi_eval_clear")),
           showcase = icon("check-circle"),
           theme = "success"
         ),
         value_box(
-          title = "Mismatched",
-          value = textOutput(ns("kpi_mismatched")),
-          showcase = icon("exclamation-triangle"),
+          title = "Dark (Foncé)",
+          value = textOutput(ns("kpi_eval_fonce")),
+          showcase = icon("circle-half-stroke"),
           theme = "warning"
+        ),
+        value_box(
+          title = "Failed (Échec)",
+          value = textOutput(ns("kpi_eval_echec")),
+          showcase = icon("times-circle"),
+          theme = "danger"
+        ),
+        value_box(
+          title = "Unknown",
+          value = textOutput(ns("kpi_eval_unknown")),
+          showcase = icon("question-circle"),
+          theme = "secondary"
         ),
         value_box(
           title = "Mean Volume (mL)",
           value = textOutput(ns("kpi_mean_volume")),
-          showcase = icon("flask"),
+          showcase = icon("droplet"),
           theme = "info"
-        ),
-        value_box(
-          title = "Volume Range (mL)",
-          value = textOutput(ns("kpi_volume_range")),
-          showcase = icon("arrows-left-right"),
-          theme = "warning"
-        ),
-        value_box(
-          title = "RSC Runs",
-          value = textOutput(ns("kpi_rsc_run_count")),
-          showcase = icon("gauge"),
-          theme = "secondary"
-        ),
-        value_box(
-          title = "CN Mentions",
-          value = textOutput(ns("kpi_cn")),
-          showcase = icon("comment-medical"),
-          theme = "danger"
         )
       ),
 
+      # Freezer Lookup Section
+      h5("Freezer Sample Lookup", class = "mt-4 mb-2"),
+      layout_columns(
+        col_widths = c(12), gap = "16px",
+        card(
+          card_header(
+            class = "d-flex justify-content-between align-items-center",
+            span("Find Sample Location"),
+            span(
+              class = "text-muted small",
+              "Search by Numéro, Barcode, or Sample ID to find freezer location"
+            )
+          ),
+          card_body(
+            layout_columns(
+              col_widths = c(4, 8),
+              div(
+                textInput(
+                  ns("freezer_search"),
+                  label = "Search Sample:",
+                  placeholder = "Enter Numéro or Barcode..."
+                ),
+                actionButton(ns("freezer_search_btn"), "Search", class = "btn-primary")
+              ),
+              div(
+                DT::DTOutput(ns("freezer_results"))
+              )
+            )
+          )
+        )
+      ),
+
+      # Charts row 1
       layout_columns(
         col_widths = c(6, 6), gap = "16px",
         card(
           card_header("État DRS Distribution"),
           card_body_fill(
-            plotly::plotlyOutput(ns("drs_state_plot"), height = "500px")
+            plotly::plotlyOutput(ns("drs_state_plot"), height = "400px")
           )
         ),
         card(
-          card_header("Évaluation de l'extrait"),
+          card_header("Évaluation de l'Échantillon Extrait"),
           card_body_fill(
-            plotly::plotlyOutput(ns("extract_quality_plot"), height = "500px")
+            plotly::plotlyOutput(ns("extract_quality_plot"), height = "400px")
           )
         )
       ),
 
+      # Volume time series with dynamic thresholds
       layout_columns(
         col_widths = c(12), gap = "16px",
         card(
-          card_header("Mean DRS Volume Over Time"),
+          card_header(
+            class = "d-flex justify-content-between align-items-center",
+            span("Mean DRS Volume Over Time"),
+            span(
+              class = "text-muted small",
+              textOutput(ns("volume_threshold_info"), inline = TRUE)
+            )
+          ),
           card_body_fill(
-            plotly::plotlyOutput(ns("mean_volume_timeseries_plot"), height = "550px")
+            plotly::plotlyOutput(ns("mean_volume_timeseries_plot"), height = "450px")
           )
         )
       ),
@@ -105,7 +160,7 @@ mod_extractions_ui <- function(id) {
         card(
           card_header("Extraction Volume Over Time"),
           card_body_fill(
-            plotly::plotlyOutput(ns("volume_timeseries_plot"), height = "550px")
+            plotly::plotlyOutput(ns("volume_timeseries_plot"), height = "450px")
           )
         )
       ),
@@ -118,11 +173,11 @@ mod_extractions_ui <- function(id) {
             navset_card_tab(
               nav_panel(
                 "Positions",
-                plotly::plotlyOutput(ns("rsc_position_plot"), height = "500px")
+                plotly::plotlyOutput(ns("rsc_position_plot"), height = "400px")
               ),
               nav_panel(
                 "Runs",
-                plotly::plotlyOutput(ns("rsc_run_plot"), height = "500px")
+                plotly::plotlyOutput(ns("rsc_run_plot"), height = "400px")
               )
             )
           )
@@ -135,10 +190,21 @@ mod_extractions_ui <- function(id) {
         )
       ),
 
+      # Re-extractions detail table
       layout_columns(
         col_widths = c(12), gap = "16px",
         card(
-          card_header("Extraction Detail"),
+          card_header("Re-extraction History"),
+          card_body(
+            DT::DTOutput(ns("reextraction_table"))
+          )
+        )
+      ),
+
+      layout_columns(
+        col_widths = c(12), gap = "16px",
+        card(
+          card_header("Full Extraction Detail"),
           card_body(
             DT::DTOutput(ns("extraction_table"))
           )
@@ -428,14 +494,9 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           dplyr::arrange(.data$week)
       })
 
-      output$kpi_file_count <- renderText({
-        m <- metrics()
-        if (is.null(m$files_with_barcodes) || is.na(m$files_with_barcodes)) {
-          "--"
-        } else {
-          scales::comma(m$files_with_barcodes)
-        }
-      })
+      # ========================================================================
+      # KPI OUTPUTS - Sample Overview Row
+      # ========================================================================
 
       output$kpi_total <- renderText({
         m <- metrics()
@@ -446,30 +507,98 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         }
       })
 
+      output$kpi_unique_samples <- renderText({
+        m <- metrics()
+        if (is.null(m$unique_samples) || is.na(m$unique_samples)) {
+          "--"
+        } else {
+          scales::comma(m$unique_samples)
+        }
+      })
+
       output$kpi_linked <- renderText({
         m <- metrics()
         if (is.null(m$linked_total) || is.na(m$linked_total)) {
           "--"
         } else {
-          scales::comma(m$linked_total)
+          pct <- if (!is.null(m$linked_pct) && !is.na(m$linked_pct)) {
+            paste0(" (", scales::percent(m$linked_pct, accuracy = 0.1), ")")
+          } else {
+            ""
+          }
+          paste0(scales::comma(m$linked_total), pct)
         }
       })
 
-      output$kpi_matched <- renderText({
+      output$kpi_reextractions <- renderText({
         m <- metrics()
-        if (is.null(m$matched_total) || is.na(m$matched_total)) {
-          "--"
+        records <- if (is.null(m$reextraction_records) || is.na(m$reextraction_records)) 0 else m$reextraction_records
+        samples <- if (is.null(m$reextraction_samples) || is.na(m$reextraction_samples)) 0 else m$reextraction_samples
+        if (records == 0) {
+          "0"
         } else {
-          scales::comma(m$matched_total)
+          paste0(scales::comma(records), " (", samples, " samples)")
         }
       })
 
-      output$kpi_mismatched <- renderText({
+      output$kpi_cn <- renderText({
         m <- metrics()
-        if (is.null(m$mismatched_total) || is.na(m$mismatched_total)) {
+        if (is.null(m$cn_total) || is.na(m$cn_total)) {
           "--"
         } else {
-          scales::comma(m$mismatched_total)
+          scales::comma(m$cn_total)
+        }
+      })
+
+      # ========================================================================
+      # KPI OUTPUTS - Extraction Quality Row
+      # ========================================================================
+
+      output$kpi_eval_clear <- renderText({
+        m <- metrics()
+        total <- if (is.null(m$total) || is.na(m$total)) 0 else m$total
+        count <- if (is.null(m$evaluation_clear) || is.na(m$evaluation_clear)) 0 else m$evaluation_clear
+        if (total == 0) {
+          "--"
+        } else {
+          pct <- scales::percent(count / total, accuracy = 0.1)
+          paste0(scales::comma(count), " (", pct, ")")
+        }
+      })
+
+      output$kpi_eval_fonce <- renderText({
+        m <- metrics()
+        total <- if (is.null(m$total) || is.na(m$total)) 0 else m$total
+        count <- if (is.null(m$evaluation_fonce) || is.na(m$evaluation_fonce)) 0 else m$evaluation_fonce
+        if (total == 0) {
+          "--"
+        } else {
+          pct <- scales::percent(count / total, accuracy = 0.1)
+          paste0(scales::comma(count), " (", pct, ")")
+        }
+      })
+
+      output$kpi_eval_echec <- renderText({
+        m <- metrics()
+        total <- if (is.null(m$total) || is.na(m$total)) 0 else m$total
+        count <- if (is.null(m$evaluation_echec) || is.na(m$evaluation_echec)) 0 else m$evaluation_echec
+        if (total == 0) {
+          "--"
+        } else {
+          pct <- scales::percent(count / total, accuracy = 0.1)
+          paste0(scales::comma(count), " (", pct, ")")
+        }
+      })
+
+      output$kpi_eval_unknown <- renderText({
+        m <- metrics()
+        total <- if (is.null(m$total) || is.na(m$total)) 0 else m$total
+        count <- if (is.null(m$evaluation_unknown) || is.na(m$evaluation_unknown)) 0 else m$evaluation_unknown
+        if (total == 0) {
+          "--"
+        } else {
+          pct <- scales::percent(count / total, accuracy = 0.1)
+          paste0(scales::comma(count), " (", pct, ")")
         }
       })
 
@@ -478,42 +607,155 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
         if (is.null(m$mean_volume) || is.na(m$mean_volume)) {
           "--"
         } else {
-          scales::number(m$mean_volume, accuracy = 0.1)
+          scales::number(m$mean_volume, accuracy = 0.01)
         }
       })
 
-      output$kpi_volume_range <- renderText({
-        m <- metrics()
-        if (is.null(m$volume_min) || is.null(m$volume_max) ||
-            is.na(m$volume_min) || is.na(m$volume_max)) {
-          "--"
-        } else {
-          paste0(
-            scales::number(m$volume_min, accuracy = 0.1),
-            " – ",
-            scales::number(m$volume_max, accuracy = 0.1)
+      # ========================================================================
+      # FREEZER LOOKUP FUNCTIONALITY
+      # ========================================================================
+
+      freezer_search_results <- reactiveVal(tibble::tibble())
+
+      observeEvent(input$freezer_search_btn, {
+        df <- extraction_data()
+        search_term <- trimws(input$freezer_search)
+
+        if (is.null(df) || !nrow(df) || search_term == "") {
+          freezer_search_results(tibble::tibble())
+          return()
+        }
+
+        # Normalize search term
+        search_norm <- tolower(gsub("[^a-z0-9]", "", search_term))
+
+        # Search in multiple columns
+        results <- df %>%
+          dplyr::mutate(
+            .numero_norm = tolower(gsub("[^a-z0-9]", "", dplyr::coalesce(numero, ""))),
+            .barcode_norm = tolower(gsub("[^a-z0-9]", "", dplyr::coalesce(barcode, ""))),
+            .sample_id_norm = tolower(gsub("[^a-z0-9]", "", dplyr::coalesce(sample_id, "")))
+          ) %>%
+          dplyr::filter(
+            grepl(search_norm, .numero_norm, fixed = TRUE) |
+            grepl(search_norm, .barcode_norm, fixed = TRUE) |
+            grepl(search_norm, .sample_id_norm, fixed = TRUE)
+          ) %>%
+          dplyr::select(-.numero_norm, -.barcode_norm, -.sample_id_norm)
+
+        freezer_search_results(results)
+      })
+
+      output$freezer_results <- DT::renderDT({
+        results <- freezer_search_results()
+
+        if (is.null(results) || !nrow(results)) {
+          return(DT::datatable(
+            tibble::tibble(Message = "No results. Enter a Numéro or Barcode and click Search."),
+            options = list(dom = "t"),
+            rownames = FALSE
+          ))
+        }
+
+        display_df <- results %>%
+          dplyr::transmute(
+            `Numéro` = dplyr::coalesce(numero, record_number, ""),
+            `Barcode (KPS)` = dplyr::coalesce(barcode, sample_id, ""),
+            `Extraction Date` = dplyr::if_else(
+              is.na(extraction_date),
+              "",
+              format(extraction_date, "%Y-%m-%d")
+            ),
+            `Rack` = dplyr::coalesce(rack, ""),
+            `Row (Rangée)` = dplyr::coalesce(rack_row, ""),
+            `Position` = dplyr::coalesce(rack_column, ""),
+            `Volume (mL)` = dplyr::if_else(
+              is.na(drs_volume_ml),
+              "",
+              scales::number(drs_volume_ml, accuracy = 0.1)
+            ),
+            `Évaluation` = dplyr::coalesce(extract_quality, ""),
+            `État DRS` = dplyr::coalesce(drs_state, ""),
+            `Re-extraction` = dplyr::if_else(
+              dplyr::coalesce(is_reextraction, FALSE),
+              "Yes",
+              "No"
+            )
           )
-        }
+
+        DT::datatable(
+          display_df,
+          options = list(
+            dom = "t",
+            pageLength = 10,
+            scrollX = TRUE
+          ),
+          rownames = FALSE
+        )
       })
 
-      output$kpi_rsc_run_count <- renderText({
-        m <- metrics()
-        if (is.null(m$rsc_run_count) || is.na(m$rsc_run_count)) {
-          "--"
-        } else {
-          scales::comma(m$rsc_run_count)
+      # ========================================================================
+      # RE-EXTRACTION TABLE
+      # ========================================================================
+
+      output$reextraction_table <- DT::renderDT({
+        df <- extraction_data()
+
+        if (is.null(df) || !nrow(df)) {
+          return(DT::datatable(
+            tibble::tibble(Message = "No extraction data available."),
+            options = list(dom = "t"),
+            rownames = FALSE
+          ))
         }
+
+        # Filter to only re-extractions
+        reext_df <- df %>%
+          dplyr::filter(dplyr::coalesce(is_reextraction, FALSE))
+
+        if (!nrow(reext_df)) {
+          return(DT::datatable(
+            tibble::tibble(Message = "No re-extractions detected."),
+            options = list(dom = "t"),
+            rownames = FALSE
+          ))
+        }
+
+        display_df <- reext_df %>%
+          dplyr::arrange(dplyr::coalesce(reextraction_group, 0L), extraction_date) %>%
+          dplyr::transmute(
+            `Sample Group` = dplyr::coalesce(as.character(reextraction_group), ""),
+            `Numéro` = dplyr::coalesce(numero, record_number, ""),
+            `Barcode (KPS)` = dplyr::coalesce(barcode, sample_id, ""),
+            `Extraction Date` = dplyr::if_else(
+              is.na(extraction_date),
+              "",
+              format(extraction_date, "%Y-%m-%d")
+            ),
+            `Volume (mL)` = dplyr::if_else(
+              is.na(drs_volume_ml),
+              "",
+              scales::number(drs_volume_ml, accuracy = 0.1)
+            ),
+            `Évaluation` = dplyr::coalesce(extract_quality, ""),
+            `État DRS` = dplyr::coalesce(drs_state, ""),
+            `Technician` = dplyr::coalesce(technician, ""),
+            `Rack` = dplyr::coalesce(rack, ""),
+            `Row` = dplyr::coalesce(rack_row, ""),
+            `Position` = dplyr::coalesce(rack_column, "")
+          )
+
+        DT::datatable(
+          display_df,
+          options = c(APP_CONSTANTS$DT_OPTIONS, list(pageLength = 15)),
+          rownames = FALSE,
+          filter = "top"
+        )
       })
 
-      output$kpi_cn <- renderText({
-        m <- metrics()
-        if (is.null(m$cn_total) || is.null(m$cn_pct) || is.na(m$cn_total)) {
-          "--"
-        } else if (is.na(m$cn_pct)) {
-          scales::comma(m$cn_total)
-        } else {
-          paste0(scales::comma(m$cn_total), " (", scales::percent(m$cn_pct, accuracy = 0.1), ")")
-        }
+      # Volume threshold info text
+      output$volume_threshold_info <- renderText({
+        "Target: 1.5-2.0 mL (standard) / 4.0 mL (new batches)"
       })
 
       output$drs_state_plot <- plotly::renderPlotly({
@@ -641,6 +883,10 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           return(plotly::plotly_empty(type = "scatter") %>% plotly::layout(title = "No mean volume data"))
         }
 
+        # Calculate dynamic y-axis range based on data
+        max_vol <- max(ts_df$mean_volume, na.rm = TRUE)
+        y_max <- max(5, ceiling(max_vol * 1.2))  # At least 5ml or 20% above max
+
         plotly::plot_ly(
           ts_df,
           x = ~week,
@@ -648,14 +894,15 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           type = "scatter",
           mode = "lines+markers",
           name = "Mean DRS Volume (mL)",
-          line = list(color = "#E67E22"),
-          marker = list(color = "#E67E22"),
+          line = list(color = "#E67E22", width = 2),
+          marker = list(color = "#E67E22", size = 8),
           hovertemplate = "Week of %{x|%Y-%m-%d}<br>Mean volume: %{y:.2f} mL<extra></extra>"
         ) %>%
           plotly::layout(
             xaxis = list(title = "Week"),
-            yaxis = list(title = "Mean DRS Volume (mL)", range = c(0, 4)),
+            yaxis = list(title = "Mean DRS Volume (mL)", range = c(0, y_max)),
             shapes = list(
+              # Standard target zone (1.5-2.0 mL) - green
               list(
                 type = "rect",
                 xref = "paper",
@@ -663,10 +910,23 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
                 x1 = 1,
                 yref = "y",
                 y0 = 1.5,
-                y1 = 2,
+                y1 = 2.0,
                 fillcolor = "rgba(39, 174, 96, 0.15)",
                 line = list(color = "rgba(39, 174, 96, 0)")
               ),
+              # New batch target zone (3.5-4.5 mL) - blue
+              list(
+                type = "rect",
+                xref = "paper",
+                x0 = 0,
+                x1 = 1,
+                yref = "y",
+                y0 = 3.5,
+                y1 = 4.5,
+                fillcolor = "rgba(52, 152, 219, 0.15)",
+                line = list(color = "rgba(52, 152, 219, 0)")
+              ),
+              # Standard lower threshold line
               list(
                 type = "line",
                 xref = "paper",
@@ -675,17 +935,49 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
                 yref = "y",
                 y0 = 1.5,
                 y1 = 1.5,
-                line = list(color = "#27AE60", dash = "dash")
+                line = list(color = "#27AE60", dash = "dash", width = 1)
               ),
+              # Standard upper threshold line
               list(
                 type = "line",
                 xref = "paper",
                 x0 = 0,
                 x1 = 1,
                 yref = "y",
-                y0 = 2,
-                y1 = 2,
-                line = list(color = "#27AE60", dash = "dash")
+                y0 = 2.0,
+                y1 = 2.0,
+                line = list(color = "#27AE60", dash = "dash", width = 1)
+              ),
+              # New batch target line (4.0 mL)
+              list(
+                type = "line",
+                xref = "paper",
+                x0 = 0,
+                x1 = 1,
+                yref = "y",
+                y0 = 4.0,
+                y1 = 4.0,
+                line = list(color = "#3498DB", dash = "dash", width = 1)
+              )
+            ),
+            annotations = list(
+              list(
+                x = 0.02,
+                y = 1.75,
+                xref = "paper",
+                yref = "y",
+                text = "Standard (1.5-2.0 mL)",
+                showarrow = FALSE,
+                font = list(size = 10, color = "#27AE60")
+              ),
+              list(
+                x = 0.02,
+                y = 4.0,
+                xref = "paper",
+                yref = "y",
+                text = "New batches (4.0 mL)",
+                showarrow = FALSE,
+                font = list(size = 10, color = "#3498DB")
               )
             ),
             hovermode = "x unified",
@@ -797,51 +1089,54 @@ mod_extractions_server <- function(id, filtered_data, biobank_data = NULL) {
           ))
         }
 
+        # Helper to safely check column existence
+        safe_col <- function(col_name, default = NA) {
+          if (col_name %in% names(df)) df[[col_name]] else rep(default, nrow(df))
+        }
+
         table_df <- df %>%
           dplyr::arrange(dplyr::desc(.data$extraction_date), .data$sample_id) %>%
           dplyr::transmute(
-            `Sample ID (KPS)` = .data$sample_id,
-            `KPS Normalized` = dplyr::coalesce(.data$barcode_normalized, ""),
-            `Numero` = dplyr::coalesce(.data$record_number, ""),
-            `Numero Normalized` = dplyr::coalesce(.data$record_number_normalized, ""),
-            `Biobank Barcode` = dplyr::coalesce(.data$biobank_barcode, ""),
-            `Biobank Numero` = dplyr::coalesce(.data$biobank_lab_id, ""),
-            `Numero Match` = dplyr::case_when(
-              is.na(.data$numero_match) ~ "Unknown",
-              .data$numero_match ~ "Match",
-              TRUE ~ "Mismatch"
-            ),
-            `Linked to Biobank` = dplyr::case_when(
-              is.na(.data$biobank_matched) ~ "Unknown",
-              .data$biobank_matched ~ "Yes",
+            `Numéro` = dplyr::coalesce(numero, record_number, ""),
+            `Barcode (KPS)` = dplyr::coalesce(barcode, sample_id, ""),
+            `Linked` = dplyr::case_when(
+              is.na(biobank_matched) ~ "?",
+              biobank_matched ~ "Yes",
               TRUE ~ "No"
             ),
             `Extraction Date` = dplyr::if_else(
-              is.na(.data$extraction_date),
+              is.na(extraction_date),
               "",
-              format(.data$extraction_date, "%Y-%m-%d")
+              format(extraction_date, "%Y-%m-%d")
             ),
-            Technician = dplyr::coalesce(.data$technician, ""),
-            `État DRS` = dplyr::coalesce(.data$drs_state, ""),
-            `État Code` = dplyr::coalesce(.data$drs_state_code, ""),
-            `Évaluation` = dplyr::coalesce(.data$extract_quality, ""),
-            `Évaluation Code` = dplyr::coalesce(.data$extract_quality_code, ""),
+            `Évaluation` = dplyr::coalesce(extract_quality, "Unknown"),
+            `État DRS` = dplyr::coalesce(drs_state, "Unknown"),
             `Volume (mL)` = dplyr::if_else(
-              is.na(.data$drs_volume_ml),
+              is.na(drs_volume_ml),
               "",
-              scales::number(.data$drs_volume_ml, accuracy = 0.1)
+              scales::number(drs_volume_ml, accuracy = 0.1)
             ),
-            `RSC Run` = dplyr::coalesce(.data$rsc_run, ""),
-            `RSC Position` = dplyr::coalesce(.data$rsc_position, ""),
-            `Rack` = dplyr::coalesce(.data$rack, ""),
-            `Rack Row` = dplyr::coalesce(.data$rack_row, ""),
-            `Rack Column` = dplyr::coalesce(.data$rack_column, ""),
-            Remarks = dplyr::coalesce(.data$remarks, "")
+            `Re-extract` = dplyr::if_else(
+              dplyr::coalesce(safe_col("is_reextraction"), FALSE),
+              "Yes",
+              ""
+            ),
+            `Neg. Ctrl` = dplyr::if_else(
+              dplyr::coalesce(safe_col("is_negative_control"), FALSE),
+              "CN",
+              ""
+            ),
+            `Technician` = dplyr::coalesce(technician, ""),
+            `Rack` = dplyr::coalesce(rack, ""),
+            `Row` = dplyr::coalesce(rack_row, ""),
+            `Position` = dplyr::coalesce(rack_column, ""),
+            `RSC Run` = dplyr::coalesce(rsc_run, ""),
+            `Remarks` = dplyr::coalesce(remarks, "")
           )
 
         DT::datatable(
           table_df,
-          options = c(APP_CONSTANTS$DT_OPTIONS, list(pageLength = 15)),
+          options = c(APP_CONSTANTS$DT_OPTIONS, list(pageLength = 15, scrollX = TRUE)),
           rownames = FALSE,
           filter = "top"
         )

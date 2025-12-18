@@ -227,18 +227,43 @@ create_sample_timeline <- function(journey_data) {
       }
 
       if (!is.na(ext_date)) {
-        volume_info <- if ("drs_volume_ml" %in% names(row) && !is.na(row$drs_volume_ml)) {
-          # Convert ml to µL for display
-          sprintf("Volume: %.1f µL", row$drs_volume_ml * 1000)
+        # Build details string with available info
+        details_parts <- c()
+
+        # Volume info
+        if ("drs_volume_ml" %in% names(row) && !is.na(row$drs_volume_ml)) {
+          details_parts <- c(details_parts, sprintf("Volume: %.1f µL", row$drs_volume_ml * 1000))
+        }
+
+        # Evaluation/Quality info
+        if ("extract_quality" %in% names(row) && !is.na(row$extract_quality) && row$extract_quality != "Unknown") {
+          details_parts <- c(details_parts, sprintf("Quality: %s", row$extract_quality))
+        }
+
+        # DRS State info
+        if ("drs_state" %in% names(row) && !is.na(row$drs_state) && row$drs_state != "Unknown") {
+          details_parts <- c(details_parts, sprintf("DRS: %s", row$drs_state))
+        }
+
+        # Re-extraction flag
+        is_reext <- if ("is_reextraction" %in% names(row)) {
+          isTRUE(row$is_reextraction)
         } else {
-          ""
+          FALSE
+        }
+
+        # Event name
+        event_name <- if (is_reext) {
+          sprintf("Re-extraction #%d", i)
+        } else {
+          sprintf("Extraction #%d", i)
         }
 
         events[[length(events) + 1]] <- tibble(
-          event = sprintf("Extraction #%d", i),
+          event = event_name,
           date = ext_date,
           category = "Extraction",
-          details = volume_info
+          details = paste(details_parts, collapse = " | ")
         )
       }
     }
@@ -391,21 +416,70 @@ create_sample_timeline <- function(journey_data) {
 generate_sample_alerts <- function(journey_data) {
   alerts <- list()
 
-  # Check DRS volume (low volume alert if < 30µL)
+  # Check extraction quality issues
   if (nrow(journey_data$extraction_data) > 0) {
     for (i in 1:nrow(journey_data$extraction_data)) {
       row <- journey_data$extraction_data[i, ]
+
+      # Check DRS volume (low volume alert)
       if ("drs_volume_ml" %in% names(row) && !is.na(row$drs_volume_ml)) {
-        # Convert ml to µL for comparison and display
-        volume_ul <- row$drs_volume_ml * 1000
-        if (volume_ul < 30) {
+        volume_ml <- row$drs_volume_ml
+        if (volume_ml < 1.0) {
           alerts[[length(alerts) + 1]] <- list(
             type = "warning",
             category = "Extraction QC",
-            message = sprintf("Low DRS volume: %.1f µL (expected ≥30µL)", volume_ul),
+            message = sprintf("Low DRS volume: %.2f mL (expected ≥1.0 mL)", volume_ml),
             test_number = i
           )
         }
+      }
+
+      # Check extract quality (Foncé or Échec)
+      if ("extract_quality" %in% names(row) && !is.na(row$extract_quality)) {
+        if (row$extract_quality == "Échec") {
+          alerts[[length(alerts) + 1]] <- list(
+            type = "danger",
+            category = "Extraction QC",
+            message = sprintf("Extraction #%d failed (Échec)", i),
+            test_number = i
+          )
+        } else if (row$extract_quality == "Foncé") {
+          alerts[[length(alerts) + 1]] <- list(
+            type = "warning",
+            category = "Extraction QC",
+            message = sprintf("Dark extract (Foncé) at extraction #%d", i),
+            test_number = i
+          )
+        }
+      }
+
+      # Check DRS state (Viscous or Coagulated)
+      if ("drs_state" %in% names(row) && !is.na(row$drs_state)) {
+        if (row$drs_state == "Coagulated") {
+          alerts[[length(alerts) + 1]] <- list(
+            type = "danger",
+            category = "Extraction QC",
+            message = sprintf("Coagulated DRS sample at extraction #%d", i),
+            test_number = i
+          )
+        } else if (row$drs_state == "Viscous") {
+          alerts[[length(alerts) + 1]] <- list(
+            type = "warning",
+            category = "Extraction QC",
+            message = sprintf("Viscous DRS sample at extraction #%d", i),
+            test_number = i
+          )
+        }
+      }
+
+      # Check if this is a re-extraction
+      if ("is_reextraction" %in% names(row) && isTRUE(row$is_reextraction)) {
+        alerts[[length(alerts) + 1]] <- list(
+          type = "info",
+          category = "Extraction",
+          message = sprintf("Sample was re-extracted (extraction #%d)", i),
+          test_number = i
+        )
       }
     }
   }

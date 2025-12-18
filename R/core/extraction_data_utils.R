@@ -228,7 +228,10 @@ load_extraction_file <- function(filepath) {
     filter_type = c("filter", "filtre", "filter_type", "filtration"),
     extract_quality = c(
       "extract_appearance", "extract_quality", "aspect_extrait", "visual_quality", "appearance",
-      "evaluation", "evaluation_de_l_echantillon_extrait_clair_fonce_echec"
+      "evaluation", "evaluation_de_l_echantillon_extrait_clair_fonce_echec",
+      "evaluation_de_lechantillon_extrait_clair_fonce_echec",
+      "evaluation_echantillon", "evaluation_extrait", "qualite_extrait",
+      "echantillon_extrait", "resultat_extraction"
     ),
     technician = c("technician", "operateur", "operator", "technicien", "executeur"),
     project = c("project", "programme", "study", "projet"),
@@ -383,6 +386,103 @@ validate_sample_ids <- function(df) {
     )
 }
 
+#' Detect if a row is a true duplicate (entire row identical) vs re-extraction (different volume)
+#' @param df Extraction dataset
+#' @return Dataset with duplicate flags added
+#' @keywords internal
+.detect_duplicates_and_reextractions <- function(df) {
+  if (is.null(df) || !nrow(df)) {
+    return(df)
+  }
+
+  # Columns to compare for true duplicates (excluding metadata columns)
+  metadata_cols <- c("source_file", "has_cn", "is_duplicate", "dup_group", "most_recent",
+                     "valid_sample_id", "duplicate_sample_id", "barcode_suspicious",
+                     "validation_status", "flag_issue", "ready_for_freezer",
+                     "is_true_duplicate", "is_reextraction", "reextraction_group")
+
+  data_cols <- setdiff(names(df), metadata_cols)
+
+  # Create a hash of all data columns for true duplicate detection
+  df <- df %>%
+    dplyr::mutate(
+      .row_hash = apply(dplyr::select(., dplyr::all_of(data_cols)), 1, function(row) {
+        paste(as.character(row), collapse = "|")
+      })
+    )
+
+  # Detect true duplicates: entire row (excluding metadata) is identical
+  df <- df %>%
+    dplyr::group_by(.row_hash) %>%
+    dplyr::mutate(
+      .hash_count = dplyr::n(),
+      is_true_duplicate = .hash_count > 1
+    ) %>%
+    dplyr::ungroup()
+
+  # For true duplicates, keep only the first occurrence
+  df_dedup <- df %>%
+    dplyr::group_by(.row_hash) %>%
+    dplyr::mutate(.row_num = dplyr::row_number()) %>%
+    dplyr::filter(!is_true_duplicate | .row_num == 1) %>%
+    dplyr::select(-.row_num) %>%
+    dplyr::ungroup()
+
+  true_dups_removed <- nrow(df) - nrow(df_dedup)
+
+  # Now detect re-extractions: same sample ID but DIFFERENT volume
+  # Normalize sample identifier for comparison
+  df_dedup <- df_dedup %>%
+    dplyr::mutate(
+      .sample_norm = stringr::str_trim(tolower(dplyr::coalesce(
+        as.character(barcode),
+        as.character(numero),
+        as.character(sample_id),
+        as.character(record_number)
+      ))),
+      .sample_norm = dplyr::na_if(.sample_norm, "")
+    )
+
+  # Group by sample and check if volumes differ
+  df_dedup <- df_dedup %>%
+    dplyr::group_by(.sample_norm) %>%
+    dplyr::mutate(
+      .sample_count = dplyr::n(),
+      .volume_varies = dplyr::n_distinct(drs_volume_ml, na.rm = FALSE) > 1,
+      # Re-extraction: same sample appears multiple times with different volumes
+      is_reextraction = !is.na(.sample_norm) & .sample_count > 1 & .volume_varies,
+      # Assign a group ID for re-extractions
+      reextraction_group = dplyr::if_else(
+        is_reextraction,
+        dplyr::cur_group_id(),
+        NA_integer_
+      )
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(-.row_hash, -.hash_count, -.sample_norm, -.sample_count, -.volume_varies)
+
+  if (true_dups_removed > 0) {
+    message(sprintf(
+      "Removed %d true duplicate rows (identical data; %d records remain)",
+      true_dups_removed,
+      nrow(df_dedup)
+    ))
+  }
+
+  n_reextractions <- sum(df_dedup$is_reextraction, na.rm = TRUE)
+  n_reextraction_groups <- length(unique(df_dedup$reextraction_group[!is.na(df_dedup$reextraction_group)]))
+
+  if (n_reextractions > 0) {
+    message(sprintf(
+      "Detected %d re-extraction records across %d samples (kept all - different volumes)",
+      n_reextractions,
+      n_reextraction_groups
+    ))
+  }
+
+  df_dedup
+}
+
 #' Remove duplicate extraction records
 #' @param df Extraction dataset
 #' @param keep_first If TRUE, keep first occurrence; if FALSE, keep last
@@ -393,42 +493,8 @@ remove_duplicates <- function(df, keep_first = FALSE) {
     return(df)
   }
 
-  original_count <- nrow(df)
-
-  # Remove exact duplicates (all columns identical)
-  df_dedup <- df %>%
-    dplyr::distinct()
-
-  exact_dups_removed <- original_count - nrow(df_dedup)
-
-  # Remove duplicates based on sample_id and extraction_date
-  # Keep the record with more complete data (fewer NAs)
-  df_dedup <- df_dedup %>%
-    dplyr::group_by(sample_id, extraction_date) %>%
-    dplyr::mutate(
-      na_count = rowSums(is.na(dplyr::pick(dplyr::everything()))),
-      row_num = dplyr::row_number()
-    ) %>%
-    dplyr::filter(
-      if (keep_first) {
-        row_num == 1
-      } else {
-        na_count == min(na_count) & row_num == 1
-      }
-    ) %>%
-    dplyr::select(-na_count, -row_num) %>%
-    dplyr::ungroup()
-
-  logical_dups_removed <- nrow(df) - exact_dups_removed - nrow(df_dedup)
-
-  if (exact_dups_removed > 0 || logical_dups_removed > 0) {
-    message(sprintf(
-      "Removed %d exact duplicates and %d logical duplicates (%d records remain)",
-      exact_dups_removed, logical_dups_removed, nrow(df_dedup)
-    ))
-  }
-
-  df_dedup
+  # Use the new duplicate/re-extraction detection
+  .detect_duplicates_and_reextractions(df)
 }
 
 #' Load and combine extraction spreadsheets from a directory
@@ -471,7 +537,11 @@ load_all_extractions <- function(directory = NULL,
       rack_column = character(),
       remarks = character(),
       has_cn = logical(),
+      is_negative_control = logical(),
       is_duplicate = logical(),
+      is_true_duplicate = logical(),
+      is_reextraction = logical(),
+      reextraction_group = integer(),
       dup_group = integer(),
       most_recent = logical(),
       flag_issue = logical(),
@@ -538,124 +608,51 @@ load_all_extractions <- function(directory = NULL,
     ))
   }
 
-  # Duplicate detection: identify rows with the same identifier AND freezer position
-  # Normalize identifiers first (trim, lowercase for comparison)
-  df <- df %>%
-    dplyr::mutate(
-      # Normalize each identifier field
-      barcode_norm = stringr::str_trim(tolower(as.character(barcode))),
-      barcode_norm = dplyr::na_if(barcode_norm, ""),
-      numero_norm = stringr::str_trim(tolower(as.character(numero))),
-      numero_norm = dplyr::na_if(numero_norm, ""),
-      sample_id_norm = stringr::str_trim(tolower(as.character(sample_id))),
-      sample_id_norm = dplyr::na_if(sample_id_norm, ""),
-      record_number_norm = stringr::str_trim(tolower(as.character(record_number))),
-      record_number_norm = dplyr::na_if(record_number_norm, ""),
+  # NEW: Duplicate detection based on ENTIRE row being identical
+  # Re-extractions (same sample, different volume) are KEPT and flagged
+  df <- .detect_duplicates_and_reextractions(df)
 
-      # Normalize freezer position fields
-      freezer_position_norm = stringr::str_trim(tolower(as.character(freezer_position))),
-      freezer_position_norm = dplyr::na_if(freezer_position_norm, ""),
-      rack_norm = stringr::str_trim(tolower(as.character(rack))),
-      rack_norm = dplyr::na_if(rack_norm, ""),
-      rack_row_norm = stringr::str_trim(tolower(as.character(rack_row))),
-      rack_row_norm = dplyr::na_if(rack_row_norm, ""),
-      rack_column_norm = stringr::str_trim(tolower(as.character(rack_column))),
-      rack_column_norm = dplyr::na_if(rack_column_norm, ""),
-
-      # Create composite sample identifier
-      sample_identifier = dplyr::coalesce(
-        barcode_norm,
-        numero_norm,
-        sample_id_norm,
-        record_number_norm
-      ),
-
-      # Create composite position identifier from available fields
-      # This allows different freezer positions to be treated as separate samples (replicates)
-      position_identifier = paste(
-        dplyr::coalesce(freezer_position_norm, ""),
-        dplyr::coalesce(rack_norm, ""),
-        dplyr::coalesce(rack_row_norm, ""),
-        dplyr::coalesce(rack_column_norm, ""),
-        sep = "_"
-      ),
-      position_identifier = dplyr::na_if(position_identifier, "___"),
-      position_identifier = dplyr::na_if(position_identifier, ""),
-
-      # Final identifier for duplicate detection: sample + position
-      # Same sample at different positions = replicates (kept)
-      # Same sample at same position = duplicates (removed)
-      identifier_for_dup = paste(
-        dplyr::coalesce(sample_identifier, "NA"),
-        dplyr::coalesce(position_identifier, "NA"),
-        sep = "|"
-      )
-    ) %>%
-    dplyr::select(-barcode_norm, -numero_norm, -sample_id_norm, -record_number_norm,
-                  -freezer_position_norm, -rack_norm, -rack_row_norm, -rack_column_norm,
-                  -sample_identifier, -position_identifier)
-
-  # Group by identifier and detect duplicates
-  # Important: only group rows that have a valid identifier
-  df <- df %>%
-    dplyr::mutate(row_id = dplyr::row_number()) %>%
-    dplyr::group_by(identifier_for_dup) %>%
-    dplyr::mutate(
-      # Only assign dup_group if identifier is not NA and there are multiple rows
-      group_size = dplyr::n(),
-      dup_group = dplyr::if_else(
-        !is.na(identifier_for_dup) & group_size > 1,
-        dplyr::cur_group_id(),
-        NA_integer_
-      ),
-      # Mark as duplicate if there are multiple rows with same valid identifier
-      is_duplicate = !is.na(identifier_for_dup) & group_size > 1,
-
-      # For duplicates, identify the most recent one based on extraction_date
-      latest_date = dplyr::if_else(
-        is_duplicate,
-        suppressWarnings(max(extraction_date, na.rm = TRUE)),
-        as.Date(NA)
-      ),
-      latest_date = dplyr::if_else(is.infinite(latest_date), as.Date(NA), latest_date),
-      most_recent = dplyr::if_else(
-        is_duplicate & !is.na(extraction_date) & !is.na(latest_date),
-        extraction_date == latest_date,
-        FALSE
-      )
-    ) %>%
-    dplyr::ungroup() %>%
-    dplyr::select(-identifier_for_dup, -latest_date, -group_size, -row_id)
-
-  # REMOVE duplicates: keep only the most recent record for each duplicate group
-  rows_before_dedup <- nrow(df)
-  df <- df %>%
-    dplyr::filter(!is_duplicate | most_recent)
-
-  rows_after_dedup <- nrow(df)
-  duplicates_removed <- rows_before_dedup - rows_after_dedup
-
-  if (duplicates_removed > 0) {
-    message(sprintf(
-      "Removed %d duplicate rows (same sample + position, kept most recent; %d records remain)",
-      duplicates_removed,
-      rows_after_dedup
-    ))
+  # Initialize columns that might not exist after duplicate detection
+  if (!"is_duplicate" %in% names(df)) {
+    df$is_duplicate <- FALSE
+  }
+  if (!"dup_group" %in% names(df)) {
+    df$dup_group <- NA_integer_
+  }
+  if (!"most_recent" %in% names(df)) {
+    df$most_recent <- FALSE
   }
 
-  text_fields <- df %>% dplyr::select(where(is.character))
-  if (!ncol(text_fields)) {
-    df$has_cn <- rep(FALSE, nrow(df))
-  } else {
-    df$has_cn <- apply(
-      text_fields,
-      1,
-      function(row) {
-        matches <- stringr::str_detect(row, stringr::regex("\bcn\b", ignore_case = TRUE))
-        any(matches, na.rm = TRUE)
-      }
-    )
-  }
+  # Improved negative control detection (CN = Contrôle Négatif, NC = Negative Control)
+  # Check sample_id, barcode, numero, and remarks columns specifically
+  df <- df %>%
+    dplyr::mutate(
+      # Check if any identifier contains CN or NC pattern (case insensitive)
+      .id_has_cn = stringr::str_detect(
+        tolower(dplyr::coalesce(sample_id, "")),
+        "\\b(cn|nc|ctrl[-_]?neg|neg[-_]?ctrl|controle[-_]?negatif|negative[-_]?control)\\b"
+      ),
+      .barcode_has_cn = stringr::str_detect(
+        tolower(dplyr::coalesce(barcode, "")),
+        "\\b(cn|nc|ctrl[-_]?neg|neg[-_]?ctrl)\\b"
+      ),
+      .numero_has_cn = stringr::str_detect(
+        tolower(dplyr::coalesce(numero, "")),
+        "\\b(cn|nc|ctrl[-_]?neg|neg[-_]?ctrl)\\b"
+      ),
+      .remarks_has_cn = stringr::str_detect(
+        tolower(dplyr::coalesce(remarks, "")),
+        "\\b(cn|nc|controle[-_]?negatif|negative[-_]?control)\\b"
+      ),
+      # A sample is a negative control if ANY of these match
+      is_negative_control = dplyr::coalesce(.id_has_cn, FALSE) |
+                            dplyr::coalesce(.barcode_has_cn, FALSE) |
+                            dplyr::coalesce(.numero_has_cn, FALSE) |
+                            dplyr::coalesce(.remarks_has_cn, FALSE),
+      # Keep has_cn for backward compatibility
+      has_cn = is_negative_control
+    ) %>%
+    dplyr::select(-.id_has_cn, -.barcode_has_cn, -.numero_has_cn, -.remarks_has_cn)
 
   if (validate && nrow(df) > 0) {
     df <- validate_sample_ids(df)
@@ -687,14 +684,16 @@ load_all_extractions <- function(directory = NULL,
   }
 
   # Final summary statistics
-  n_duplicates <- sum(df$is_duplicate, na.rm = TRUE)
-  n_unique_dup_groups <- length(unique(df$dup_group[!is.na(df$dup_group)]))
-  n_cn <- sum(df$has_cn, na.rm = TRUE)
+  n_true_duplicates <- sum(df$is_true_duplicate, na.rm = TRUE)
+  n_reextractions <- sum(df$is_reextraction, na.rm = TRUE)
+  n_reextraction_samples <- length(unique(df$reextraction_group[!is.na(df$reextraction_group)]))
+  n_cn <- sum(df$is_negative_control, na.rm = TRUE)
 
   message(sprintf(
-    "Loaded %d extraction records (%d remaining duplicates, %d with CN)",
+    "Loaded %d extraction records (%d re-extractions from %d samples, %d negative controls)",
     nrow(df),
-    n_duplicates,
+    n_reextractions,
+    n_reextraction_samples,
     n_cn
   ))
 
@@ -718,11 +717,14 @@ summarise_extraction_metrics <- function(df) {
   if (is.null(df) || !nrow(df)) {
     return(list(
       total = 0,
+      unique_samples = 0,
       files_with_barcodes = 0,
       ready = 0,
       median_volume = NA_real_,
       pct_liquid = NA_real_,
       pct_clear = NA_real_,
+      pct_fonce = NA_real_,
+      pct_echec = NA_real_,
       flagged = 0,
       valid_ids = 0,
       duplicates = 0,
@@ -735,8 +737,15 @@ summarise_extraction_metrics <- function(df) {
       cn_total = 0,
       cn_pct = NA_real_,
       linked_total = 0,
+      linked_pct = NA_real_,
       matched_total = 0,
-      mismatched_total = 0
+      mismatched_total = 0,
+      reextraction_records = 0,
+      reextraction_samples = 0,
+      evaluation_clear = 0,
+      evaluation_fonce = 0,
+      evaluation_echec = 0,
+      evaluation_unknown = 0
     ))
   }
 
@@ -798,10 +807,71 @@ summarise_extraction_metrics <- function(df) {
     NA_integer_
   }
 
-  cn_total <- if (has_column("has_cn")) sum(df$has_cn, na.rm = TRUE) else 0
+  # Negative control counts
+  cn_total <- if (has_column("is_negative_control")) {
+    sum(df$is_negative_control, na.rm = TRUE)
+  } else if (has_column("has_cn")) {
+    sum(df$has_cn, na.rm = TRUE)
+  } else {
+    0
+  }
+
+  # Re-extraction metrics
+  reextraction_records <- if (has_column("is_reextraction")) {
+    sum(df$is_reextraction, na.rm = TRUE)
+  } else {
+    0
+  }
+
+  reextraction_samples <- if (has_column("reextraction_group")) {
+    length(unique(df$reextraction_group[!is.na(df$reextraction_group)]))
+  } else {
+    0
+  }
+
+  # Unique samples (excluding re-extractions to avoid double counting)
+  unique_samples <- if (has_column("sample_id")) {
+    sample_ids <- df$sample_id[!is.na(df$sample_id) & df$sample_id != ""]
+    length(unique(sample_ids))
+  } else {
+    nrow(df)
+  }
+
+  # Extract quality breakdown
+  evaluation_clear <- if (has_column("extract_quality")) {
+    sum(df$extract_quality == "Clear", na.rm = TRUE)
+  } else {
+    0
+  }
+
+  evaluation_fonce <- if (has_column("extract_quality")) {
+    sum(df$extract_quality == "Foncé", na.rm = TRUE)
+  } else {
+    0
+  }
+
+  evaluation_echec <- if (has_column("extract_quality")) {
+    sum(df$extract_quality == "Échec", na.rm = TRUE)
+  } else {
+    0
+  }
+
+  evaluation_unknown <- if (has_column("extract_quality")) {
+    sum(df$extract_quality == "Unknown" | is.na(df$extract_quality), na.rm = TRUE)
+  } else {
+    nrow(df)
+  }
+
+  # Linked stats
+  linked_total <- if (has_column("biobank_matched")) {
+    sum(df$biobank_matched, na.rm = TRUE)
+  } else {
+    NA_integer_
+  }
 
   list(
     total = nrow(df),
+    unique_samples = unique_samples,
     files_with_barcodes = files_with_barcodes,
     ready = if (has_column("ready_for_freezer")) {
       sum(df$ready_for_freezer, na.rm = TRUE)
@@ -828,6 +898,16 @@ summarise_extraction_metrics <- function(df) {
     } else {
       NA_real_
     },
+    pct_fonce = if (has_column("extract_quality")) {
+      safe_pct(df$extract_quality == "Foncé")
+    } else {
+      NA_real_
+    },
+    pct_echec = if (has_column("extract_quality")) {
+      safe_pct(df$extract_quality == "Échec")
+    } else {
+      NA_real_
+    },
     flagged = if (has_column("flag_issue")) sum(df$flag_issue, na.rm = TRUE) else NA_integer_,
     valid_ids = if (has_validation) sum(df$valid_sample_id, na.rm = TRUE) else NA_integer_,
     duplicates = if (has_validation) sum(df$duplicate_sample_id, na.rm = TRUE) else NA_integer_,
@@ -838,11 +918,8 @@ summarise_extraction_metrics <- function(df) {
     rsc_run_count = rsc_runs,
     cn_total = cn_total,
     cn_pct = if (nrow(df) > 0) cn_total / nrow(df) else NA_real_,
-    linked_total = if (has_column("biobank_matched")) {
-      sum(df$biobank_matched, na.rm = TRUE)
-    } else {
-      NA_integer_
-    },
+    linked_total = linked_total,
+    linked_pct = if (!is.na(linked_total) && nrow(df) > 0) linked_total / nrow(df) else NA_real_,
     matched_total = if (has_column("numero_match")) {
       sum(df$numero_match == TRUE, na.rm = TRUE)
     } else {
@@ -852,7 +929,13 @@ summarise_extraction_metrics <- function(df) {
       sum(df$numero_match == FALSE, na.rm = TRUE)
     } else {
       NA_integer_
-    }
+    },
+    reextraction_records = reextraction_records,
+    reextraction_samples = reextraction_samples,
+    evaluation_clear = evaluation_clear,
+    evaluation_fonce = evaluation_fonce,
+    evaluation_echec = evaluation_echec,
+    evaluation_unknown = evaluation_unknown
   )
 }
 

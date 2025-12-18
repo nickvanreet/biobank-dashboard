@@ -500,8 +500,8 @@ plot_ielisa_results <- function(ielisa_data) {
       NA
     }
 
-    litat13_inhibition <- if ("pct_inh_f2_13" %in% names(row) && !is.na(row$pct_inh_f2_13)) {
-      row$pct_inh_f2_13
+    litat13_inhibition <- if ("pct_inh_f1_13" %in% names(row) && !is.na(row$pct_inh_f1_13)) {
+      row$pct_inh_f1_13
     } else {
       NA_real_
     }
@@ -513,8 +513,8 @@ plot_ielisa_results <- function(ielisa_data) {
       NA
     }
 
-    litat15_inhibition <- if ("pct_inh_f2_15" %in% names(row) && !is.na(row$pct_inh_f2_15)) {
-      row$pct_inh_f2_15
+    litat15_inhibition <- if ("pct_inh_f1_15" %in% names(row) && !is.na(row$pct_inh_f1_15)) {
+      row$pct_inh_f1_15
     } else {
       NA_real_
     }

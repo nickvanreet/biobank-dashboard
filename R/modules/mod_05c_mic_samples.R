@@ -1119,7 +1119,23 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         mutate(across(where(is.list), ~vapply(.x, function(val) {
           if (is.null(val) || (is.atomic(val) && length(val) == 0)) return(NA_character_)
           paste(as.character(unlist(val)), collapse = ", ")
-        }, character(1))))
+        }, character(1)))) %>%
+        mutate(
+          across(where(is.factor), as.character),
+          across(where(~inherits(.x, "Date") || inherits(.x, "POSIXt")), as.character)
+        ) %>%
+        mutate(across(everything(), ~{
+          # Convert any lingering matrix/list values to readable strings
+          if (is.matrix(.x) || is.array(.x)) {
+            apply(.x, 1, function(row) paste(as.character(row), collapse = ", "))
+          } else if (is.list(.x)) {
+            vapply(.x, function(val) paste(as.character(unlist(val)), collapse = ", "), character(1))
+          } else {
+            as.vector(.x)
+          }
+        })) %>%
+        mutate(across(everything(), as.character)) %>%
+        as.data.frame(stringsAsFactors = FALSE)
 
       # Select simplified columns for display
       simplified_cols <- c(

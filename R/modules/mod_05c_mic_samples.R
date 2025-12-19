@@ -1161,8 +1161,6 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
           . == "RunDateDisplay" ~ "Run date",
           TRUE ~ .
         )) %>%
-        as.data.frame(stringsAsFactors = FALSE, check.names = FALSE) %>%
-        lapply(flatten_column) %>%
         as.data.frame(stringsAsFactors = FALSE, check.names = FALSE)
 
       datatable(

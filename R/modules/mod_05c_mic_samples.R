@@ -207,6 +207,16 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
     # Reactive value for heatmap filter
     heatmap_filter <- reactiveVal(list(call = NULL, confidence = NULL))
 
+    # Ensure expected columns exist so downstream formatting does not fail
+    ensure_columns <- function(df, defaults) {
+      for (nm in names(defaults)) {
+        if (!nm %in% names(df)) {
+          df[[nm]] <- defaults[[nm]]
+        }
+      }
+      df
+    }
+
     ordinal_label <- function(n) {
       n <- as.integer(n)
       suffix <- ifelse(
@@ -331,6 +341,16 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       df <- selected_results()
 
       if (!nrow(df)) return(df)
+
+      df <- ensure_columns(df, list(
+        WellAggregateConflict = FALSE,
+        FinalCall = NA_character_,
+        ConfidenceScore = NA_character_,
+        Cq_median_177T = NA_real_,
+        Wells_DNA_Positive = NA_integer_,
+        Cq_median_18S2 = NA_real_,
+        Wells_RNA_Positive = NA_integer_
+      ))
 
       # Add quality metric
       df <- df %>%
@@ -1047,6 +1067,13 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       }
 
       df <- drop_helper_columns(df)
+
+      df <- ensure_columns(df, list(
+        SampleName = NA_character_,
+        FinalCall = "Unknown",
+        mic_is_discordant = FALSE,
+        mic_n_tests = NA_integer_
+      ))
 
       # Create simplified display columns
       display_df <- df %>%

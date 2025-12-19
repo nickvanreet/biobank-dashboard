@@ -1115,26 +1115,14 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         )
 
       # Flatten list-like columns so DataTables receives scalar values rather than objects
-      flatten_column <- function(x) {
-        if (is.list(x)) {
-          return(vapply(x, function(val) {
-            if (is.null(val) || (is.atomic(val) && length(val) == 0)) {
-              return(NA_character_)
-            }
-            paste(as.character(unlist(val)), collapse = ", ")
-          }, character(1)))
-        }
-
-        if (is.matrix(x) || is.array(x)) {
-          return(apply(x, 1, function(row) paste(as.character(row), collapse = ", ")))
-        }
-
-        if (is.factor(x)) return(as.character(x))
-        if (inherits(x, "Date")) return(format(x, "%Y-%m-%d"))
-        if (inherits(x, "POSIXt")) return(format(x, "%Y-%m-%d %H:%M:%S", tz = "UTC"))
-
-        as.character(x)
-      }
+      display_df <- display_df %>%
+        mutate(across(where(is.list), ~vapply(.x, function(val) {
+          if (is.null(val) || (is.atomic(val) && length(val) == 0)) return(NA_character_)
+          paste(as.character(unlist(val)), collapse = ", ")
+        }, character(1)))) %>%
+        # Ensure DT receives only standard vectors (no list columns)
+        mutate(across(everything(), as.vector)) %>%
+        as.data.frame()
 
       # Select simplified columns for display
       simplified_cols <- c(

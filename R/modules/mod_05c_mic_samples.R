@@ -1082,9 +1082,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         SampleName = NA_character_,
         FinalCall = "Unknown",
         mic_is_discordant = FALSE,
-        mic_n_tests = NA_integer_,
-        RunDate = NA_character_,
-        RunDateTime = NA_character_
+        mic_n_tests = NA_integer_
       ))
 
       # Create simplified display columns

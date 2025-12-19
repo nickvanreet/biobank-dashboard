@@ -1085,6 +1085,14 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         mic_n_tests = NA_integer_
       ))
 
+      safe_parse_date <- function(x) {
+        suppressWarnings(tryCatch(lubridate::ymd(as.character(x)), error = function(e) as.Date(NA)))
+      }
+
+      safe_parse_datetime <- function(x) {
+        suppressWarnings(tryCatch(lubridate::ymd_hms(as.character(x), tz = "UTC"), error = function(e) as.POSIXct(NA)))
+      }
+
       # Create simplified display columns
       display_df <- df %>%
         mutate(
@@ -1107,19 +1115,41 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
           ),
           # Quality flag
           Quality = QualityMetric,
+          RunDateParsed = safe_parse_date(RunDate),
+          RunDateTimeParsed = safe_parse_datetime(RunDateTime),
           RunDateDisplay = dplyr::case_when(
+            !is.na(RunDateParsed) ~ format(RunDateParsed, "%Y-%m-%d"),
+            !is.na(RunDateTimeParsed) ~ format(RunDateTimeParsed, "%Y-%m-%d"),
             !is.na(RunDate) & RunDate != "" ~ as.character(RunDate),
-            !is.na(RunDateTime) & RunDateTime != "" ~ format(lubridate::ymd_hms(RunDateTime, tz = "UTC"), "%Y-%m-%d"),
+            !is.na(RunDateTime) & RunDateTime != "" ~ as.character(RunDateTime),
             TRUE ~ NA_character_
           )
         )
+        
+      display_df$RunDateParsed <- NULL
+      display_df$RunDateTimeParsed <- NULL
 
       # Flatten list-like columns so DataTables receives scalar values rather than objects
-      display_df <- display_df %>%
-        mutate(across(where(is.list), ~vapply(.x, function(val) {
-          if (is.null(val) || (is.atomic(val) && length(val) == 0)) return(NA_character_)
-          paste(as.character(unlist(val)), collapse = ", ")
-        }, character(1))))
+      flatten_column <- function(x) {
+        if (is.list(x)) {
+          return(vapply(x, function(val) {
+            if (is.null(val) || (is.atomic(val) && length(val) == 0)) {
+              return(NA_character_)
+            }
+            paste(as.character(unlist(val)), collapse = ", ")
+          }, character(1)))
+        }
+
+        if (is.matrix(x) || is.array(x)) {
+          return(apply(x, 1, function(row) paste(as.character(row), collapse = ", ")))
+        }
+
+        if (is.factor(x)) return(as.character(x))
+        if (inherits(x, "Date")) return(format(x, "%Y-%m-%d"))
+        if (inherits(x, "POSIXt")) return(format(x, "%Y-%m-%d %H:%M:%S", tz = "UTC"))
+
+        as.character(x)
+      }
 
       # Select simplified columns for display
       simplified_cols <- c(
@@ -1138,7 +1168,10 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
           . == "DecisionStep" ~ "Step",
           . == "RunDateDisplay" ~ "Run date",
           TRUE ~ .
-        ))
+        )) %>%
+        as.data.frame(stringsAsFactors = FALSE, check.names = FALSE) %>%
+        lapply(flatten_column) %>%
+        as.data.frame(stringsAsFactors = FALSE, check.names = FALSE)
 
       datatable(
         display_df,

@@ -1119,7 +1119,10 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         mutate(across(where(is.list), ~vapply(.x, function(val) {
           if (is.null(val) || (is.atomic(val) && length(val) == 0)) return(NA_character_)
           paste(as.character(unlist(val)), collapse = ", ")
-        }, character(1))))
+        }, character(1)))) %>%
+        # Ensure DT receives only standard vectors (no list columns)
+        mutate(across(everything(), as.vector)) %>%
+        as.data.frame()
 
       # Select simplified columns for display
       simplified_cols <- c(

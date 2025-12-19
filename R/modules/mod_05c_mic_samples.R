@@ -23,33 +23,37 @@ mod_mic_samples_ui <- function(id) {
     )),
     div(
       class = "mic-samples-panel container-fluid",
+      # KPIs - Simplified layout with Testing Volume and Detection Results
       card(
         class = "mb-3",
         card_header(
           class = "d-flex justify-content-between align-items-center",
-          span("Sample KPIs"),
+          span("Sample Overview"),
           div(
             class = "d-flex align-items-center gap-2",
             div(
               class = "form-check form-switch m-0",
-              checkboxInput(ns("secondary_only"), label = NULL, value = FALSE, width = "auto")
+              checkboxInput(ns("use_final_result"), label = NULL, value = FALSE, width = "auto")
             ),
             tags$span(
-              "Use secondary result when available",
+              "Show final results only",
               class = "text-muted small"
+            ),
+            tags$small(
+              "(consolidates retested samples)",
+              class = "text-muted ms-1"
             )
           )
         ),
         card_body(
-          # Section 1: Testing Volume
-          tags$h5("Testing Volume", class = "mt-2 mb-3 text-muted"),
+          # Section 1: Testing Volume (compact 2-row layout)
           layout_column_wrap(
             width = 1/4,
             heights_equal = "row",
             gap = "12px",
 
             value_box(
-              title = "Total Samples Tested",
+              title = "Total Tests",
               value = textOutput(ns("kpi_samples_total")),
               showcase = icon("vial"),
               theme = "primary"
@@ -77,39 +81,10 @@ mod_mic_samples_ui <- function(id) {
             )
           ),
 
-          # Section 2: Data Linkage
-          tags$h5("Data Linkage", class = "mt-4 mb-3 text-muted"),
+          # Section 2: Detection Results (streamlined)
+          tags$hr(class = "my-3"),
           layout_column_wrap(
-            width = 1/3,
-            heights_equal = "row",
-            gap = "12px",
-
-            value_box(
-              title = "% Linked to Biobank",
-              value = textOutput(ns("kpi_biobank_linked")),
-              showcase = icon("warehouse"),
-              theme = "info"
-            ),
-
-            value_box(
-              title = "% Linked to Extraction",
-              value = textOutput(ns("kpi_extraction_linked")),
-              showcase = icon("flask"),
-              theme = "success"
-            ),
-
-            value_box(
-              title = "% Linked to Runs",
-              value = textOutput(ns("kpi_run_linked")),
-              showcase = icon("play-circle"),
-              theme = "primary"
-            )
-          ),
-
-          # Section 3: Detection Results
-          tags$h5("Detection Results", class = "mt-4 mb-3 text-muted"),
-          layout_column_wrap(
-            width = 1/4,
+            width = 1/6,
             heights_equal = "row",
             gap = "12px",
 
@@ -121,24 +96,17 @@ mod_mic_samples_ui <- function(id) {
             ),
 
             value_box(
-              title = "DNA Only Positive",
+              title = "DNA Only",
               value = textOutput(ns("kpi_samples_dna")),
               showcase = icon("circle-plus"),
               theme = "info"
             ),
 
             value_box(
-              title = "RNA Only Positive",
+              title = "RNA Only",
               value = textOutput(ns("kpi_samples_rna")),
               showcase = icon("wave-square"),
               theme = "info"
-            ),
-
-            value_box(
-              title = "Indeterminate",
-              value = textOutput(ns("kpi_samples_indeterminate")),
-              showcase = icon("question-circle"),
-              theme = "warning"
             ),
 
             value_box(
@@ -149,131 +117,78 @@ mod_mic_samples_ui <- function(id) {
             ),
 
             value_box(
-              title = "Invalid",
-              value = textOutput(ns("kpi_samples_invalid")),
-              showcase = icon("ban"),
-              theme = "danger"
-            ),
-
-            value_box(
-              title = "TNA Prevalence",
-              value = textOutput(ns("kpi_samples_tna_prev")),
-              showcase = icon("percent"),
-              theme = "primary"
-            ),
-
-            value_box(
-              title = "Any Positive Prevalence",
-              value = textOutput(ns("kpi_samples_any_prev")),
-              showcase = icon("chart-pie"),
-              theme = "primary"
-            )
-          ),
-
-          # Section 4: Decision Confidence
-          tags$h5("Decision Confidence", class = "mt-4 mb-3 text-muted"),
-          layout_column_wrap(
-            width = 1/4,
-            heights_equal = "row",
-            gap = "12px",
-
-            value_box(
-              title = "High Confidence",
-              value = textOutput(ns("kpi_confidence_high")),
-              showcase = icon("star"),
-              theme = "success"
-            ),
-
-            value_box(
-              title = "Medium Confidence",
-              value = textOutput(ns("kpi_confidence_medium")),
-              showcase = icon("star-half-stroke"),
-              theme = "info"
-            ),
-
-            value_box(
-              title = "Low Confidence",
-              value = textOutput(ns("kpi_confidence_low")),
-              showcase = icon("triangle-exclamation"),
+              title = "Indeterminate",
+              value = textOutput(ns("kpi_samples_indeterminate")),
+              showcase = icon("question-circle"),
               theme = "warning"
             ),
 
             value_box(
-              title = "Samples with Conflicts",
-              value = textOutput(ns("kpi_conflicts")),
-              showcase = icon("exclamation-circle"),
+              title = "Invalid",
+              value = textOutput(ns("kpi_samples_invalid")),
+              showcase = icon("ban"),
               theme = "danger"
             )
+          ),
+
+          # Prevalence summary (inline text)
+          div(
+            class = "mt-3 text-muted small",
+            tags$strong("Prevalence: "),
+            "TNA+ ", textOutput(ns("kpi_samples_tna_prev"), inline = TRUE),
+            " | Any positive ", textOutput(ns("kpi_samples_any_prev"), inline = TRUE)
           )
         )
       ),
 
+      # Decision Summary - compact layout with clickable heatmap
       card(
         class = "mb-3",
         card_header(
           class = "d-flex justify-content-between align-items-center",
-          span("Decision & Confidence Heatmap"),
-          tags$small("Hover to see quality context", class = "text-muted")
-        ),
-        card_body(
-          plotlyOutput(ns("decision_confidence_heatmap"), height = "420px"),
-          tags$small(
-            "Tile intensity reflects sample counts. Labels show conflicts or invalid rates when present.",
-            class = "text-muted"
+          span("Decision Summary"),
+          div(
+            class = "d-flex align-items-center gap-2",
+            tags$small("Click heatmap cells to filter samples", class = "text-muted"),
+            conditionalPanel(
+              condition = sprintf("input['%s'] !== null && input['%s'] !== ''", ns("active_filter"), ns("active_filter")),
+              ns = ns,
+              actionButton(ns("clear_filter"), "Clear filter", class = "btn-xs btn-outline-secondary")
+            )
           )
-        )
-      ),
-
-      # Decision Tree Summary
-      card(
-        class = "mb-3",
-        card_header(
-          class = "d-flex justify-content-between align-items-center",
-          span("Decision Tree Summary"),
-          tags$small("Uses one result per sample based on the toggle", class = "text-muted")
         ),
         card_body(
           layout_column_wrap(
-            width = 1/3,
-            gap = "12px",
+            width = c(7, 5),
+            gap = "16px",
 
-            card(
-              card_header("Decision Step Distribution"),
-              card_body(DTOutput(ns("tbl_decision_steps")))
+            # Heatmap (larger, clickable)
+            div(
+              plotlyOutput(ns("decision_confidence_heatmap"), height = "360px"),
+              uiOutput(ns("active_filter_display"))
             ),
 
-            card(
-              card_header("Confidence Distribution"),
-              card_body(DTOutput(ns("tbl_confidence_metrics")))
-            ),
-
-            card(
-              card_header("Quality Metrics"),
-              card_body(DTOutput(ns("tbl_quality_metrics")))
+            # Decision Tree Summary (compact sidebar)
+            div(
+              tags$h6("Decision Steps", class = "mb-2"),
+              DTOutput(ns("tbl_decision_steps")),
+              tags$h6("Quality Flags", class = "mt-3 mb-2"),
+              DTOutput(ns("tbl_quality_metrics"))
             )
           )
         )
       ),
 
-      # Results table - filters are applied from sidebar
+      # Results table - simplified with marker stats per sample
       card(
         card_header(
           class = "d-flex justify-content-between align-items-center",
           div(
             span("Sample Results"),
-            tags$small("Showing all available tests; toggle to view primary only. Click a row to view decision path.", class = "text-muted d-block")
+            tags$small("One row per sample. Click to view decision details.", class = "text-muted d-block")
           ),
           div(
             class = "d-flex align-items-center gap-3",
-            div(
-              class = "form-check form-switch m-0",
-              checkboxInput(
-                ns("primary_only"),
-                label = tags$span("Primary results only", class = "text-muted small"),
-                value = FALSE,
-                width = "auto"
-              )
-            ),
             downloadButton(ns("dl_filtered"), "Download", class = "btn-sm btn-outline-primary")
           )
         ),
@@ -288,6 +203,9 @@ mod_mic_samples_ui <- function(id) {
 
 mod_mic_samples_server <- function(id, filtered_base, processed_data) {
   moduleServer(id, function(input, output, session) {
+
+    # Reactive value for heatmap filter
+    heatmap_filter <- reactiveVal(list(call = NULL, confidence = NULL))
 
     ordinal_label <- function(n) {
       n <- as.integer(n)
@@ -367,6 +285,18 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       )
     }
 
+    # Format marker stats: Mean ± SD (n+/total)
+    format_marker_stats <- function(cq_values, n_positive, n_total) {
+      if (all(is.na(cq_values)) || length(cq_values) == 0) {
+        return("-")
+      }
+      mean_cq <- mean(cq_values, na.rm = TRUE)
+      sd_cq <- sd(cq_values, na.rm = TRUE)
+      if (is.na(sd_cq)) sd_cq <- 0
+
+      sprintf("%.1f +/- %.1f (%d/%d)", mean_cq, sd_cq, n_positive, n_total)
+    }
+
     samples_with_order <- reactive({
       df <- filtered_base()
 
@@ -377,51 +307,62 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         append_test_order(drop_helper_cols = FALSE)
     })
 
-    table_results <- reactive({
-      df <- samples_with_order()
-
-      if (!nrow(df)) return(df)
-
-      if (isTRUE(input$primary_only)) {
-        df <- df %>% filter(TestNumber == 1L)
-      }
-
-      # Split each sample into TWO rows: one for 177T target, one for 18S2 target
-      df_177t <- df %>%
-        mutate(
-          Target = "177T",
-          TargetCall = dplyr::coalesce(Call_177T, marker_177T),
-          TargetCq = Cq_median_177T,
-          QualityMetric = quality_metric_label(WellAggregateConflict, FinalCall)
-        )
-
-      df_18s2 <- df %>%
-        mutate(
-          Target = "18S2",
-          TargetCall = dplyr::coalesce(Call_18S2, marker_18S2),
-          TargetCq = Cq_median_18S2,
-          QualityMetric = quality_metric_label(WellAggregateConflict, FinalCall)
-        )
-
-      # Combine both targets
-      bind_rows(df_177t, df_18s2) %>%
-        arrange(SampleName, TestNumber, Target)
-    })
-
+    # Selected results - use final result toggle
     selected_results <- reactive({
       df <- samples_with_order()
 
       if (!nrow(df)) return(df)
 
-      df %>%
-        group_by(SampleKey) %>%
+      # If "Show final results only" is enabled, get consolidated results
+      if (isTRUE(input$use_final_result)) {
+        # Get one row per sample - prefer the final/consolidated result
+        df <- df %>%
+          group_by(SampleKey) %>%
+          arrange(desc(TestNumber)) %>%  # Latest test first
+          slice_head(n = 1) %>%
+          ungroup()
+      }
+
+      df
+    })
+
+    # Table results - one row per sample with marker stats
+    table_results <- reactive({
+      df <- selected_results()
+
+      if (!nrow(df)) return(df)
+
+      # Add quality metric
+      df <- df %>%
+        mutate(QualityMetric = quality_metric_label(WellAggregateConflict, FinalCall))
+
+      # Create marker summary columns
+      df <- df %>%
         mutate(
-          TargetTest = if_else(isTRUE(input$secondary_only) & max(TestNumber) >= 2, 2L, 1L),
-          TargetTest = pmin(TargetTest, max(TestNumber))
-        ) %>%
-        filter(TestNumber == TargetTest) %>%
-        slice_head(n = 1) %>%
-        ungroup()
+          # 177T marker stats
+          Marker_177T = sprintf(
+            "%.1f (%s)",
+            round(Cq_median_177T, 1),
+            ifelse(!is.na(Wells_DNA_Positive), paste0(Wells_DNA_Positive, "+"), "?")
+          ),
+          # 18S2 marker stats
+          Marker_18S2 = sprintf(
+            "%.1f (%s)",
+            round(Cq_median_18S2, 1),
+            ifelse(!is.na(Wells_RNA_Positive), paste0(Wells_RNA_Positive, "+"), "?")
+          )
+        )
+
+      # Apply heatmap filter if set
+      filter_state <- heatmap_filter()
+      if (!is.null(filter_state$call)) {
+        df <- df %>% filter(FinalCall == filter_state$call)
+      }
+      if (!is.null(filter_state$confidence)) {
+        df <- df %>% filter(ConfidenceScore == filter_state$confidence)
+      }
+
+      df
     })
 
     decision_tree_summary <- reactive({
@@ -682,7 +623,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
     output$kpi_samples_multiple <- renderText({
       metrics <- sample_metrics()
       if (is.null(metrics)) return("0")
-      suffix <- if (isTRUE(input$secondary_only) && metrics$tested_multiple > 0) " (secondary applied)" else ""
+      suffix <- if (isTRUE(input$use_final_result) && metrics$tested_multiple > 0) " (final)" else ""
       paste0(scales::comma(metrics$tested_multiple), suffix)
     })
 
@@ -929,7 +870,8 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
           y = FinalCall,
           fill = Samples,
           text = Tooltip,
-          label = TileLabel
+          label = TileLabel,
+          customdata = paste(FinalCall, ConfidenceScore, sep = "|||")
         )
       ) +
         ggplot2::geom_tile(color = "#f8fafc") +
@@ -943,18 +885,70 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         ggplot2::labs(
           x = "Confidence",
           y = "Final call",
-          title = "Decision confidence matrix"
+          title = "Click a cell to filter samples"
         ) +
         ggplot2::theme_minimal() +
         ggplot2::theme(
           axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-          plot.title = ggplot2::element_text(size = 12, face = "bold"),
+          plot.title = ggplot2::element_text(size = 11, face = "bold"),
           legend.position = "right"
         )
 
-      plotly::ggplotly(heatmap_plot, tooltip = "text") %>%
-        plotly::layout(margin = list(l = 60, r = 40, b = 80, t = 60))
+      plotly::ggplotly(heatmap_plot, tooltip = "text", source = "heatmap_click") %>%
+        plotly::layout(margin = list(l = 60, r = 40, b = 80, t = 60)) %>%
+        plotly::event_register("plotly_click")
     })
+
+    # Handle heatmap clicks
+    observeEvent(plotly::event_data("plotly_click", source = "heatmap_click"), {
+      click_data <- plotly::event_data("plotly_click", source = "heatmap_click")
+      if (!is.null(click_data)) {
+        # Extract FinalCall (y) and ConfidenceScore (x) from click
+        clicked_call <- click_data$y
+        clicked_conf <- click_data$x
+        heatmap_filter(list(call = clicked_call, confidence = clicked_conf))
+      }
+    })
+
+    # Clear filter button
+    observeEvent(input$clear_filter, {
+      heatmap_filter(list(call = NULL, confidence = NULL))
+    })
+
+    # Active filter display
+    output$active_filter_display <- renderUI({
+      filter_state <- heatmap_filter()
+      if (is.null(filter_state$call) && is.null(filter_state$confidence)) {
+        return(NULL)
+      }
+
+      filter_text <- paste0(
+        "Filtered: ",
+        if (!is.null(filter_state$call)) paste0("Call = ", filter_state$call) else "",
+        if (!is.null(filter_state$call) && !is.null(filter_state$confidence)) " & " else "",
+        if (!is.null(filter_state$confidence)) paste0("Confidence = ", filter_state$confidence) else ""
+      )
+
+      div(
+        class = "alert alert-info py-1 px-2 mt-2 mb-0 d-flex align-items-center justify-content-between",
+        tags$small(filter_text),
+        actionButton(session$ns("clear_filter_inline"), "Clear", class = "btn-xs btn-outline-secondary ms-2")
+      )
+    })
+
+    observeEvent(input$clear_filter_inline, {
+      heatmap_filter(list(call = NULL, confidence = NULL))
+    })
+
+    # Hidden input for conditionalPanel
+    output$active_filter <- reactive({
+      filter_state <- heatmap_filter()
+      if (!is.null(filter_state$call) || !is.null(filter_state$confidence)) {
+        return("active")
+      }
+      return("")
+    })
+    outputOptions(output, "active_filter", suspendWhenHidden = FALSE)
 
     output$decision_tree_calls_plot <- plotly::renderPlotly({
       df <- selected_results()
@@ -1040,7 +1034,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         plotly::layout(legend = list(title = list(text = "Confidence")))
     })
 
-    # Main samples table
+    # Main samples table - simplified with one row per sample
     output$tbl_samples <- renderDT({
       df <- table_results()
 
@@ -1054,148 +1048,80 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
 
       df <- drop_helper_columns(df)
 
-      # Round numeric columns
-      numeric_cols <- intersect(
-        c("TargetCq", "Cq_median_177T", "Cq_median_18S2", "Cq_median_RNAseP_DNA",
-          "Cq_median_RNAseP_RNA", "Delta_18S2_177T", "Delta_RP"),
-        names(df)
-      )
-      
-      if (length(numeric_cols) > 0) {
-        df <- df %>% mutate(across(all_of(numeric_cols), ~round(.x, 2)))
-      }
-      
-      # Add discordance indicator column for display
-      if ("mic_is_discordant" %in% names(df) && "mic_status_final" %in% names(df)) {
-        df <- df %>%
-          mutate(
-            ConsolidatedStatus = dplyr::case_when(
-              mic_is_discordant == TRUE ~ paste0(mic_status_final, " \u26A0\uFE0F"),
-              mic_is_retest == TRUE ~ paste0(mic_status_final, " (", mic_n_tests, "x)"),
-              TRUE ~ mic_status_final
-            ),
-            DiscordanceFlag = dplyr::case_when(
-              mic_is_discordant == TRUE ~ "Discordant",
-              mic_is_retest == TRUE ~ "Retested",
-              TRUE ~ "Single"
-            )
-          )
-      }
+      # Create simplified display columns
+      display_df <- df %>%
+        mutate(
+          # Format marker columns: Cq (n+)
+          `177T (DNA)` = ifelse(
+            is.na(Cq_median_177T),
+            "-",
+            sprintf("%.1f (%s+)", Cq_median_177T, ifelse(is.na(Wells_DNA_Positive), "?", Wells_DNA_Positive))
+          ),
+          `18S2 (RNA)` = ifelse(
+            is.na(Cq_median_18S2),
+            "-",
+            sprintf("%.1f (%s+)", Cq_median_18S2, ifelse(is.na(Wells_RNA_Positive), "?", Wells_RNA_Positive))
+          ),
+          # Simplified status - combine discordance info
+          Status = dplyr::case_when(
+            "mic_is_discordant" %in% names(.) & mic_is_discordant == TRUE ~ paste0(FinalCall, " [DISCORDANT]"),
+            "mic_n_tests" %in% names(.) & mic_n_tests > 1 ~ paste0(FinalCall, " (", mic_n_tests, "x)"),
+            TRUE ~ FinalCall
+          ),
+          # Quality flag
+          Quality = QualityMetric
+        )
 
-      # Select columns to display - including Target, TargetCall, TargetCq
-      available_cols <- intersect(
-        c("RunID", "SampleName", "Barcode", "TestOrderLabel", "TestNumber", "Target", "TargetCall", "TargetCq",
-          "FinalCall", "ConsolidatedStatus", "DiscordanceFlag", "mic_confidence",
-          "QualityMetric", "DecisionStep", "DecisionReason", "ConfidenceScore",
-          "WellSummary", "WellAggregateConflict",
-          "Wells_TNA_Positive", "Wells_DNA_Positive", "Wells_RNA_Positive",
-          "ReplicatesTotal", "Replicates_Positive", "Replicates_Negative", "Replicates_Failed",
-          "Cq_median_177T", "Cq_median_18S2",
-          "Cq_median_RNAseP_DNA", "Cq_median_RNAseP_RNA",
-          "Delta_18S2_177T", "Delta_RP",
-          "Province", "Structure", "HealthZone",
-          "BiobankMatched", "ExtractionMatched", "Flags"),
-        names(df)
+      # Select simplified columns for display
+      simplified_cols <- c(
+        "SampleName", "Status", "177T (DNA)", "18S2 (RNA)",
+        "ConfidenceScore", "Quality", "DecisionStep", "Province"
       )
-      
+
+      # Only include columns that exist
+      available_cols <- intersect(simplified_cols, names(display_df))
+
+      # Rename for cleaner display
+      display_df <- display_df %>%
+        select(all_of(available_cols)) %>%
+        rename_with(~case_when(
+          . == "ConfidenceScore" ~ "Confidence",
+          . == "DecisionStep" ~ "Step",
+          TRUE ~ .
+        ))
+
       datatable(
-        df %>% select(all_of(available_cols)),
-        selection = 'single',  # Enable single row selection
+        display_df,
+        selection = 'single',
         options = list(
           pageLength = 25,
           scrollX = TRUE,
-          dom = 'Blfrtip',
-          buttons = c('copy', 'csv', 'excel'),
-          lengthMenu = list(c(10, 25, 50, 100, -1), c('10', '25', '50', '100', 'All')),
+          dom = 'lfrtip',
+          lengthMenu = list(c(10, 25, 50, 100), c('10', '25', '50', '100')),
           columnDefs = list(
-            list(className = 'dt-center', targets = c('FinalCall', 'QualityMetric', 'BiobankMatched', 'ExtractionMatched'))
+            list(className = 'dt-center', targets = "_all")
           )
         ),
         rownames = FALSE,
         class = "display compact stripe hover",
         filter = 'top'
       ) %>%
-        formatStyle('FinalCall',
+        formatStyle('Status',
                     backgroundColor = styleEqual(
-                      c('Positive', 'Positive_DNA', 'Positive_RNA', 'LatePositive', 'Negative', 'Indeterminate', 'Invalid_NoDNA', 'Invalid', 'RunInvalid', 'Control', 'Control_Fail'),
-                      c('#d4edda', '#b3e0f2', '#d4b3f2', '#ffe8a1', '#f8f9fa', '#fff3cd', '#f8d7da', '#f8d7da', '#f8d7da', '#dbe9ff', '#f5c6cb')
+                      c('Positive', 'Positive_DNA', 'Positive_RNA', 'LatePositive', 'Negative',
+                        'Indeterminate', 'Invalid_NoDNA', 'Invalid', 'RunInvalid'),
+                      c('#d4edda', '#b3e0f2', '#d4b3f2', '#ffe8a1', '#f8f9fa',
+                        '#fff3cd', '#f8d7da', '#f8d7da', '#f8d7da')
                     )) %>%
-        {
-          if ("TargetCall" %in% available_cols) {
-            formatStyle(.,
-                        'TargetCall',
-                        backgroundColor = styleEqual(
-                          c('Positive', 'Negative', 'Indeterminate'),
-                          c('#d4edda', '#f8f9fa', '#fff3cd')
-                        ))
-          } else {
-            .
-          }
-        } %>%
-        formatStyle('QualityMetric',
+        formatStyle('Quality',
                     backgroundColor = styleEqual(
                       c('Conflict', 'Invalid', 'Indeterminate', 'Clean'),
                       c('#f8d7da', '#f8d7da', '#fff3cd', '#d4edda')
                     )) %>%
         {
-          if ("ConfidenceScore" %in% available_cols) {
+          if ("Confidence" %in% names(display_df)) {
             formatStyle(.,
-                        'ConfidenceScore',
-                        backgroundColor = styleEqual(
-                          c('High', 'Medium', 'Low'),
-                          c('#d4edda', '#cfe2ff', '#fff3cd')
-                        ))
-          } else {
-            .
-          }
-        } %>%
-        {
-          if ("WellAggregateConflict" %in% available_cols) {
-            formatStyle(.,
-                        'WellAggregateConflict',
-                        backgroundColor = styleEqual(
-                          c(TRUE, FALSE),
-                          c('#f8d7da', 'transparent')
-                        ))
-          } else {
-            .
-          }
-        } %>%
-        # Discordance flag styling
-        {
-          if ("DiscordanceFlag" %in% available_cols) {
-            formatStyle(.,
-                        'DiscordanceFlag',
-                        backgroundColor = styleEqual(
-                          c('Discordant', 'Retested', 'Single'),
-                          c('#f8d7da', '#fff3cd', 'transparent')
-                        ),
-                        fontWeight = styleEqual(
-                          c('Discordant', 'Retested', 'Single'),
-                          c('bold', 'normal', 'normal')
-                        ))
-          } else {
-            .
-          }
-        } %>%
-        # Consolidated status styling
-        {
-          if ("ConsolidatedStatus" %in% available_cols) {
-            formatStyle(.,
-                        'ConsolidatedStatus',
-                        backgroundColor = styleEqual(
-                          c('Positive', 'Negative', 'Borderline', 'Invalid'),
-                          c('#d4edda', '#f8f9fa', '#fff3cd', '#f8d7da')
-                        ))
-          } else {
-            .
-          }
-        } %>%
-        # MIC confidence styling
-        {
-          if ("mic_confidence" %in% available_cols) {
-            formatStyle(.,
-                        'mic_confidence',
+                        'Confidence',
                         backgroundColor = styleEqual(
                           c('High', 'Medium', 'Low'),
                           c('#d4edda', '#cfe2ff', '#fff3cd')

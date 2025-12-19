@@ -1115,17 +1115,21 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
           ),
           # Quality flag
           Quality = QualityMetric,
-          RunDateParsed = safe_parse_date(RunDate),
-          RunDateTimeParsed = safe_parse_datetime(RunDateTime),
+          RunDateRaw = as.character(RunDate),
+          RunDateTimeRaw = as.character(RunDateTime),
+          RunDateParsed = safe_parse_date(RunDateRaw),
+          RunDateTimeParsed = safe_parse_datetime(RunDateTimeRaw),
           RunDateDisplay = dplyr::case_when(
             !is.na(RunDateParsed) ~ format(RunDateParsed, "%Y-%m-%d"),
             !is.na(RunDateTimeParsed) ~ format(RunDateTimeParsed, "%Y-%m-%d"),
-            !is.na(RunDate) & RunDate != "" ~ as.character(RunDate),
-            !is.na(RunDateTime) & RunDateTime != "" ~ as.character(RunDateTime),
+            !is.na(RunDateRaw) & RunDateRaw != "" ~ RunDateRaw,
+            !is.na(RunDateTimeRaw) & RunDateTimeRaw != "" ~ RunDateTimeRaw,
             TRUE ~ NA_character_
           )
         )
-        
+
+      display_df$RunDateRaw <- NULL
+      display_df$RunDateTimeRaw <- NULL
       display_df$RunDateParsed <- NULL
       display_df$RunDateTimeParsed <- NULL
 

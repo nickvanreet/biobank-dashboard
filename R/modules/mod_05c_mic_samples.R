@@ -1114,6 +1114,13 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
           )
         )
 
+      # Flatten list-like columns so DataTables receives scalar values rather than objects
+      display_df <- display_df %>%
+        mutate(across(where(is.list), ~vapply(.x, function(val) {
+          if (is.null(val) || (is.atomic(val) && length(val) == 0)) return(NA_character_)
+          paste(as.character(unlist(val)), collapse = ", ")
+        }, character(1))))
+
       # Select simplified columns for display
       simplified_cols <- c(
         "SampleName", "Status", "177T (DNA)", "18S2 (RNA)",

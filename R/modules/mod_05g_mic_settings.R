@@ -7,6 +7,23 @@ mod_mic_settings_ui <- function(id) {
 
   tagList(
     tags$style(HTML("
+      .mic-settings-panel {
+        min-width: 800px;
+      }
+      .mic-settings-panel .card {
+        margin-bottom: 1.5rem;
+      }
+      .mic-settings-panel .card-body {
+        padding: 1.5rem;
+      }
+      .mic-settings-panel h6 {
+        font-weight: 600;
+        color: #374151;
+        margin-bottom: 1rem;
+      }
+      .mic-settings-panel .form-group {
+        margin-bottom: 1.25rem;
+      }
       .settings-section-header {
         font-size: 1rem;
         font-weight: 600;
@@ -18,16 +35,19 @@ mod_mic_settings_ui <- function(id) {
       .threshold-group {
         background: #f8f9fa;
         border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1rem;
+        padding: 1.25rem;
+        margin-bottom: 1.25rem;
       }
       .threshold-label {
         font-size: 0.875rem;
         font-weight: 600;
         color: #495057;
-        margin-bottom: 0.5rem;
+        margin-bottom: 0.75rem;
       }
     ")),
+
+    div(
+      class = "mic-settings-panel",
 
     layout_columns(
       col_widths = c(6, 6),
@@ -263,13 +283,14 @@ mod_mic_settings_ui <- function(id) {
         )
       )
     ),
-    
+
     # Apply button
     div(
       class = "text-end mt-3",
       actionButton(ns("apply"), "Apply Settings", class = "btn-primary btn-lg"),
       actionButton(ns("reset"), "Reset to Defaults", class = "btn-outline-secondary ms-2")
     )
+    ) # Close mic-settings-panel div
   )
 }
 

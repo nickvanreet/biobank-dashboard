@@ -359,6 +359,8 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
       # Create marker summary columns
       df <- df %>%
         mutate(
+          FinalCall = as.character(FinalCall),
+          ConfidenceScore = as.character(ConfidenceScore),
           # 177T marker stats
           Marker_177T = sprintf(
             "%.1f (%s)",
@@ -923,9 +925,17 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
     observeEvent(plotly::event_data("plotly_click", source = "heatmap_click"), {
       click_data <- plotly::event_data("plotly_click", source = "heatmap_click")
       if (!is.null(click_data)) {
-        # Extract FinalCall (y) and ConfidenceScore (x) from click
-        clicked_call <- click_data$y
-        clicked_conf <- click_data$x
+        # Extract FinalCall (y) and ConfidenceScore (x) from click using customdata to
+        # avoid factor index lookups from ggplotly
+        if (!is.null(click_data$customdata)) {
+          parts <- strsplit(as.character(click_data$customdata), "\\|\\|\\|", fixed = FALSE)[[1]]
+          clicked_call <- dplyr::coalesce(parts[[1]], NA_character_)
+          clicked_conf <- if (length(parts) >= 2) dplyr::coalesce(parts[[2]], NA_character_) else NA_character_
+        } else {
+          clicked_call <- click_data$y
+          clicked_conf <- click_data$x
+        }
+
         heatmap_filter(list(call = clicked_call, confidence = clicked_conf))
       }
     })
@@ -1096,13 +1106,18 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
             TRUE ~ FinalCall
           ),
           # Quality flag
-          Quality = QualityMetric
+          Quality = QualityMetric,
+          RunDateDisplay = dplyr::case_when(
+            !is.na(RunDate) & RunDate != "" ~ as.character(RunDate),
+            !is.na(RunDateTime) & RunDateTime != "" ~ format(lubridate::ymd_hms(RunDateTime, tz = "UTC"), "%Y-%m-%d"),
+            TRUE ~ NA_character_
+          )
         )
 
       # Select simplified columns for display
       simplified_cols <- c(
         "SampleName", "Status", "177T (DNA)", "18S2 (RNA)",
-        "ConfidenceScore", "Quality", "DecisionStep", "Province"
+        "ConfidenceScore", "Quality", "DecisionStep", "RunDateDisplay"
       )
 
       # Only include columns that exist
@@ -1114,6 +1129,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         rename_with(~case_when(
           . == "ConfidenceScore" ~ "Confidence",
           . == "DecisionStep" ~ "Step",
+          . == "RunDateDisplay" ~ "Run date",
           TRUE ~ .
         ))
 

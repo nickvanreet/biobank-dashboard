@@ -1287,10 +1287,12 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
       }
 
       plot_data <- stats %>%
-        dplyr::slice_head(n = 15) %>%
         dplyr::mutate(health_structure = factor(health_structure, levels = rev(health_structure)))
 
-      plotly::plot_ly(plot_data) %>%
+      # Dynamic height based on number of structures
+      chart_height <- max(400, nrow(plot_data) * 25)
+
+      plotly::plot_ly(plot_data, height = chart_height) %>%
         plotly::add_bars(
           x = ~pct_volume_ok, y = ~health_structure, name = "OK",
           marker = list(color = "#27AE60"), orientation = "h"
@@ -1318,7 +1320,6 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
       }
 
       plot_data <- stats %>%
-        dplyr::slice_head(n = 15) %>%
         dplyr::arrange(qc_score) %>%
         dplyr::mutate(
           health_structure = factor(health_structure, levels = health_structure),
@@ -1329,6 +1330,9 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
           )
         )
 
+      # Dynamic height based on number of structures
+      chart_height <- max(400, nrow(plot_data) * 25)
+
       plotly::plot_ly(
         plot_data,
         x = ~qc_score,
@@ -1337,7 +1341,8 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
         orientation = "h",
         marker = list(color = ~color),
         text = ~sprintf("%.0f", qc_score),
-        textposition = "outside"
+        textposition = "outside",
+        height = chart_height
       ) %>%
         plotly::layout(
           xaxis = list(title = "QC Score (0-100)", range = c(0, 110)),

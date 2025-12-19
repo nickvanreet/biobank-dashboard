@@ -159,7 +159,7 @@ mod_mic_samples_ui <- function(id) {
         ),
         card_body(
           layout_column_wrap(
-            width = c(7, 5),
+            width = 1/2,
             gap = "16px",
 
             # Heatmap (larger, clickable)

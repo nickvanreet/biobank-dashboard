@@ -54,7 +54,7 @@ mod_mic_overview_ui <- function(id) {
       value_box(
         title = "Runs Passing Controls",
         value = textOutput(ns("kpi_runs_control_ok")),
-        showcase = icon("shield-check"),
+        showcase = icon("shield-halved"),
         theme = "success"
       ),
 

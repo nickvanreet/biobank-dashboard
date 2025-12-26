@@ -1195,10 +1195,14 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       empty_result <- tibble::tibble(
         health_zone_norm = character(),
         ielisa_l13_pos = integer(),
+        ielisa_l13_border = integer(),
         ielisa_l13_neg = integer(),
         ielisa_l15_pos = integer(),
+        ielisa_l15_border = integer(),
         ielisa_l15_neg = integer(),
         ielisa_any_pos = integer(),
+        ielisa_any_border = integer(),
+        ielisa_both_pos = integer(),
         ielisa_total = integer()
       )
 
@@ -1297,6 +1301,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       # ========================================================================
       # STANDARDIZED iELISA COUNTING (matches Sample Overview logic)
       # Uses utils_standardized_counting.R for consistent classification
+      # Thresholds: >=30% = Positive, 25-30% = Borderline, <25% = Negative
       # ========================================================================
 
       # First, deduplicate samples to get one result per sample
@@ -1305,40 +1310,60 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
                        else if ("sample_id" %in% names(ielisa_with_zone)) "sample_id"
                        else NULL
 
-      # Apply standardized iELISA classification for L13 and L15
+      # Get inhibition values for classification
       ielisa_results <- ielisa_with_zone %>%
         dplyr::mutate(
           health_zone_norm = normalize_zone_name(health_zone),
-          # L1.3 positivity - use standardized function
-          l13_pos = is_ielisa_L13_positive(
-            inhibition_L13 = if ("pct_inh_f1_13" %in% names(.)) pct_inh_f1_13 else
-                             if ("pct_inh_f2_13" %in% names(.)) pct_inh_f2_13 else NULL,
-            positive_L13 = if ("positive_L13" %in% names(.)) positive_L13 else NULL,
-            positive_threshold = 30,
-            include_borderline = FALSE
+          # Get inhibition values (prefer F1, fallback to F2)
+          inh_L13 = dplyr::coalesce(
+            if ("pct_inh_f1_13" %in% names(.)) pct_inh_f1_13 else NA_real_,
+            if ("pct_inh_f2_13" %in% names(.)) pct_inh_f2_13 else NA_real_
           ),
-          # L1.5 positivity - use standardized function
-          l15_pos = is_ielisa_L15_positive(
-            inhibition_L15 = if ("pct_inh_f1_15" %in% names(.)) pct_inh_f1_15 else
-                             if ("pct_inh_f2_15" %in% names(.)) pct_inh_f2_15 else NULL,
-            positive_L15 = if ("positive_L15" %in% names(.)) positive_L15 else NULL,
-            positive_threshold = 30,
-            include_borderline = FALSE
+          inh_L15 = dplyr::coalesce(
+            if ("pct_inh_f1_15" %in% names(.)) pct_inh_f1_15 else NA_real_,
+            if ("pct_inh_f2_15" %in% names(.)) pct_inh_f2_15 else NA_real_
           ),
+          # L1.3 classification using standardized thresholds
+          l13_status = classify_ielisa(inh_L13, positive_threshold = 30, borderline_threshold = 25),
+          l13_pos = l13_status == "Positive",
+          l13_border = l13_status == "Borderline",
+          # Override with boolean if available
+          l13_pos = dplyr::if_else(
+            !is.na(l13_pos), l13_pos,
+            if ("positive_L13" %in% names(.)) positive_L13 == TRUE else FALSE
+          ),
+          # L1.5 classification using standardized thresholds
+          l15_status = classify_ielisa(inh_L15, positive_threshold = 30, borderline_threshold = 25),
+          l15_pos = l15_status == "Positive",
+          l15_border = l15_status == "Borderline",
+          # Override with boolean if available
+          l15_pos = dplyr::if_else(
+            !is.na(l15_pos), l15_pos,
+            if ("positive_L15" %in% names(.)) positive_L15 == TRUE else FALSE
+          ),
+          # Combined status
           any_pos = l13_pos | l15_pos,
-          both_pos = l13_pos & l15_pos
+          both_pos = l13_pos & l15_pos,
+          any_border = l13_border | l15_border
         )
 
       # Replace NA with FALSE for logical operations
       ielisa_results$l13_pos[is.na(ielisa_results$l13_pos)] <- FALSE
       ielisa_results$l15_pos[is.na(ielisa_results$l15_pos)] <- FALSE
+      ielisa_results$l13_border[is.na(ielisa_results$l13_border)] <- FALSE
+      ielisa_results$l15_border[is.na(ielisa_results$l15_border)] <- FALSE
       ielisa_results$any_pos[is.na(ielisa_results$any_pos)] <- FALSE
       ielisa_results$both_pos[is.na(ielisa_results$both_pos)] <- FALSE
+      ielisa_results$any_border[is.na(ielisa_results$any_border)] <- FALSE
 
       # Deduplicate if sample ID is available
       if (!is.null(sample_id_col)) {
         ielisa_results <- ielisa_results %>%
-          dplyr::mutate(std_status = dplyr::if_else(any_pos, "Positive", "Negative"))
+          dplyr::mutate(std_status = dplyr::case_when(
+            any_pos ~ "Positive",
+            any_border ~ "Borderline",
+            TRUE ~ "Negative"
+          ))
         ielisa_results <- deduplicate_test_results(ielisa_results, sample_id_col, "std_status")
       }
 
@@ -1346,10 +1371,13 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         dplyr::group_by(health_zone_norm) %>%
         dplyr::summarise(
           ielisa_l13_pos = sum(l13_pos, na.rm = TRUE),
-          ielisa_l13_neg = sum(!l13_pos, na.rm = TRUE),
+          ielisa_l13_border = sum(l13_border, na.rm = TRUE),
+          ielisa_l13_neg = sum(!l13_pos & !l13_border, na.rm = TRUE),
           ielisa_l15_pos = sum(l15_pos, na.rm = TRUE),
-          ielisa_l15_neg = sum(!l15_pos, na.rm = TRUE),
+          ielisa_l15_border = sum(l15_border, na.rm = TRUE),
+          ielisa_l15_neg = sum(!l15_pos & !l15_border, na.rm = TRUE),
           ielisa_any_pos = sum(any_pos, na.rm = TRUE),
+          ielisa_any_border = sum(any_border & !any_pos, na.rm = TRUE),  # Borderline but not positive
           ielisa_both_pos = sum(both_pos, na.rm = TRUE),
           ielisa_total = dplyr::n(),
           .groups = "drop"

@@ -739,67 +739,95 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         return(empty_result)
       }
 
-      # Determine DNA/RNA/TNA/RNAseP positivity
-      mic_results <- mic_with_zone %>%
+      # ========================================================================
+      # STANDARDIZED MIC COUNTING (matches Sample Overview logic)
+      # Uses utils_standardized_counting.R for consistent classification
+      # ========================================================================
+
+      # First, deduplicate samples to get one result per sample
+      # This matches the Sample Overview module's deduplication logic
+      sample_id_col <- if ("SampleID" %in% names(mic_with_zone)) "SampleID"
+                       else if ("sample_id" %in% names(mic_with_zone)) "sample_id"
+                       else if ("numero_labo" %in% names(mic_with_zone)) "numero_labo"
+                       else NULL
+
+      if (!is.null(sample_id_col)) {
+        mic_dedup <- deduplicate_mic_samples(mic_with_zone, sample_id_col)
+      } else {
+        mic_dedup <- mic_with_zone
+      }
+
+      # Normalize health zone and apply standardized classification
+      mic_results <- mic_dedup %>%
         dplyr::mutate(
           health_zone_norm = normalize_zone_name(health_zone)
         )
 
-      # DNA positive
-      if ("marker_177T" %in% names(mic_results)) {
-        mic_results$is_dna_pos <- grepl("Pos", mic_results$marker_177T, ignore.case = TRUE)
+      # Use standardized classification for DNA (177T) and RNA (18S2)
+      has_marker_177t <- "marker_177T" %in% names(mic_results) || "Call_177T" %in% names(mic_results)
+      has_marker_18s2 <- "marker_18S2" %in% names(mic_results) || "Call_18S2" %in% names(mic_results)
+
+      # DNA positive - using standardized classification
+      if (has_marker_177t) {
+        marker_col <- if ("marker_177T" %in% names(mic_results)) mic_results$marker_177T else mic_results$Call_177T
+        mic_results$is_dna_pos <- is_mic_dna_positive(marker_col, include_latepositive = TRUE)
       } else if ("FinalCall" %in% names(mic_results)) {
-        mic_results$is_dna_pos <- grepl("DNA|177T", mic_results$FinalCall, ignore.case = TRUE) &
-          grepl("Pos|detect", mic_results$FinalCall, ignore.case = TRUE)
+        # FinalCall: Positive (TNA), Positive_DNA, Positive_RNA, LatePositive
+        mic_results$is_dna_pos <- mic_results$FinalCall %in% c("Positive", "Positive_DNA")
       } else {
         mic_results$is_dna_pos <- FALSE
       }
 
-      # RNA positive
-      if ("marker_18S2" %in% names(mic_results)) {
-        mic_results$is_rna_pos <- grepl("Pos", mic_results$marker_18S2, ignore.case = TRUE)
+      # RNA positive - using standardized classification
+      if (has_marker_18s2) {
+        marker_col <- if ("marker_18S2" %in% names(mic_results)) mic_results$marker_18S2 else mic_results$Call_18S2
+        mic_results$is_rna_pos <- is_mic_rna_positive(marker_col, include_latepositive = TRUE)
       } else if ("FinalCall" %in% names(mic_results)) {
-        mic_results$is_rna_pos <- grepl("RNA|18S", mic_results$FinalCall, ignore.case = TRUE) &
-          grepl("Pos|detect", mic_results$FinalCall, ignore.case = TRUE)
+        mic_results$is_rna_pos <- mic_results$FinalCall %in% c("Positive", "Positive_RNA")
       } else {
         mic_results$is_rna_pos <- FALSE
       }
 
-      # TNA positive (both DNA and RNA)
+      # TNA positive (both DNA and RNA) - sample has BOTH targets positive
       mic_results$is_tna_pos <- mic_results$is_dna_pos & mic_results$is_rna_pos
 
-      # Any positive
+      # Any positive - using standardized is_mic_positive function
       if ("FinalCall" %in% names(mic_results)) {
-        mic_results$is_any_pos <- grepl("Pos|detect", mic_results$FinalCall, ignore.case = TRUE)
-      } else if ("category" %in% names(mic_results)) {
-        mic_results$is_any_pos <- mic_results$category == "positive"
+        mic_results$is_any_pos <- is_mic_positive(mic_results$FinalCall,
+                                                   include_latepositive = TRUE,
+                                                   include_borderline = FALSE)
       } else {
         mic_results$is_any_pos <- mic_results$is_dna_pos | mic_results$is_rna_pos
       }
 
-      # Negative
+      # Negative - standardized classification
       if ("FinalCall" %in% names(mic_results)) {
-        mic_results$is_negative <- grepl("Neg", mic_results$FinalCall, ignore.case = TRUE)
-      } else if ("category" %in% names(mic_results)) {
-        mic_results$is_negative <- mic_results$category == "negative"
+        mic_results$is_negative <- mic_results$FinalCall == "Negative"
       } else {
         mic_results$is_negative <- !mic_results$is_any_pos
       }
 
-      # RNAseP-DNA positive
+      # Invalid - standardized classification
+      if ("FinalCall" %in% names(mic_results)) {
+        mic_results$is_invalid <- mic_results$FinalCall %in% standardized_cutoffs()$mic_invalid_calls
+      } else {
+        mic_results$is_invalid <- FALSE
+      }
+
+      # RNAseP-DNA positive (using standardized marker classification)
       if ("marker_RNAseP_DNA" %in% names(mic_results)) {
-        mic_results$is_rnasep_dna_pos <- grepl("Pos", mic_results$marker_RNAseP_DNA, ignore.case = TRUE)
+        mic_results$is_rnasep_dna_pos <- classify_mic_marker(mic_results$marker_RNAseP_DNA) == "Positive"
       } else if ("RNAseP_DNA" %in% names(mic_results)) {
-        mic_results$is_rnasep_dna_pos <- grepl("Pos|Good", mic_results$RNAseP_DNA, ignore.case = TRUE)
+        mic_results$is_rnasep_dna_pos <- classify_mic_marker(mic_results$RNAseP_DNA) == "Positive"
       } else {
         mic_results$is_rnasep_dna_pos <- FALSE
       }
 
-      # RNAseP-RNA positive
+      # RNAseP-RNA positive (using standardized marker classification)
       if ("marker_RNAseP_RNA" %in% names(mic_results)) {
-        mic_results$is_rnasep_rna_pos <- grepl("Pos", mic_results$marker_RNAseP_RNA, ignore.case = TRUE)
+        mic_results$is_rnasep_rna_pos <- classify_mic_marker(mic_results$marker_RNAseP_RNA) == "Positive"
       } else if ("RNAseP_RNA" %in% names(mic_results)) {
-        mic_results$is_rnasep_rna_pos <- grepl("Pos|Good", mic_results$RNAseP_RNA, ignore.case = TRUE)
+        mic_results$is_rnasep_rna_pos <- classify_mic_marker(mic_results$RNAseP_RNA) == "Positive"
       } else {
         mic_results$is_rnasep_rna_pos <- FALSE
       }
@@ -812,6 +840,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           mic_tna_pos = sum(is_tna_pos, na.rm = TRUE),
           mic_any_pos = sum(is_any_pos, na.rm = TRUE),
           mic_negative = sum(is_negative, na.rm = TRUE),
+          mic_invalid = sum(is_invalid, na.rm = TRUE),
           mic_rnasep_dna_pos = sum(is_rnasep_dna_pos, na.rm = TRUE),
           mic_rnasep_rna_pos = sum(is_rnasep_rna_pos, na.rm = TRUE),
           mic_total = dplyr::n(),
@@ -927,46 +956,55 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         return(empty_result)
       }
 
-      # Get status column - try status columns first, fall back to sample_positive
+      # ========================================================================
+      # STANDARDIZED ELISA PE COUNTING (matches Sample Overview logic)
+      # Uses utils_standardized_counting.R for consistent classification
+      # ========================================================================
+
+      # First, deduplicate samples to get one result per sample
+      sample_id_col <- if ("code_barres_kps" %in% names(elisa_with_zone)) "code_barres_kps"
+                       else if ("barcode" %in% names(elisa_with_zone)) "barcode"
+                       else if ("sample_id" %in% names(elisa_with_zone)) "sample_id"
+                       else NULL
+
+      # Classify using standardized function
       status_col <- intersect(c("status_final", "status_raw", "result"), names(elisa_with_zone))
       has_sample_positive <- "sample_positive" %in% names(elisa_with_zone)
 
-      if (length(status_col) == 0 && !has_sample_positive) {
+      if (length(status_col) > 0) {
+        elisa_with_zone$std_status <- classify_elisa(status_final = elisa_with_zone[[status_col[1]]])
+      } else if ("PP_percent" %in% names(elisa_with_zone) || "DOD" %in% names(elisa_with_zone)) {
+        elisa_with_zone$std_status <- classify_elisa(
+          pp_percent = if ("PP_percent" %in% names(elisa_with_zone)) elisa_with_zone$PP_percent else NULL,
+          dod = if ("DOD" %in% names(elisa_with_zone)) elisa_with_zone$DOD else NULL
+        )
+      } else if (has_sample_positive) {
+        elisa_with_zone$std_status <- dplyr::if_else(
+          as.logical(elisa_with_zone$sample_positive), "Positive", "Negative"
+        )
+      } else {
         return(empty_result)
       }
 
-      # Compute positivity based on available columns
-      if (length(status_col) > 0) {
-        # Use status column
-        elisa_with_zone %>%
-          dplyr::mutate(
-            health_zone_norm = normalize_zone_name(health_zone),
-            status = toupper(.data[[status_col[1]]])
-          ) %>%
-          dplyr::group_by(health_zone_norm) %>%
-          dplyr::summarise(
-            elisa_pe_pos = sum(grepl("POS", status), na.rm = TRUE),
-            elisa_pe_neg = sum(grepl("NEG", status), na.rm = TRUE),
-            elisa_pe_border = sum(grepl("BORDER|IND", status), na.rm = TRUE),
-            elisa_pe_total = dplyr::n(),
-            .groups = "drop"
-          )
-      } else {
-        # Fall back to sample_positive boolean
-        elisa_with_zone %>%
-          dplyr::mutate(
-            health_zone_norm = normalize_zone_name(health_zone),
-            is_positive = as.logical(sample_positive)
-          ) %>%
-          dplyr::group_by(health_zone_norm) %>%
-          dplyr::summarise(
-            elisa_pe_pos = sum(is_positive == TRUE, na.rm = TRUE),
-            elisa_pe_neg = sum(is_positive == FALSE, na.rm = TRUE),
-            elisa_pe_border = 0L,
-            elisa_pe_total = dplyr::n(),
-            .groups = "drop"
-          )
+      # Deduplicate if sample ID is available
+      if (!is.null(sample_id_col)) {
+        elisa_with_zone <- deduplicate_test_results(elisa_with_zone, sample_id_col, "std_status")
       }
+
+      # Aggregate by health zone
+      elisa_with_zone %>%
+        dplyr::mutate(
+          health_zone_norm = normalize_zone_name(health_zone)
+        ) %>%
+        dplyr::group_by(health_zone_norm) %>%
+        dplyr::summarise(
+          elisa_pe_pos = sum(std_status == "Positive", na.rm = TRUE),
+          elisa_pe_neg = sum(std_status == "Negative", na.rm = TRUE),
+          elisa_pe_border = sum(std_status == "Borderline", na.rm = TRUE),
+          elisa_pe_invalid = sum(std_status == "Invalid", na.rm = TRUE),
+          elisa_pe_total = dplyr::n(),
+          .groups = "drop"
+        )
     })
 
     # ========================================================================
@@ -1076,46 +1114,55 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         return(empty_result)
       }
 
-      # Get status column - try status columns first, fall back to sample_positive
+      # ========================================================================
+      # STANDARDIZED ELISA VSG COUNTING (matches Sample Overview logic)
+      # Uses utils_standardized_counting.R for consistent classification
+      # ========================================================================
+
+      # First, deduplicate samples to get one result per sample
+      sample_id_col <- if ("code_barres_kps" %in% names(elisa_with_zone)) "code_barres_kps"
+                       else if ("barcode" %in% names(elisa_with_zone)) "barcode"
+                       else if ("sample_id" %in% names(elisa_with_zone)) "sample_id"
+                       else NULL
+
+      # Classify using standardized function
       status_col <- intersect(c("status_final", "status_raw", "result"), names(elisa_with_zone))
       has_sample_positive <- "sample_positive" %in% names(elisa_with_zone)
 
-      if (length(status_col) == 0 && !has_sample_positive) {
+      if (length(status_col) > 0) {
+        elisa_with_zone$std_status <- classify_elisa(status_final = elisa_with_zone[[status_col[1]]])
+      } else if ("PP_percent" %in% names(elisa_with_zone) || "DOD" %in% names(elisa_with_zone)) {
+        elisa_with_zone$std_status <- classify_elisa(
+          pp_percent = if ("PP_percent" %in% names(elisa_with_zone)) elisa_with_zone$PP_percent else NULL,
+          dod = if ("DOD" %in% names(elisa_with_zone)) elisa_with_zone$DOD else NULL
+        )
+      } else if (has_sample_positive) {
+        elisa_with_zone$std_status <- dplyr::if_else(
+          as.logical(elisa_with_zone$sample_positive), "Positive", "Negative"
+        )
+      } else {
         return(empty_result)
       }
 
-      # Compute positivity based on available columns
-      if (length(status_col) > 0) {
-        # Use status column
-        elisa_with_zone %>%
-          dplyr::mutate(
-            health_zone_norm = normalize_zone_name(health_zone),
-            status = toupper(.data[[status_col[1]]])
-          ) %>%
-          dplyr::group_by(health_zone_norm) %>%
-          dplyr::summarise(
-            elisa_vsg_pos = sum(grepl("POS", status), na.rm = TRUE),
-            elisa_vsg_neg = sum(grepl("NEG", status), na.rm = TRUE),
-            elisa_vsg_border = sum(grepl("BORDER|IND", status), na.rm = TRUE),
-            elisa_vsg_total = dplyr::n(),
-            .groups = "drop"
-          )
-      } else {
-        # Fall back to sample_positive boolean
-        elisa_with_zone %>%
-          dplyr::mutate(
-            health_zone_norm = normalize_zone_name(health_zone),
-            is_positive = as.logical(sample_positive)
-          ) %>%
-          dplyr::group_by(health_zone_norm) %>%
-          dplyr::summarise(
-            elisa_vsg_pos = sum(is_positive == TRUE, na.rm = TRUE),
-            elisa_vsg_neg = sum(is_positive == FALSE, na.rm = TRUE),
-            elisa_vsg_border = 0L,
-            elisa_vsg_total = dplyr::n(),
-            .groups = "drop"
-          )
+      # Deduplicate if sample ID is available
+      if (!is.null(sample_id_col)) {
+        elisa_with_zone <- deduplicate_test_results(elisa_with_zone, sample_id_col, "std_status")
       }
+
+      # Aggregate by health zone
+      elisa_with_zone %>%
+        dplyr::mutate(
+          health_zone_norm = normalize_zone_name(health_zone)
+        ) %>%
+        dplyr::group_by(health_zone_norm) %>%
+        dplyr::summarise(
+          elisa_vsg_pos = sum(std_status == "Positive", na.rm = TRUE),
+          elisa_vsg_neg = sum(std_status == "Negative", na.rm = TRUE),
+          elisa_vsg_border = sum(std_status == "Borderline", na.rm = TRUE),
+          elisa_vsg_invalid = sum(std_status == "Invalid", na.rm = TRUE),
+          elisa_vsg_total = dplyr::n(),
+          .groups = "drop"
+        )
     })
 
     # ========================================================================
@@ -1228,28 +1275,53 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
         return(empty_result)
       }
 
-      # Check for LiTat 1.3 and 1.5 columns and compute positivity
+      # ========================================================================
+      # STANDARDIZED iELISA COUNTING (matches Sample Overview logic)
+      # Uses utils_standardized_counting.R for consistent classification
+      # ========================================================================
+
+      # First, deduplicate samples to get one result per sample
+      sample_id_col <- if ("code_barres_kps" %in% names(ielisa_with_zone)) "code_barres_kps"
+                       else if ("barcode" %in% names(ielisa_with_zone)) "barcode"
+                       else if ("sample_id" %in% names(ielisa_with_zone)) "sample_id"
+                       else NULL
+
+      # Apply standardized iELISA classification for L13 and L15
       ielisa_results <- ielisa_with_zone %>%
-        dplyr::mutate(health_zone_norm = normalize_zone_name(health_zone))
-
-      # L1.3 positivity
-      if ("positive_L13" %in% names(ielisa_results)) {
-        ielisa_results$l13_pos <- as.logical(ielisa_results$positive_L13)
-      } else {
-        ielisa_results$l13_pos <- FALSE
-      }
-
-      # L1.5 positivity
-      if ("positive_L15" %in% names(ielisa_results)) {
-        ielisa_results$l15_pos <- as.logical(ielisa_results$positive_L15)
-      } else {
-        ielisa_results$l15_pos <- FALSE
-      }
+        dplyr::mutate(
+          health_zone_norm = normalize_zone_name(health_zone),
+          # L1.3 positivity - use standardized function
+          l13_pos = is_ielisa_L13_positive(
+            inhibition_L13 = if ("pct_inh_f1_13" %in% names(.)) pct_inh_f1_13 else
+                             if ("pct_inh_f2_13" %in% names(.)) pct_inh_f2_13 else NULL,
+            positive_L13 = if ("positive_L13" %in% names(.)) positive_L13 else NULL,
+            positive_threshold = 30,
+            include_borderline = FALSE
+          ),
+          # L1.5 positivity - use standardized function
+          l15_pos = is_ielisa_L15_positive(
+            inhibition_L15 = if ("pct_inh_f1_15" %in% names(.)) pct_inh_f1_15 else
+                             if ("pct_inh_f2_15" %in% names(.)) pct_inh_f2_15 else NULL,
+            positive_L15 = if ("positive_L15" %in% names(.)) positive_L15 else NULL,
+            positive_threshold = 30,
+            include_borderline = FALSE
+          ),
+          any_pos = l13_pos | l15_pos,
+          both_pos = l13_pos & l15_pos
+        )
 
       # Replace NA with FALSE for logical operations
       ielisa_results$l13_pos[is.na(ielisa_results$l13_pos)] <- FALSE
       ielisa_results$l15_pos[is.na(ielisa_results$l15_pos)] <- FALSE
-      ielisa_results$any_pos <- ielisa_results$l13_pos | ielisa_results$l15_pos
+      ielisa_results$any_pos[is.na(ielisa_results$any_pos)] <- FALSE
+      ielisa_results$both_pos[is.na(ielisa_results$both_pos)] <- FALSE
+
+      # Deduplicate if sample ID is available
+      if (!is.null(sample_id_col)) {
+        ielisa_results <- ielisa_results %>%
+          dplyr::mutate(std_status = dplyr::if_else(any_pos, "Positive", "Negative"))
+        ielisa_results <- deduplicate_test_results(ielisa_results, sample_id_col, "std_status")
+      }
 
       ielisa_results %>%
         dplyr::group_by(health_zone_norm) %>%
@@ -1259,6 +1331,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           ielisa_l15_pos = sum(l15_pos, na.rm = TRUE),
           ielisa_l15_neg = sum(!l15_pos, na.rm = TRUE),
           ielisa_any_pos = sum(any_pos, na.rm = TRUE),
+          ielisa_both_pos = sum(both_pos, na.rm = TRUE),
           ielisa_total = dplyr::n(),
           .groups = "drop"
         )

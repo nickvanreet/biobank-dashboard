@@ -131,6 +131,7 @@ source("R/core/app_logger.R")              # Structured logging (replaces DEBUG)
 source("R/core/rbac.R")                    # Role-based access control hooks
 source("R/utils_elisa.R")                  # ELISA loader utilities
 source("R/data/dashboard_data_utils.R")    # Shared assay prep utilities
+source("R/utils_standardized_counting.R")  # Standardized test counting across modules
 
 # CRITICAL: Source the qPCR analysis pipeline
 # This file defines analyze_qpcr(), extract_cq_values(), and related functions

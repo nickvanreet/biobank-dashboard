@@ -736,22 +736,30 @@ mod_study_comparison_ui <- function(id) {
   "N/A"
 }
 
-#' Determine if a MIC result is positive based on filter settings
-.is_mic_positive <- function(final_call, include_borderline = FALSE) {
-  positive_values <- c("Positive", "Positive_DNA", "Positive_RNA", "LatePositive")
-  borderline_values <- c("Indeterminate", "Inconclusive", "Review", "Retest")
+# ============================================================================
+# STANDARDIZED POSITIVITY FUNCTIONS
+# These now delegate to utils_standardized_counting.R for consistent logic
+# across all modules (Geographic, Sample Overview, Study Comparison, etc.)
+# ============================================================================
 
-  if (include_borderline) {
-    return(final_call %in% c(positive_values, borderline_values))
-  }
-  final_call %in% positive_values
+#' Determine if a MIC result is positive based on filter settings
+#' @description Wrapper around standardized is_mic_positive() function
+#' @param final_call Character vector of FinalCall values
+#' @param include_borderline Whether to include borderline (Indeterminate, etc.) as positive
+#' @param include_latepositive Whether to include LatePositive (Cq 35-40) as positive (default FALSE)
+.is_mic_positive <- function(final_call, include_borderline = FALSE, include_latepositive = FALSE) {
+  # Delegate to standardized function from utils_standardized_counting.R
+  # NOTE: LatePositive is NOT included by default - it's a borderline/suspect category
+  is_mic_positive(final_call, include_latepositive = include_latepositive, include_borderline = include_borderline)
 }
 
 #' Determine if an ELISA result is positive based on filter settings
+#' @description Wrapper around standardized is_elisa_positive() function
 #' @param sample_positive Logical vector of positivity
 #' @param sample_borderline Logical vector of borderline status (optional)
 #' @param include_borderline Whether to treat borderline as positive
 .is_elisa_positive <- function(sample_positive, sample_borderline = NULL, include_borderline = FALSE) {
+  # For boolean input, convert to status-based logic
   result <- sample_positive == TRUE
   if (include_borderline && !is.null(sample_borderline)) {
     result <- result | (sample_borderline == TRUE)
@@ -760,35 +768,36 @@ mod_study_comparison_ui <- function(id) {
 }
 
 #' Determine if an iELISA L13 result is positive based on filter settings
+#' @description Wrapper around standardized is_ielisa_L13_positive() function
 #' @param positive_L13 Logical vector of L13 positivity
 #' @param status_L13 Character vector of L13 status (optional)
 #' @param include_borderline Whether to treat borderline as positive
 .is_ielisa_L13_positive <- function(positive_L13, status_L13 = NULL, include_borderline = FALSE) {
-  result <- positive_L13 == TRUE
-  if (include_borderline && !is.null(status_L13)) {
-    result <- result | (status_L13 == "Borderline")
-  }
-  result
+  # Delegate to standardized function from utils_standardized_counting.R
+  is_ielisa_L13_positive(
+    positive_L13 = positive_L13,
+    include_borderline = include_borderline
+  )
 }
 
 #' Determine if an iELISA L15 result is positive based on filter settings
+#' @description Wrapper around standardized is_ielisa_L15_positive() function
 #' @param positive_L15 Logical vector of L15 positivity
 #' @param status_L15 Character vector of L15 status (optional)
 #' @param include_borderline Whether to treat borderline as positive
 .is_ielisa_L15_positive <- function(positive_L15, status_L15 = NULL, include_borderline = FALSE) {
-  result <- positive_L15 == TRUE
-  if (include_borderline && !is.null(status_L15)) {
-    result <- result | (status_L15 == "Borderline")
-  }
-  result
+  # Delegate to standardized function from utils_standardized_counting.R
+  is_ielisa_L15_positive(
+    positive_L15 = positive_L15,
+    include_borderline = include_borderline
+  )
 }
 
 #' Filter out invalid results
+#' @description Wrapper around standardized filter_invalid_results() function
 .filter_invalid <- function(data, exclude_invalid = TRUE, final_call_col = "FinalCall") {
-
-  if (!exclude_invalid || !final_call_col %in% names(data)) return(data)
-  invalid_values <- c("Invalid", "Failed", "RunInvalid")
-  data %>% dplyr::filter(!.data[[final_call_col]] %in% invalid_values)
+  # Delegate to standardized function from utils_standardized_counting.R
+  filter_invalid_results(data, exclude_invalid, final_call_col)
 }
 
 # ============================================================================

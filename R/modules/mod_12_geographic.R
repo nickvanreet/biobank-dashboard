@@ -767,34 +767,52 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       has_marker_177t <- "marker_177T" %in% names(mic_results) || "Call_177T" %in% names(mic_results)
       has_marker_18s2 <- "marker_18S2" %in% names(mic_results) || "Call_18S2" %in% names(mic_results)
 
-      # DNA positive - using standardized classification
+      # ========================================================================
+      # IMPORTANT: LatePositive (Cq 35-40) is NOT counted as positive!
+      # It's tracked separately as a borderline/suspect category.
+      # ========================================================================
+
+      # DNA positive - using standardized classification (LatePositive excluded)
       if (has_marker_177t) {
         marker_col <- if ("marker_177T" %in% names(mic_results)) mic_results$marker_177T else mic_results$Call_177T
-        mic_results$is_dna_pos <- is_mic_dna_positive(marker_col, include_latepositive = TRUE)
+        mic_results$is_dna_pos <- is_mic_dna_positive(marker_col, include_latepositive = FALSE)
+        mic_results$is_dna_late <- classify_mic_marker(marker_col) == "LatePositive"
       } else if ("FinalCall" %in% names(mic_results)) {
         # FinalCall: Positive (TNA), Positive_DNA, Positive_RNA, LatePositive
         mic_results$is_dna_pos <- mic_results$FinalCall %in% c("Positive", "Positive_DNA")
+        mic_results$is_dna_late <- mic_results$FinalCall == "LatePositive"
       } else {
         mic_results$is_dna_pos <- FALSE
+        mic_results$is_dna_late <- FALSE
       }
 
-      # RNA positive - using standardized classification
+      # RNA positive - using standardized classification (LatePositive excluded)
       if (has_marker_18s2) {
         marker_col <- if ("marker_18S2" %in% names(mic_results)) mic_results$marker_18S2 else mic_results$Call_18S2
-        mic_results$is_rna_pos <- is_mic_rna_positive(marker_col, include_latepositive = TRUE)
+        mic_results$is_rna_pos <- is_mic_rna_positive(marker_col, include_latepositive = FALSE)
+        mic_results$is_rna_late <- classify_mic_marker(marker_col) == "LatePositive"
       } else if ("FinalCall" %in% names(mic_results)) {
         mic_results$is_rna_pos <- mic_results$FinalCall %in% c("Positive", "Positive_RNA")
+        mic_results$is_rna_late <- mic_results$FinalCall == "LatePositive"
       } else {
         mic_results$is_rna_pos <- FALSE
+        mic_results$is_rna_late <- FALSE
       }
 
       # TNA positive (both DNA and RNA) - sample has BOTH targets positive
       mic_results$is_tna_pos <- mic_results$is_dna_pos & mic_results$is_rna_pos
 
-      # Any positive - using standardized is_mic_positive function
+      # LatePositive - tracked separately (Cq 35-40 range, borderline/suspect)
+      if ("FinalCall" %in% names(mic_results)) {
+        mic_results$is_late_pos <- mic_results$FinalCall == "LatePositive"
+      } else {
+        mic_results$is_late_pos <- mic_results$is_dna_late | mic_results$is_rna_late
+      }
+
+      # Any positive - does NOT include LatePositive (that's borderline)
       if ("FinalCall" %in% names(mic_results)) {
         mic_results$is_any_pos <- is_mic_positive(mic_results$FinalCall,
-                                                   include_latepositive = TRUE,
+                                                   include_latepositive = FALSE,
                                                    include_borderline = FALSE)
       } else {
         mic_results$is_any_pos <- mic_results$is_dna_pos | mic_results$is_rna_pos
@@ -804,7 +822,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       if ("FinalCall" %in% names(mic_results)) {
         mic_results$is_negative <- mic_results$FinalCall == "Negative"
       } else {
-        mic_results$is_negative <- !mic_results$is_any_pos
+        mic_results$is_negative <- !mic_results$is_any_pos & !mic_results$is_late_pos
       }
 
       # Invalid - standardized classification
@@ -839,6 +857,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           mic_rna_pos = sum(is_rna_pos, na.rm = TRUE),
           mic_tna_pos = sum(is_tna_pos, na.rm = TRUE),
           mic_any_pos = sum(is_any_pos, na.rm = TRUE),
+          mic_late_pos = sum(is_late_pos, na.rm = TRUE),  # LatePositive (borderline/suspect)
           mic_negative = sum(is_negative, na.rm = TRUE),
           mic_invalid = sum(is_invalid, na.rm = TRUE),
           mic_rnasep_dna_pos = sum(is_rnasep_dna_pos, na.rm = TRUE),

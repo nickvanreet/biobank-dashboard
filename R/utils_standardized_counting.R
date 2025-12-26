@@ -121,12 +121,15 @@ classify_mic_marker <- function(marker_status) {
 #'
 #' Standardized function to determine positivity across all modules.
 #'
+#' NOTE: LatePositive (Cq 35-40) is NOT counted as positive by default.
+#' LatePositive is considered borderline/suspect and should be tracked separately.
+#'
 #' @param final_call Character vector of FinalCall values
-#' @param include_latepositive If TRUE, LatePositive counts as positive
-#' @param include_borderline If TRUE, Borderline counts as positive
+#' @param include_latepositive If TRUE, LatePositive counts as positive (default FALSE)
+#' @param include_borderline If TRUE, Borderline counts as positive (default FALSE)
 #' @return Logical vector
 #' @export
-is_mic_positive <- function(final_call, include_latepositive = TRUE, include_borderline = FALSE) {
+is_mic_positive <- function(final_call, include_latepositive = FALSE, include_borderline = FALSE) {
   cutoffs <- standardized_cutoffs()
 
   positive_values <- cutoffs$mic_positive_calls
@@ -142,11 +145,14 @@ is_mic_positive <- function(final_call, include_latepositive = TRUE, include_bor
 
 #' Check if MIC DNA target (177T) is positive
 #'
+#' NOTE: LatePositive (Cq 35-40) is NOT counted as positive by default.
+#' LatePositive is considered borderline/suspect and should be tracked separately.
+#'
 #' @param marker_177T Character vector of 177T marker status
-#' @param include_latepositive If TRUE, LatePositive counts as positive
+#' @param include_latepositive If TRUE, LatePositive counts as positive (default FALSE)
 #' @return Logical vector
 #' @export
-is_mic_dna_positive <- function(marker_177T, include_latepositive = TRUE) {
+is_mic_dna_positive <- function(marker_177T, include_latepositive = FALSE) {
   status <- classify_mic_marker(marker_177T)
   if (include_latepositive) {
     status %in% c("Positive", "LatePositive")
@@ -157,11 +163,14 @@ is_mic_dna_positive <- function(marker_177T, include_latepositive = TRUE) {
 
 #' Check if MIC RNA target (18S2) is positive
 #'
+#' NOTE: LatePositive (Cq 35-40) is NOT counted as positive by default.
+#' LatePositive is considered borderline/suspect and should be tracked separately.
+#'
 #' @param marker_18S2 Character vector of 18S2 marker status
-#' @param include_latepositive If TRUE, LatePositive counts as positive
+#' @param include_latepositive If TRUE, LatePositive counts as positive (default FALSE)
 #' @return Logical vector
 #' @export
-is_mic_rna_positive <- function(marker_18S2, include_latepositive = TRUE) {
+is_mic_rna_positive <- function(marker_18S2, include_latepositive = FALSE) {
   status <- classify_mic_marker(marker_18S2)
   if (include_latepositive) {
     status %in% c("Positive", "LatePositive")

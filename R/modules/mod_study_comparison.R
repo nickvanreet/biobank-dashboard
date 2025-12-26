@@ -744,10 +744,13 @@ mod_study_comparison_ui <- function(id) {
 
 #' Determine if a MIC result is positive based on filter settings
 #' @description Wrapper around standardized is_mic_positive() function
-.is_mic_positive <- function(final_call, include_borderline = FALSE) {
+#' @param final_call Character vector of FinalCall values
+#' @param include_borderline Whether to include borderline (Indeterminate, etc.) as positive
+#' @param include_latepositive Whether to include LatePositive (Cq 35-40) as positive (default FALSE)
+.is_mic_positive <- function(final_call, include_borderline = FALSE, include_latepositive = FALSE) {
   # Delegate to standardized function from utils_standardized_counting.R
-  # Note: include_latepositive is always TRUE for backward compatibility
-  is_mic_positive(final_call, include_latepositive = TRUE, include_borderline = include_borderline)
+  # NOTE: LatePositive is NOT included by default - it's a borderline/suspect category
+  is_mic_positive(final_call, include_latepositive = include_latepositive, include_borderline = include_borderline)
 }
 
 #' Determine if an ELISA result is positive based on filter settings

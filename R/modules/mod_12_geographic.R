@@ -991,9 +991,9 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       has_sample_positive <- "sample_positive" %in% names(elisa_with_zone)
 
       if (length(status_col) > 0) {
-        elisa_with_zone$std_status <- classify_elisa(status_final = elisa_with_zone[[status_col[1]]])
+        elisa_with_zone$std_status <- std_classify_elisa(status_final = elisa_with_zone[[status_col[1]]])
       } else if ("PP_percent" %in% names(elisa_with_zone) || "DOD" %in% names(elisa_with_zone)) {
-        elisa_with_zone$std_status <- classify_elisa(
+        elisa_with_zone$std_status <- std_classify_elisa(
           pp_percent = if ("PP_percent" %in% names(elisa_with_zone)) elisa_with_zone$PP_percent else NULL,
           dod = if ("DOD" %in% names(elisa_with_zone)) elisa_with_zone$DOD else NULL
         )
@@ -1149,9 +1149,9 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       has_sample_positive <- "sample_positive" %in% names(elisa_with_zone)
 
       if (length(status_col) > 0) {
-        elisa_with_zone$std_status <- classify_elisa(status_final = elisa_with_zone[[status_col[1]]])
+        elisa_with_zone$std_status <- std_classify_elisa(status_final = elisa_with_zone[[status_col[1]]])
       } else if ("PP_percent" %in% names(elisa_with_zone) || "DOD" %in% names(elisa_with_zone)) {
-        elisa_with_zone$std_status <- classify_elisa(
+        elisa_with_zone$std_status <- std_classify_elisa(
           pp_percent = if ("PP_percent" %in% names(elisa_with_zone)) elisa_with_zone$PP_percent else NULL,
           dod = if ("DOD" %in% names(elisa_with_zone)) elisa_with_zone$DOD else NULL
         )
@@ -1324,7 +1324,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
             if ("pct_inh_f2_15" %in% names(.)) pct_inh_f2_15 else NA_real_
           ),
           # L1.3 classification using standardized thresholds
-          l13_status = classify_ielisa(inh_L13, positive_threshold = 30, borderline_threshold = 25),
+          l13_status = std_classify_ielisa(inh_L13, positive_threshold = 30, borderline_threshold = 25),
           l13_pos = l13_status == "Positive",
           l13_border = l13_status == "Borderline",
           # Override with boolean if available
@@ -1333,7 +1333,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
             if ("positive_L13" %in% names(.)) positive_L13 == TRUE else FALSE
           ),
           # L1.5 classification using standardized thresholds
-          l15_status = classify_ielisa(inh_L15, positive_threshold = 30, borderline_threshold = 25),
+          l15_status = std_classify_ielisa(inh_L15, positive_threshold = 30, borderline_threshold = 25),
           l15_pos = l15_status == "Positive",
           l15_border = l15_status == "Borderline",
           # Override with boolean if available

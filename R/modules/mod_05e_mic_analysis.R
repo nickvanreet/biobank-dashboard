@@ -1,5 +1,6 @@
 # ==============================================================================
-# MODULE 4: ANALYSIS - Scatter plots and correlations
+# MODULE 4: ANALYSIS - MIC qPCR Analysis Dashboard
+# Redesigned for CRT DIPUMBA - Clear, Insightful, Beautiful
 # ==============================================================================
 
 mod_mic_analysis_ui <- function(id) {
@@ -19,112 +20,222 @@ mod_mic_analysis_ui <- function(id) {
       .mic-analysis-container > *:not(style) {
         margin-bottom: 1.5rem;
       }
+
+      /* Centerpiece styling for main detection plot */
+      .mic-centerpiece {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        border-radius: 16px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .mic-centerpiece .card-header {
+        background: transparent;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        color: #ffffff;
+        font-size: 1.25rem;
+        font-weight: 600;
+        padding: 1.25rem 1.5rem;
+      }
+
+      .mic-centerpiece .card-body {
+        padding: 1.5rem;
+      }
+
+      /* KPI boxes for detection summary */
+      .mic-kpi-box {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        text-align: center;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        transition: transform 0.2s ease;
+      }
+
+      .mic-kpi-box:hover {
+        transform: translateY(-2px);
+      }
+
+      .mic-kpi-value {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+      }
+
+      .mic-kpi-label {
+        font-size: 0.85rem;
+        color: rgba(255, 255, 255, 0.7);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .mic-kpi-positive { color: #2ecc71; }
+      .mic-kpi-negative { color: #95a5a6; }
+      .mic-kpi-dna { color: #3498db; }
+      .mic-kpi-rna { color: #9b59b6; }
+      .mic-kpi-late { color: #f39c12; }
+
+      /* Section headers */
+      .mic-section-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-top: 2rem;
+        margin-bottom: 1.25rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #e9ecef;
+      }
+
+      .mic-section-header h4 {
+        margin: 0;
+        font-weight: 600;
+        color: #2c3e50;
+      }
+
+      .mic-section-icon {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #3498db;
+        color: white;
+        border-radius: 8px;
+        font-size: 1rem;
+      }
+
+      /* Sample statistics table styling */
+      .mic-stats-table {
+        font-size: 0.9rem;
+      }
+
+      .mic-stats-table th {
+        background: #f8f9fa;
+        font-weight: 600;
+        border-bottom: 2px solid #dee2e6;
+      }
+
+      .mic-stats-table .positive-row {
+        background: rgba(46, 204, 113, 0.1);
+      }
+
+      .mic-stats-table .sd-cell {
+        font-family: monospace;
+        color: #7f8c8d;
+      }
       "
     )),
     div(
       class = "container-fluid mic-analysis-container pb-4",
 
-      # === SECTION 1: Detection Scatter Plots ===
-      h4("Detection Analysis", class = "mt-3 mb-3"),
-      layout_column_wrap(
-        width = 1/2,
-        gap = "16px",
-        heights_equal = "row",
-
-        # Trypanozoon scatter
-        card(
-          class = "mic-plot-card",
-          card_header("Trypanozoon Detection: 18S2 vs 177T"),
-          card_body(
-            plotlyOutput(ns("scatter_tryp"), height = "550px"),
-            class = "p-3"
-          )
-        ),
-
-        # RNAseP quality scatter
-        card(
-          class = "mic-plot-card",
-          card_header("RNA Preservation Quality: RNAseP RNA vs DNA"),
-          card_body(
-            plotlyOutput(ns("scatter_rnp"), height = "550px"),
-            class = "p-3"
-          )
-        )
+      # === SECTION 1: CENTERPIECE - Trypanozoon Detection ===
+      div(class = "mic-section-header mt-3",
+        div(class = "mic-section-icon", bsicons::bs_icon("bullseye")),
+        h4("Trypanozoon Detection Results")
       ),
 
-      # === SECTION 2: Cq Distributions ===
-      h4("Cq Value Distributions", class = "mt-4 mb-3"),
-      layout_column_wrap(
-        width = 1/2,
-        gap = "16px",
-        heights_equal = "row",
-
-        card(
-          class = "mic-plot-card",
-          card_header("Cq Distribution by Target"),
-          card_body(
-            plotlyOutput(ns("box_cq_by_target"), height = "450px"),
-            class = "p-3"
-          )
-        ),
-
-        card(
-          class = "mic-plot-card",
-          card_header("Cq Distribution by Final Call"),
-          card_body(
-            plotlyOutput(ns("box_cq_by_call"), height = "450px"),
-            class = "p-3"
-          )
-        )
-      ),
-
-      # === SECTION 3: Replicate Concordance ===
-      h4("Replicate Concordance Analysis", class = "mt-4 mb-3"),
-      layout_columns(
-        col_widths = c(8, 4),
-        gap = "16px",
-
-        card(
-          class = "mic-plot-card",
-          card_header("Replicate Concordance Heatmap"),
-          card_body(
+      # Main detection scatter - FULL WIDTH CENTERPIECE
+      card(
+        class = "mic-plot-card mic-centerpiece",
+        card_header(
+          div(
+            class = "d-flex justify-content-between align-items-center",
+            span("18S2 (RNA) vs 177T (DNA) Detection"),
             div(
-              class = "mb-3",
-              div(
-                class = "fw-bold mb-1",
-                "Purpose: Quality control for replicate testing"
-              ),
-              div(
-                class = "text-muted small",
-                "This heatmap shows the proportion of technical replicates that tested positive for each sample and marker. ",
-                "It helps identify:",
-                tags$ul(
-                  class = "mb-0 mt-1",
-                  tags$li("Samples with inconsistent replication (e.g., 1/3 or 2/4 positive)"),
-                  tags$li("Markers with poor reproducibility"),
-                  tags$li("Samples that may need retesting for confirmation")
-                ),
-                div(class = "mt-1", "Green = all replicates positive, White = all replicates negative, Intermediate colors = partial positivity")
+              class = "d-flex gap-2",
+              checkboxInput(
+                ns("show_consolidated_only"),
+                span("Show final consolidated results only", style = "color: white; font-size: 0.85rem;"),
+                value = TRUE,
+                width = "auto"
               )
-            ),
-            plotlyOutput(ns("heatmap_replicates"), height = "500px"),
-            class = "p-3"
+            )
           )
         ),
-
-        card(
-          class = "mic-plot-card",
-          card_header("Positive Replicate Distribution"),
-          card_body(
-            plotlyOutput(ns("bar_replicate_counts"), height = "500px"),
-            class = "p-3"
-          )
+        card_body(
+          # KPI Summary Row
+          div(
+            class = "d-flex flex-wrap gap-3 mb-4 justify-content-center",
+            uiOutput(ns("detection_kpis"))
+          ),
+          # Main scatter plot - LARGE
+          plotlyOutput(ns("scatter_tryp"), height = "600px"),
+          # Legend explanation
+          div(
+            class = "mt-3 text-center",
+            style = "color: rgba(255,255,255,0.6); font-size: 0.85rem;",
+            HTML("Lower Cq = stronger detection &bull; Points at Cq 40 = No detection &bull; ◆ Diamond = retested sample")
+          ),
+          class = "p-3"
         )
+      ),
+
+      # === SECTION 2: Cq Distributions - PROMINENT ===
+      div(class = "mic-section-header",
+        div(class = "mic-section-icon", style = "background: #9b59b6;", bsicons::bs_icon("bar-chart-fill")),
+        h4("Cq Value Distributions by Final Call")
+      ),
+
+      # Cq Distribution by Final Call - FULL WIDTH, LARGER
+      card(
+        class = "mic-plot-card",
+        card_header(
+          div(
+            class = "d-flex justify-content-between align-items-center",
+            span("Cq Distribution Analysis"),
+            div(
+              class = "text-muted small",
+              "Each box shows median, IQR, and outliers for samples in that category"
+            )
+          )
+        ),
+        card_body(
+          plotlyOutput(ns("box_cq_by_call"), height = "550px"),
+          class = "p-3"
+        )
+      ),
+
+      # Secondary: Distribution by Target (smaller)
+      card(
+        class = "mic-plot-card mt-3",
+        card_header("Cq Distribution by Target"),
+        card_body(
+          plotlyOutput(ns("box_cq_by_target"), height = "400px"),
+          class = "p-3"
+        )
+      ),
+
+      # === SECTION 3: Sample Statistics with SD ===
+      div(class = "mic-section-header",
+        div(class = "mic-section-icon", style = "background: #27ae60;", bsicons::bs_icon("table")),
+        h4("Sample-Level Statistics")
       ),
 
       card(
         class = "mic-plot-card",
-        card_header("Sample Testing Frequency"),
+        card_header("Positive Samples with Replicate Statistics"),
+        card_body(
+          div(
+            class = "mb-3 text-muted",
+            "Showing Cq values (Mean ± SD) for positive samples. CV% indicates replicate consistency."
+          ),
+          div(
+            style = "max-height: 500px; overflow-y: auto;",
+            tableOutput(ns("sample_stats_table"))
+          ),
+          class = "p-3"
+        )
+      ),
+
+      # === SECTION 4: Retest Analysis (Sankey kept) ===
+      div(class = "mic-section-header",
+        div(class = "mic-section-icon", style = "background: #e67e22;", bsicons::bs_icon("arrow-repeat")),
+        h4("Retest & Follow-up Analysis")
+      ),
+
+      card(
+        class = "mic-plot-card",
+        card_header("Sample Testing Frequency & Transitions"),
         card_body(
           div(
             class = "d-flex flex-column flex-lg-row gap-2 align-items-lg-center justify-content-lg-between mb-3",
@@ -140,24 +251,28 @@ mod_mic_analysis_ui <- function(id) {
                 value = FALSE
               )
             )
-            ),
-            tableOutput(ns("sample_repeat_table")),
-            hr(),
-            div(
-              class = "mt-3 mb-2",
-              textOutput(ns("sample_transition_caption"))
-            ),
-            div(
-              class = "mb-3",
-              plotlyOutput(ns("sample_transition_sankey"), height = "360px")
-            ),
-            tableOutput(ns("sample_transition_table")),
-            class = "p-3"
-          )
-        ),
+          ),
+          tableOutput(ns("sample_repeat_table")),
+          hr(),
+          div(
+            class = "mt-3 mb-2",
+            textOutput(ns("sample_transition_caption"))
+          ),
+          div(
+            class = "mb-3",
+            plotlyOutput(ns("sample_transition_sankey"), height = "360px")
+          ),
+          tableOutput(ns("sample_transition_table")),
+          class = "p-3"
+        )
+      ),
 
-      # === SECTION 4: Quality Metrics ===
-      h4("Quality Control Metrics", class = "mt-4 mb-3"),
+      # === SECTION 5: Quality Metrics ===
+      div(class = "mic-section-header",
+        div(class = "mic-section-icon", style = "background: #e74c3c;", bsicons::bs_icon("shield-check")),
+        h4("Quality Control Metrics")
+      ),
+
       layout_column_wrap(
         width = 1/3,
         gap = "16px",
@@ -191,8 +306,12 @@ mod_mic_analysis_ui <- function(id) {
         )
       ),
 
-      # === SECTION 5: Clinical Decision Matrix ===
-      h4("Clinical Decision Validation", class = "mt-4 mb-3"),
+      # === SECTION 6: Clinical Decision Matrix ===
+      div(class = "mic-section-header",
+        div(class = "mic-section-icon", style = "background: #2c3e50;", bsicons::bs_icon("clipboard2-check")),
+        h4("Clinical Decision Validation")
+      ),
+
       layout_column_wrap(
         width = 1/2,
         gap = "16px",
@@ -217,19 +336,18 @@ mod_mic_analysis_ui <- function(id) {
         )
       ),
 
-      # === SECTION 6: Temporal and Geographic ===
-      h4("Trends and Geographic Analysis", class = "mt-4 mb-3"),
-      layout_columns(
-        col_widths = c(12),
-        gap = "16px",
+      # === SECTION 7: Temporal and Geographic ===
+      div(class = "mic-section-header",
+        div(class = "mic-section-icon", style = "background: #1abc9c;", bsicons::bs_icon("geo-alt-fill")),
+        h4("Trends and Geographic Analysis")
+      ),
 
-        card(
-          class = "mic-plot-card",
-          card_header("Temporal Trends: Volume and Positivity"),
-          card_body(
-            plotlyOutput(ns("line_temporal"), height = "400px"),
-            class = "p-3"
-          )
+      card(
+        class = "mic-plot-card",
+        card_header("Temporal Trends: Volume and Positivity"),
+        card_body(
+          plotlyOutput(ns("line_temporal"), height = "400px"),
+          class = "p-3"
         )
       ),
 
@@ -237,21 +355,22 @@ mod_mic_analysis_ui <- function(id) {
         width = 1/2,
         gap = "16px",
         heights_equal = "row",
+        class = "mt-3",
 
         card(
           class = "mic-plot-card",
-          card_header("Positivity by Province"),
+          card_header("Positivity by Structure Sanitaire"),
           card_body(
-            plotlyOutput(ns("bar_geo_positivity"), height = "450px"),
+            plotlyOutput(ns("bar_geo_positivity"), height = "500px"),
             class = "p-3"
           )
         ),
 
         card(
           class = "mic-plot-card",
-          card_header("RNA Quality by Province"),
+          card_header("RNA Quality by Structure Sanitaire"),
           card_body(
-            plotlyOutput(ns("box_geo_quality"), height = "450px"),
+            plotlyOutput(ns("box_geo_quality"), height = "500px"),
             class = "p-3"
           )
         )
@@ -262,14 +381,86 @@ mod_mic_analysis_ui <- function(id) {
 
 mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NULL) {
   moduleServer(id, function(input, output, session) {
-    
-    # Trypanozoon scatter plot
+
+    # === Detection KPI Summary ===
+    output$detection_kpis <- renderUI({
+      df <- filtered_base()
+
+      if (is.null(df) || !nrow(df)) {
+        return(NULL)
+      }
+
+      samples <- df %>%
+        filter(ControlType == "Sample")
+
+      # If showing consolidated only, get unique samples by final status
+      if (isTRUE(input$show_consolidated_only)) {
+        sample_id_col <- if ("SampleID" %in% names(samples)) "SampleID" else "SampleName"
+
+        # Get the latest result per sample (or consolidated if available)
+        if ("mic_status_final" %in% names(samples)) {
+          samples <- samples %>%
+            group_by(across(all_of(sample_id_col))) %>%
+            slice_tail(n = 1) %>%
+            ungroup() %>%
+            mutate(FinalCall = coalesce(mic_status_final, FinalCall))
+        } else {
+          samples <- samples %>%
+            group_by(across(all_of(sample_id_col))) %>%
+            slice_tail(n = 1) %>%
+            ungroup()
+        }
+      }
+
+      total <- nrow(samples)
+      positive <- sum(samples$FinalCall == "Positive", na.rm = TRUE)
+      positive_dna <- sum(samples$FinalCall == "Positive_DNA", na.rm = TRUE)
+      positive_rna <- sum(samples$FinalCall == "Positive_RNA", na.rm = TRUE)
+      late_positive <- sum(samples$FinalCall == "LatePositive", na.rm = TRUE)
+      negative <- sum(samples$FinalCall == "Negative", na.rm = TRUE)
+
+      all_positive <- positive + positive_dna + positive_rna + late_positive
+      positivity_rate <- if (total > 0) round(100 * all_positive / total, 1) else 0
+
+      tagList(
+        div(class = "mic-kpi-box",
+          div(class = "mic-kpi-value", format(total, big.mark = ",")),
+          div(class = "mic-kpi-label", "Total Samples")
+        ),
+        div(class = "mic-kpi-box",
+          div(class = "mic-kpi-value mic-kpi-positive", positive),
+          div(class = "mic-kpi-label", "Positive (Both)")
+        ),
+        div(class = "mic-kpi-box",
+          div(class = "mic-kpi-value mic-kpi-dna", positive_dna),
+          div(class = "mic-kpi-label", "DNA Only")
+        ),
+        div(class = "mic-kpi-box",
+          div(class = "mic-kpi-value mic-kpi-rna", positive_rna),
+          div(class = "mic-kpi-label", "RNA Only")
+        ),
+        div(class = "mic-kpi-box",
+          div(class = "mic-kpi-value mic-kpi-late", late_positive),
+          div(class = "mic-kpi-label", "Late Positive")
+        ),
+        div(class = "mic-kpi-box",
+          div(class = "mic-kpi-value mic-kpi-negative", negative),
+          div(class = "mic-kpi-label", "Negative")
+        ),
+        div(class = "mic-kpi-box",
+          div(class = "mic-kpi-value", style = "color: #f39c12;", paste0(positivity_rate, "%")),
+          div(class = "mic-kpi-label", "Positivity Rate")
+        )
+      )
+    })
+
+    # Trypanozoon scatter plot - REDESIGNED CENTERPIECE
     output$scatter_tryp <- renderPlotly({
       tryCatch({
         df <- filtered_base()
 
         if (is.null(df) || !nrow(df)) {
-          return(plotly_empty() %>% layout(title = "No data available"))
+          return(plotly_empty() %>% layout(title = list(text = "No data available", font = list(color = "white"))))
         }
 
         required_cols <- c("ControlType", "Cq_median_177T", "Cq_median_18S2", "FinalCall", "SampleName")
@@ -277,22 +468,17 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
 
         if (length(missing_cols) > 0) {
           return(plotly_empty() %>%
-                   layout(title = paste("Missing columns:", paste(missing_cols, collapse = ", "))))
+                   layout(title = list(text = paste("Missing columns:", paste(missing_cols, collapse = ", ")), font = list(color = "white"))))
         }
 
         df <- df %>%
           filter(
             ControlType == "Sample",
             !is.na(Cq_median_177T) | !is.na(Cq_median_18S2)
-          ) %>%
-          mutate(
-            # Replace NA with high Cq value to show "no detection" on plot
-            Cq_median_177T_plot = if_else(is.na(Cq_median_177T), 40.0, Cq_median_177T),
-            Cq_median_18S2_plot = if_else(is.na(Cq_median_18S2), 40.0, Cq_median_18S2)
           )
 
         if (!nrow(df)) {
-          return(plotly_empty() %>% layout(title = "No samples with 177T or 18S2 data"))
+          return(plotly_empty() %>% layout(title = list(text = "No samples with 177T or 18S2 data", font = list(color = "white"))))
         }
 
         # Identify samples that were tested multiple times
@@ -302,72 +488,231 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
           group_by(across(all_of(sample_id_col))) %>%
           mutate(
             test_count = n(),
-            is_retested = test_count > 1
+            is_retested = test_count > 1,
+            test_order = row_number()
           ) %>%
-          ungroup() %>%
+          ungroup()
+
+        # If showing consolidated only, get the latest/final result per sample
+        if (isTRUE(input$show_consolidated_only)) {
+          if ("mic_status_final" %in% names(df)) {
+            df <- df %>%
+              group_by(across(all_of(sample_id_col))) %>%
+              slice_tail(n = 1) %>%
+              ungroup() %>%
+              mutate(FinalCall = coalesce(mic_status_final, FinalCall))
+          } else {
+            df <- df %>%
+              group_by(across(all_of(sample_id_col))) %>%
+              slice_tail(n = 1) %>%
+              ungroup()
+          }
+        }
+
+        df <- df %>%
           mutate(
-            # Prepare hover text with proper NA handling and test info
-            TestNumberText = if ("TestNumber" %in% names(.)) {
-              paste0("<br>Test #: ", TestNumber)
-            } else {
-              ""
-            },
+            # Replace NA with high Cq value to show "no detection" on plot
+            Cq_median_177T_plot = if_else(is.na(Cq_median_177T), 40.0, Cq_median_177T),
+            Cq_median_18S2_plot = if_else(is.na(Cq_median_18S2), 40.0, Cq_median_18S2),
+            # Clean detection labels
+            Detection_177T = if_else(is.na(Cq_median_177T) | Cq_median_177T >= 40, "Not Detected", "Detected"),
+            Detection_18S2 = if_else(is.na(Cq_median_18S2) | Cq_median_18S2 >= 40, "Not Detected", "Detected"),
+            # Clean Final Call labels for display
+            FinalCall_Display = case_when(
+              FinalCall == "Positive" ~ "Positive (Both Markers)",
+              FinalCall == "Positive_DNA" ~ "Positive (DNA Only)",
+              FinalCall == "Positive_RNA" ~ "Positive (RNA Only)",
+              FinalCall == "LatePositive" ~ "Late Positive",
+              FinalCall == "Negative" ~ "Negative",
+              FinalCall == "Indeterminate" ~ "Indeterminate",
+              FinalCall == "Invalid_NoDNA" ~ "Invalid (No DNA)",
+              TRUE ~ FinalCall
+            ),
+            # Prepare hover text with clean formatting
             hover_text = paste0(
               "<b>", SampleName, "</b><br>",
-              "177T Cq: ", if_else(is.na(Cq_median_177T), "No detection", sprintf("%.2f", Cq_median_177T)), "<br>",
-              "18S2 Cq: ", if_else(is.na(Cq_median_18S2), "No detection", sprintf("%.2f", Cq_median_18S2)),
-              TestNumberText,
-              if_else(is_retested, paste0("<br>(Tested ", test_count, " times)"), "")
+              "<br><b>177T (DNA):</b> ", Detection_177T,
+              if_else(Detection_177T == "Detected", paste0(" (Cq ", sprintf("%.1f", Cq_median_177T), ")"), ""),
+              "<br><b>18S2 (RNA):</b> ", Detection_18S2,
+              if_else(Detection_18S2 == "Detected", paste0(" (Cq ", sprintf("%.1f", Cq_median_18S2), ")"), ""),
+              "<br><br><b>Final Call:</b> ", FinalCall_Display,
+              if_else(is_retested, paste0("<br><i>Tested ", test_count, " times</i>"), "")
             )
           )
+
+        # Color palette for final calls
+        call_colors <- c(
+          "Positive" = "#2ecc71",
+          "Positive_DNA" = "#3498db",
+          "Positive_RNA" = "#9b59b6",
+          "LatePositive" = "#f39c12",
+          "Negative" = "#7f8c8d",
+          "Indeterminate" = "#e67e22",
+          "Invalid_NoDNA" = "#e74c3c"
+        )
 
         plot_ly(df, x = ~Cq_median_177T_plot, y = ~Cq_median_18S2_plot,
                 color = ~FinalCall,
                 symbol = ~is_retested,
-                symbols = c("circle", "diamond"),  # circle for single test, diamond for retested
-                colors = c(
-                  "Positive" = "#27ae60",
-                  "Positive_DNA" = "#3498db",
-                  "Positive_RNA" = "#9b59b6",
-                  "LatePositive" = "#f39c12",
-                  "Negative" = "#95a5a6",
-                  "Indeterminate" = "#f1c40f",
-                  "Invalid_NoDNA" = "#e74c3c"
-                ),
+                symbols = c("circle", "diamond"),
+                colors = call_colors,
                 type = 'scatter', mode = 'markers',
                 hovertext = ~hover_text,
                 hoverinfo = 'text',
                 marker = list(
-                  size = 10,
-                  opacity = 0.8,
-                  line = list(width = 1, color = "white")  # Small white border for definition
+                  size = 12,
+                  opacity = 0.85,
+                  line = list(width = 2, color = "rgba(255,255,255,0.5)")
                 )) %>%
           layout(
-            xaxis = list(title = "177T Cq (DNA)"),
-            yaxis = list(title = "18S2 Cq (RNA)"),
-            legend = list(title = list(text = "Call")),
-            hovermode = 'closest'
+            xaxis = list(
+              title = list(text = "177T Cq (DNA Detection)", font = list(color = "white", size = 14)),
+              tickfont = list(color = "rgba(255,255,255,0.8)"),
+              gridcolor = "rgba(255,255,255,0.1)",
+              zerolinecolor = "rgba(255,255,255,0.2)",
+              range = c(15, 42),
+              dtick = 5
+            ),
+            yaxis = list(
+              title = list(text = "18S2 Cq (RNA Detection)", font = list(color = "white", size = 14)),
+              tickfont = list(color = "rgba(255,255,255,0.8)"),
+              gridcolor = "rgba(255,255,255,0.1)",
+              zerolinecolor = "rgba(255,255,255,0.2)",
+              range = c(15, 42),
+              dtick = 5
+            ),
+            legend = list(
+              title = list(text = "Final Call", font = list(color = "white")),
+              font = list(color = "white"),
+              bgcolor = "rgba(0,0,0,0.3)"
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)",
+            plot_bgcolor = "rgba(0,0,0,0)",
+            hovermode = 'closest',
+            # Add quadrant reference lines at Cq 35 (typical threshold)
+            shapes = list(
+              list(type = "line", x0 = 35, x1 = 35, y0 = 15, y1 = 42,
+                   line = list(color = "rgba(255,255,255,0.3)", dash = "dash", width = 1)),
+              list(type = "line", x0 = 15, x1 = 42, y0 = 35, y1 = 35,
+                   line = list(color = "rgba(255,255,255,0.3)", dash = "dash", width = 1))
+            ),
+            annotations = list(
+              list(x = 25, y = 25, text = "BOTH DETECTED", showarrow = FALSE,
+                   font = list(color = "rgba(46,204,113,0.6)", size = 12)),
+              list(x = 25, y = 38, text = "DNA ONLY", showarrow = FALSE,
+                   font = list(color = "rgba(52,152,219,0.6)", size = 12)),
+              list(x = 38, y = 25, text = "RNA ONLY", showarrow = FALSE,
+                   font = list(color = "rgba(155,89,182,0.6)", size = 12)),
+              list(x = 38, y = 38, text = "NOT DETECTED", showarrow = FALSE,
+                   font = list(color = "rgba(127,140,141,0.6)", size = 12))
+            )
           )
       }, error = function(e) {
-        # Return a plot with the actual error message
         plotly_empty() %>%
           layout(
-            title = "Error rendering plot",
+            title = list(text = "Error rendering plot", font = list(color = "white")),
+            paper_bgcolor = "rgba(0,0,0,0)",
+            plot_bgcolor = "rgba(0,0,0,0)",
             annotations = list(
               list(
-                text = paste0("Error: ", conditionMessage(e),
-                             "<br><br>Please check the console for details."),
+                text = paste0("Error: ", conditionMessage(e)),
                 showarrow = FALSE,
-                x = 0.5,
-                y = 0.5,
-                xref = "paper",
-                yref = "paper",
-                font = list(color = "red", size = 14)
+                x = 0.5, y = 0.5,
+                xref = "paper", yref = "paper",
+                font = list(color = "#e74c3c", size = 14)
               )
             )
           )
       })
     })
+
+    # === NEW: Sample Statistics Table with SD ===
+    output$sample_stats_table <- renderTable({
+      replicates <- if (is.null(filtered_replicates)) tibble() else filtered_replicates()
+      base <- filtered_base()
+
+      if (!nrow(replicates) || !nrow(base)) {
+        return(tibble(Message = "No replicate data available"))
+      }
+
+      # Get positive samples from base data
+      positive_samples <- base %>%
+        filter(ControlType == "Sample", grepl("Positive", FinalCall)) %>%
+        pull(SampleName) %>%
+        unique()
+
+      if (!length(positive_samples)) {
+        return(tibble(Message = "No positive samples found"))
+      }
+
+      # Calculate statistics for positive samples
+      target_map <- c("177T" = "177T", "18S2" = "18S2")
+
+      stats <- replicates %>%
+        filter(
+          ControlType == "Sample",
+          SampleName %in% positive_samples,
+          Target %in% names(target_map),
+          !is.na(Cq)
+        ) %>%
+        mutate(TargetLabel = target_map[Target]) %>%
+        group_by(SampleName, TargetLabel) %>%
+        summarise(
+          n_reps = n(),
+          mean_cq = mean(Cq, na.rm = TRUE),
+          sd_cq = sd(Cq, na.rm = TRUE),
+          cv_pct = if_else(mean_cq > 0, 100 * sd_cq / mean_cq, NA_real_),
+          .groups = "drop"
+        ) %>%
+        mutate(
+          Cq_display = case_when(
+            is.na(sd_cq) | n_reps < 2 ~ sprintf("%.1f", mean_cq),
+            TRUE ~ sprintf("%.1f ± %.2f", mean_cq, sd_cq)
+          ),
+          CV_display = if_else(is.na(cv_pct), "-", sprintf("%.1f%%", cv_pct))
+        )
+
+      # Pivot to wide format
+      stats_wide <- stats %>%
+        select(SampleName, TargetLabel, Cq_display, CV_display) %>%
+        tidyr::pivot_wider(
+          names_from = TargetLabel,
+          values_from = c(Cq_display, CV_display),
+          names_glue = "{TargetLabel}_{.value}"
+        )
+
+      # Add final call from base
+      final_calls <- base %>%
+        filter(SampleName %in% positive_samples) %>%
+        group_by(SampleName) %>%
+        slice_tail(n = 1) %>%
+        ungroup() %>%
+        select(SampleName, FinalCall)
+
+      result <- stats_wide %>%
+        left_join(final_calls, by = "SampleName") %>%
+        select(
+          Sample = SampleName,
+          `Final Call` = FinalCall,
+          `177T Cq (Mean ± SD)` = `177T_Cq_display`,
+          `177T CV%` = `177T_CV_display`,
+          `18S2 Cq (Mean ± SD)` = `18S2_Cq_display`,
+          `18S2 CV%` = `18S2_CV_display`
+        ) %>%
+        arrange(`Final Call`, Sample)
+
+      # Replace NA with "-"
+      result <- result %>%
+        mutate(across(everything(), ~if_else(is.na(.), "-", as.character(.))))
+
+      result
+    },
+    striped = TRUE,
+    bordered = TRUE,
+    hover = TRUE,
+    spacing = "s",
+    align = "l",
+    rownames = FALSE)
     
     # RNAseP quality scatter plot
     output$scatter_rnp <- renderPlotly({
@@ -587,7 +932,7 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         )
     })
 
-    # === NEW: Cq Distribution by Call ===
+    # === Cq Distribution by Call - REDESIGNED FOR PROMINENCE ===
     output$box_cq_by_call <- renderPlotly({
       df <- filtered_base() %>%
         filter(ControlType == "Sample", !is.na(FinalCall))
@@ -596,86 +941,134 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         return(plotly_empty() %>% layout(title = "No data available"))
       }
 
-      # Reshape to long format for all markers
+      # Focus on the two key Trypanozoon markers (177T and 18S2)
       df_long <- df %>%
         select(SampleName, FinalCall,
-               `177T` = Cq_median_177T,
-               `18S2` = Cq_median_18S2,
-               `RNAseP-DNA` = Cq_median_RNAseP_DNA,
-               `RNAseP-RNA` = Cq_median_RNAseP_RNA) %>%
-        tidyr::pivot_longer(cols = c(`177T`, `18S2`, `RNAseP-DNA`, `RNAseP-RNA`),
+               `177T (DNA)` = Cq_median_177T,
+               `18S2 (RNA)` = Cq_median_18S2) %>%
+        tidyr::pivot_longer(cols = c(`177T (DNA)`, `18S2 (RNA)`),
                            names_to = "Marker", values_to = "Cq") %>%
-        filter(!is.na(Cq))
+        filter(!is.na(Cq)) %>%
+        mutate(
+          # Clean labels for Final Call
+          FinalCall_Label = case_when(
+            FinalCall == "Positive" ~ "Positive\n(Both)",
+            FinalCall == "Positive_DNA" ~ "Positive\n(DNA)",
+            FinalCall == "Positive_RNA" ~ "Positive\n(RNA)",
+            FinalCall == "LatePositive" ~ "Late\nPositive",
+            FinalCall == "Negative" ~ "Negative",
+            FinalCall == "Indeterminate" ~ "Indeterminate",
+            FinalCall == "Invalid_NoDNA" ~ "Invalid",
+            TRUE ~ FinalCall
+          ),
+          # Order factor by clinical importance
+          FinalCall_Label = factor(FinalCall_Label, levels = c(
+            "Positive\n(Both)", "Positive\n(DNA)", "Positive\n(RNA)",
+            "Late\nPositive", "Indeterminate", "Negative", "Invalid"
+          ))
+        )
 
       if (!nrow(df_long)) {
         return(plotly_empty() %>% layout(title = "No Cq data available"))
       }
 
-      # Define color palette for all FinalCall categories
-      call_colors <- c(
-        "Positive" = "#27ae60",
-        "Positive_DNA" = "#3498db",
-        "Positive_RNA" = "#9b59b6",
-        "LatePositive" = "#f39c12",
-        "Negative" = "#95a5a6",
-        "Indeterminate" = "#e67e22",
-        "Invalid_NoDNA" = "#e74c3c"
-      )
+      # Count samples per category for annotation
+      sample_counts <- df %>%
+        mutate(
+          FinalCall_Label = case_when(
+            FinalCall == "Positive" ~ "Positive\n(Both)",
+            FinalCall == "Positive_DNA" ~ "Positive\n(DNA)",
+            FinalCall == "Positive_RNA" ~ "Positive\n(RNA)",
+            FinalCall == "LatePositive" ~ "Late\nPositive",
+            FinalCall == "Negative" ~ "Negative",
+            FinalCall == "Indeterminate" ~ "Indeterminate",
+            FinalCall == "Invalid_NoDNA" ~ "Invalid",
+            TRUE ~ FinalCall
+          )
+        ) %>%
+        count(FinalCall_Label, name = "n")
 
-      # Create separate subplots for each marker in a 2x2 grid
-      markers <- c("177T", "18S2", "RNAseP-DNA", "RNAseP-RNA")
+      # Create a faceted box plot - more visually impactful
+      fig <- plot_ly()
 
-      # Create list to store individual plots
-      plot_list <- list()
+      # Add traces for each marker
+      marker_colors <- c("177T (DNA)" = "#3498db", "18S2 (RNA)" = "#9b59b6")
 
-      for (marker in markers) {
+      for (marker in c("177T (DNA)", "18S2 (RNA)")) {
         marker_data <- df_long %>% filter(Marker == marker)
 
-        if (nrow(marker_data) > 0) {
-          # Get unique calls and their colors
-          unique_calls <- unique(marker_data$FinalCall)
-
-          p <- plot_ly()
-
-          for (call in unique_calls) {
-            call_data <- marker_data %>% filter(FinalCall == call)
-            # Use default color if call not in palette
-            color <- if (call %in% names(call_colors)) call_colors[[call]] else "#95a5a6"
-
-            p <- p %>%
-              add_trace(
-                data = call_data,
-                x = ~FinalCall,
-                y = ~Cq,
-                type = "box",
-                name = call,
-                marker = list(color = color),
-                showlegend = FALSE
-              )
-          }
-
-          p <- p %>%
-            layout(
-              title = list(text = marker, font = list(size = 14)),
-              xaxis = list(title = "", tickangle = -45),
-              yaxis = list(title = if (marker %in% c("177T", "RNAseP-DNA")) "Cq Value" else ""),
-              margin = list(l = 50, r = 20, t = 40, b = 80)
+        fig <- fig %>%
+          add_trace(
+            data = marker_data,
+            x = ~FinalCall_Label,
+            y = ~Cq,
+            type = "box",
+            name = marker,
+            marker = list(color = marker_colors[[marker]]),
+            line = list(color = marker_colors[[marker]]),
+            fillcolor = paste0(marker_colors[[marker]], "40"),  # 40 = 25% opacity
+            boxpoints = "outliers",
+            jitter = 0.3,
+            pointpos = 0,
+            hovertemplate = paste0(
+              "<b>", marker, "</b><br>",
+              "Category: %{x}<br>",
+              "Cq: %{y:.1f}<br>",
+              "<extra></extra>"
             )
-
-          plot_list[[marker]] <- p
-        }
+          )
       }
 
-      # Combine into 2x2 subplot
-      subplot(plot_list, nrows = 2, shareY = TRUE, titleX = TRUE, titleY = TRUE) %>%
+      # Add threshold reference lines
+      fig <- fig %>%
         layout(
           title = list(
-            text = paste0("Cq Distribution by Final Call - All Markers (n = ",
-                         length(unique(df_long$SampleName)), " samples)"),
-            y = 0.98
+            text = paste0("<b>Cq Distribution by Final Call</b><br>",
+                         "<sup>n = ", length(unique(df_long$SampleName)), " samples | ",
+                         "Lower Cq = stronger detection</sup>"),
+            font = list(size = 16),
+            y = 0.97
           ),
-          showlegend = FALSE
+          xaxis = list(
+            title = "",
+            tickfont = list(size = 11),
+            categoryorder = "array",
+            categoryarray = c("Positive\n(Both)", "Positive\n(DNA)", "Positive\n(RNA)",
+                             "Late\nPositive", "Indeterminate", "Negative", "Invalid")
+          ),
+          yaxis = list(
+            title = "Cq Value",
+            titlefont = list(size = 13),
+            range = c(10, 45),
+            dtick = 5
+          ),
+          boxmode = "group",
+          boxgap = 0.3,
+          boxgroupgap = 0.1,
+          legend = list(
+            title = list(text = "Marker"),
+            orientation = "h",
+            x = 0.5,
+            xanchor = "center",
+            y = -0.12
+          ),
+          margin = list(t = 80, b = 80),
+          # Add reference lines for thresholds
+          shapes = list(
+            list(type = "line", x0 = -0.5, x1 = 6.5, y0 = 35, y1 = 35,
+                 line = list(color = "#f39c12", dash = "dash", width = 2)),
+            list(type = "line", x0 = -0.5, x1 = 6.5, y0 = 40, y1 = 40,
+                 line = list(color = "#e74c3c", dash = "dot", width = 2))
+          ),
+          annotations = list(
+            list(x = 1.02, y = 35, xref = "paper", text = "Positive threshold (≤35)",
+                 showarrow = FALSE, font = list(color = "#f39c12", size = 10)),
+            list(x = 1.02, y = 40, xref = "paper", text = "No detection (≥40)",
+                 showarrow = FALSE, font = list(color = "#e74c3c", size = 10))
+          )
         )
+
+      fig
     })
 
     # Helper: Sample repeat frequency summary ---------------------------------
@@ -1488,72 +1881,226 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
       fig
     })
 
-    # === NEW: Geographic - Positivity by Province ===
+    # === Geographic - Positivity by Structure Sanitaire ===
     output$bar_geo_positivity <- renderPlotly({
       df <- filtered_base() %>%
         filter(ControlType == "Sample")
 
-      if (!nrow(df) || !"Province" %in% names(df)) {
-        return(plotly_empty() %>% layout(title = "No geographic data available"))
+      if (!nrow(df)) {
+        return(plotly_empty() %>% layout(title = "No data available"))
+      }
+
+      # Try to find Structure Sanitaire column (various possible names)
+      geo_col <- NULL
+      possible_cols <- c("StructureSanitaire", "Structure_Sanitaire", "structure_sanitaire",
+                         "HealthFacility", "Health_Facility", "Fosa", "FOSA",
+                         "HealthZone", "Health_Zone", "ZoneSante", "Zone_Sante")
+
+      for (col in possible_cols) {
+        if (col %in% names(df)) {
+          geo_col <- col
+          break
+        }
+      }
+
+      # Fallback to Province if no structure sanitaire found
+      if (is.null(geo_col)) {
+        if ("Province" %in% names(df)) {
+          geo_col <- "Province"
+        } else {
+          return(plotly_empty() %>% layout(title = "No geographic data available"))
+        }
       }
 
       df_geo <- df %>%
-        filter(!is.na(Province), !is.na(FinalCall)) %>%
-        mutate(CallSimplified = case_when(
-          grepl("Positive", FinalCall) ~ "Positive",
-          FinalCall == "Negative" ~ "Negative",
-          TRUE ~ "Other"
-        )) %>%
-        count(Province, CallSimplified) %>%
-        group_by(Province) %>%
-        mutate(pct = n / sum(n) * 100)
+        filter(!is.na(.data[[geo_col]]), !is.na(FinalCall)) %>%
+        mutate(
+          GeoUnit = .data[[geo_col]],
+          CallSimplified = case_when(
+            FinalCall == "Positive" ~ "Positive (Both)",
+            FinalCall == "Positive_DNA" ~ "DNA Only",
+            FinalCall == "Positive_RNA" ~ "RNA Only",
+            FinalCall == "LatePositive" ~ "Late Positive",
+            FinalCall == "Negative" ~ "Negative",
+            TRUE ~ "Other"
+          )
+        ) %>%
+        count(GeoUnit, CallSimplified) %>%
+        group_by(GeoUnit) %>%
+        mutate(
+          total = sum(n),
+          pct = n / total * 100
+        ) %>%
+        ungroup()
 
       if (!nrow(df_geo)) {
         return(plotly_empty() %>% layout(title = "No geographic data"))
       }
 
-      plot_ly(df_geo, x = ~Province, y = ~n, color = ~CallSimplified,
+      # Order by total samples (most to least)
+      geo_order <- df_geo %>%
+        group_by(GeoUnit) %>%
+        summarise(total = sum(n), .groups = "drop") %>%
+        arrange(desc(total)) %>%
+        pull(GeoUnit)
+
+      df_geo <- df_geo %>%
+        mutate(GeoUnit = factor(GeoUnit, levels = geo_order))
+
+      # Calculate positivity rate per unit for annotation
+      positivity_by_unit <- df_geo %>%
+        group_by(GeoUnit) %>%
+        summarise(
+          total = sum(n),
+          positive = sum(n[CallSimplified %in% c("Positive (Both)", "DNA Only", "RNA Only", "Late Positive")]),
+          rate = round(100 * positive / total, 1),
+          .groups = "drop"
+        )
+
+      plot_ly(df_geo, x = ~GeoUnit, y = ~n, color = ~CallSimplified,
               type = "bar",
-              colors = c("Positive" = "#27ae60", "Negative" = "#95a5a6", "Other" = "#f39c12"),
-              text = ~paste0(n, " (", round(pct, 1), "%)"),
-              textposition = "inside") %>%
+              colors = c(
+                "Positive (Both)" = "#2ecc71",
+                "DNA Only" = "#3498db",
+                "RNA Only" = "#9b59b6",
+                "Late Positive" = "#f39c12",
+                "Negative" = "#95a5a6",
+                "Other" = "#e67e22"
+              ),
+              text = ~paste0(n),
+              textposition = "inside",
+              hovertemplate = paste0(
+                "<b>%{x}</b><br>",
+                "%{fullData.name}: %{y}<br>",
+                "<extra></extra>"
+              )) %>%
         layout(
-          title = paste0("n = ", sum(df_geo$n)),
-          xaxis = list(title = "Province"),
+          title = list(
+            text = paste0("Positivity by ", gsub("_", " ", geo_col), " (n = ", sum(df_geo$n), " samples)"),
+            font = list(size = 14)
+          ),
+          xaxis = list(
+            title = "",
+            tickangle = -45,
+            categoryorder = "array",
+            categoryarray = geo_order
+          ),
           yaxis = list(title = "Sample Count"),
-          barmode = "stack"
+          barmode = "stack",
+          legend = list(
+            title = list(text = "Final Call"),
+            orientation = "h",
+            y = -0.25
+          ),
+          margin = list(b = 120)
         )
     })
 
-    # === NEW: Geographic - RNA Quality by Province ===
+    # === Geographic - RNA Quality by Structure Sanitaire ===
     output$box_geo_quality <- renderPlotly({
       df <- filtered_base() %>%
         filter(ControlType == "Sample", !is.na(Delta_RP))
 
-      if (!nrow(df) || !"Province" %in% names(df)) {
-        return(plotly_empty() %>% layout(title = "No geographic data available"))
+      if (!nrow(df)) {
+        return(plotly_empty() %>% layout(title = "No data available"))
+      }
+
+      # Try to find Structure Sanitaire column (various possible names)
+      geo_col <- NULL
+      possible_cols <- c("StructureSanitaire", "Structure_Sanitaire", "structure_sanitaire",
+                         "HealthFacility", "Health_Facility", "Fosa", "FOSA",
+                         "HealthZone", "Health_Zone", "ZoneSante", "Zone_Sante")
+
+      for (col in possible_cols) {
+        if (col %in% names(df)) {
+          geo_col <- col
+          break
+        }
+      }
+
+      # Fallback to Province if no structure sanitaire found
+      if (is.null(geo_col)) {
+        if ("Province" %in% names(df)) {
+          geo_col <- "Province"
+        } else {
+          return(plotly_empty() %>% layout(title = "No geographic data available"))
+        }
       }
 
       df_geo <- df %>%
-        filter(!is.na(Province))
+        filter(!is.na(.data[[geo_col]])) %>%
+        mutate(GeoUnit = .data[[geo_col]])
 
       if (!nrow(df_geo)) {
         return(plotly_empty() %>% layout(title = "No geographic quality data"))
       }
 
-      plot_ly(df_geo, x = ~Province, y = ~Delta_RP,
+      # Order by median Delta_RP (best to worst)
+      geo_order <- df_geo %>%
+        group_by(GeoUnit) %>%
+        summarise(median_delta = median(Delta_RP, na.rm = TRUE), .groups = "drop") %>%
+        arrange(median_delta) %>%
+        pull(GeoUnit)
+
+      df_geo <- df_geo %>%
+        mutate(GeoUnit = factor(GeoUnit, levels = geo_order))
+
+      # Calculate summary stats for each unit
+      summary_stats <- df_geo %>%
+        group_by(GeoUnit) %>%
+        summarise(
+          n = n(),
+          median_val = median(Delta_RP, na.rm = TRUE),
+          good_pct = round(100 * sum(Delta_RP <= 5, na.rm = TRUE) / n(), 1),
+          .groups = "drop"
+        )
+
+      # Color boxes by median quality
+      df_geo <- df_geo %>%
+        left_join(summary_stats %>% select(GeoUnit, median_val), by = "GeoUnit") %>%
+        mutate(
+          QualityCategory = case_when(
+            median_val <= 5 ~ "Good",
+            median_val <= 8 ~ "Moderate",
+            TRUE ~ "Poor"
+          )
+        )
+
+      plot_ly(df_geo, x = ~GeoUnit, y = ~Delta_RP,
               type = "box",
-              color = ~Province) %>%
+              color = ~QualityCategory,
+              colors = c("Good" = "#27ae60", "Moderate" = "#f39c12", "Poor" = "#e74c3c"),
+              hoverinfo = "y+name") %>%
         layout(
-          title = paste0("n = ", nrow(df_geo)),
-          xaxis = list(title = "Province"),
-          yaxis = list(title = "ΔCq RNA Preservation"),
-          showlegend = FALSE,
+          title = list(
+            text = paste0("RNA Preservation by ", gsub("_", " ", geo_col), " (n = ", nrow(df_geo), ")"),
+            font = list(size = 14)
+          ),
+          xaxis = list(
+            title = "",
+            tickangle = -45,
+            categoryorder = "array",
+            categoryarray = geo_order
+          ),
+          yaxis = list(title = "ΔCq RNA Preservation (lower is better)"),
+          showlegend = TRUE,
+          legend = list(
+            title = list(text = "Quality"),
+            orientation = "h",
+            y = -0.25
+          ),
+          margin = list(b = 120),
           shapes = list(
-            list(type = "line", x0 = -0.5, x1 = 10, y0 = 5, y1 = 5,
-                 line = list(color = 'green', dash = 'dash')),
-            list(type = "line", x0 = -0.5, x1 = 10, y0 = 8, y1 = 8,
-                 line = list(color = 'orange', dash = 'dash'))
+            list(type = "line", x0 = -0.5, x1 = length(geo_order) - 0.5, y0 = 5, y1 = 5,
+                 line = list(color = '#27ae60', dash = 'dash', width = 2)),
+            list(type = "line", x0 = -0.5, x1 = length(geo_order) - 0.5, y0 = 8, y1 = 8,
+                 line = list(color = '#e74c3c', dash = 'dash', width = 2))
+          ),
+          annotations = list(
+            list(x = 1.02, y = 5, xref = "paper", text = "Good (≤5)",
+                 showarrow = FALSE, font = list(color = "#27ae60", size = 10)),
+            list(x = 1.02, y = 8, xref = "paper", text = "Poor (>8)",
+                 showarrow = FALSE, font = list(color = "#e74c3c", size = 10))
           )
         )
     })

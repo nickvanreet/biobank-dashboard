@@ -182,17 +182,21 @@ is_mic_rna_positive <- function(marker_18S2, include_latepositive = FALSE) {
 # ============================================================================
 # ELISA CLASSIFICATION FUNCTIONS
 # ============================================================================
+# NOTE: These are named with std_ prefix to avoid conflicts with
+# dashboard_data_utils.R which has its own classify_elisa/classify_ielisa
+# ============================================================================
 
 #' Classify ELISA result to standardized status
 #'
 #' Uses PP% and DOD thresholds consistently.
+#' NOTE: Named std_classify_elisa to avoid conflict with dashboard_data_utils.R
 #'
 #' @param pp_percent Numeric vector of PP% values
 #' @param dod Numeric vector of DOD values
 #' @param status_final Optional character vector of pre-computed status (preferred if available)
 #' @return Character vector of standardized status values
 #' @export
-classify_elisa <- function(pp_percent = NULL, dod = NULL, status_final = NULL) {
+std_classify_elisa <- function(pp_percent = NULL, dod = NULL, status_final = NULL) {
   cutoffs <- standardized_cutoffs()
 
 
@@ -236,9 +240,9 @@ classify_elisa <- function(pp_percent = NULL, dod = NULL, status_final = NULL) {
 #' @export
 is_elisa_positive <- function(status = NULL, pp_percent = NULL, dod = NULL, include_borderline = FALSE) {
   if (is.null(status)) {
-    status <- classify_elisa(pp_percent = pp_percent, dod = dod)
+    status <- std_classify_elisa(pp_percent = pp_percent, dod = dod)
   } else {
-    status <- classify_elisa(status_final = status)
+    status <- std_classify_elisa(status_final = status)
   }
 
   if (include_borderline) {
@@ -254,12 +258,14 @@ is_elisa_positive <- function(status = NULL, pp_percent = NULL, dod = NULL, incl
 
 #' Classify iELISA inhibition to standardized status
 #'
+#' NOTE: Named std_classify_ielisa to avoid conflict with dashboard_data_utils.R
+#'
 #' @param inhibition Numeric vector of % inhibition values
 #' @param positive_threshold Numeric positive threshold (default 30)
 #' @param borderline_threshold Numeric borderline threshold (default 25)
 #' @return Character vector of standardized status values
 #' @export
-classify_ielisa <- function(inhibition, positive_threshold = 30, borderline_threshold = 25) {
+std_classify_ielisa <- function(inhibition, positive_threshold = 30, borderline_threshold = 25) {
   dplyr::case_when(
     is.na(inhibition) ~ "Missing",
     inhibition >= positive_threshold ~ "Positive",

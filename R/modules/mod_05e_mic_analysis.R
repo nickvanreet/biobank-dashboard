@@ -192,6 +192,15 @@ mod_mic_analysis_ui <- function(id) {
         card_body(
           plotlyOutput(ns("box_cq_by_call"), height = "550px"),
           class = "p-3"
+        ),
+        card_footer(
+          class = "bg-light p-3",
+          div(
+            class = "text-muted mb-2",
+            tags$strong("Statistical Summary: "),
+            "Comparing RNAseP Cq values across detection categories (Kruskal-Wallis & pairwise Mann-Whitney tests)"
+          ),
+          tableOutput(ns("rnasep_stats_table"))
         )
       ),
 
@@ -941,12 +950,14 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
         return(plotly_empty() %>% layout(title = "No data available"))
       }
 
-      # Focus on the two key Trypanozoon markers (177T and 18S2)
+      # Include all four markers: Trypanozoon (177T, 18S2) and RNAseP quality controls
       df_long <- df %>%
         select(SampleName, FinalCall,
                `177T (DNA)` = Cq_median_177T,
-               `18S2 (RNA)` = Cq_median_18S2) %>%
-        tidyr::pivot_longer(cols = c(`177T (DNA)`, `18S2 (RNA)`),
+               `18S2 (RNA)` = Cq_median_18S2,
+               `RNAseP-DNA` = Cq_median_RNAseP_DNA,
+               `RNAseP-RNA` = Cq_median_RNAseP_RNA) %>%
+        tidyr::pivot_longer(cols = c(`177T (DNA)`, `18S2 (RNA)`, `RNAseP-DNA`, `RNAseP-RNA`),
                            names_to = "Marker", values_to = "Cq") %>%
         filter(!is.na(Cq)) %>%
         mutate(
@@ -991,10 +1002,15 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
       # Create a faceted box plot - more visually impactful
       fig <- plot_ly()
 
-      # Add traces for each marker
-      marker_colors <- c("177T (DNA)" = "#3498db", "18S2 (RNA)" = "#9b59b6")
+      # Add traces for each marker - grouped by type for visual clarity
+      marker_colors <- c(
+        "177T (DNA)" = "#3498db",    # Blue - Trypanozoon DNA
+        "18S2 (RNA)" = "#9b59b6",    # Purple - Trypanozoon RNA
+        "RNAseP-DNA" = "#27ae60",    # Green - Quality control DNA
+        "RNAseP-RNA" = "#e74c3c"     # Red - Quality control RNA
+      )
 
-      for (marker in c("177T (DNA)", "18S2 (RNA)")) {
+      for (marker in c("177T (DNA)", "18S2 (RNA)", "RNAseP-DNA", "RNAseP-RNA")) {
         marker_data <- df_long %>% filter(Marker == marker)
 
         fig <- fig %>%
@@ -1025,7 +1041,7 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
           title = list(
             text = paste0("<b>Cq Distribution by Final Call</b><br>",
                          "<sup>n = ", length(unique(df_long$SampleName)), " samples | ",
-                         "Lower Cq = stronger detection</sup>"),
+                         "Trypanozoon (177T, 18S2) + Quality Controls (RNAseP)</sup>"),
             font = list(size = 16),
             y = 0.97
           ),
@@ -1070,6 +1086,125 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
 
       fig
     })
+
+    # === RNAseP Statistics Table - Compare across Final Call categories ===
+    output$rnasep_stats_table <- renderTable({
+      df <- filtered_base() %>%
+        filter(ControlType == "Sample", !is.na(FinalCall))
+
+      if (!nrow(df) || nrow(df) < 3) {
+        return(data.frame(Message = "Insufficient data for statistical analysis"))
+      }
+
+      # Focus on the main detection categories
+      df <- df %>%
+        filter(FinalCall %in% c("Positive", "Positive_DNA", "Positive_RNA", "Negative")) %>%
+        mutate(
+          FinalCall_Label = case_when(
+            FinalCall == "Positive" ~ "TNA Positive",
+            FinalCall == "Positive_DNA" ~ "DNA Positive",
+            FinalCall == "Positive_RNA" ~ "RNA Positive",
+            FinalCall == "Negative" ~ "Negative",
+            TRUE ~ FinalCall
+          )
+        )
+
+      if (length(unique(df$FinalCall)) < 2) {
+        return(data.frame(Message = "Need at least 2 categories for comparison"))
+      }
+
+      # Build statistics for each marker
+      stats_list <- list()
+
+      for (marker_name in c("RNAseP-DNA", "RNAseP-RNA")) {
+        cq_col <- if (marker_name == "RNAseP-DNA") "Cq_median_RNAseP_DNA" else "Cq_median_RNAseP_RNA"
+
+        if (!cq_col %in% names(df)) next
+
+        # Get summary stats per group
+        group_stats <- df %>%
+          filter(!is.na(.data[[cq_col]])) %>%
+          group_by(FinalCall_Label) %>%
+          summarise(
+            n = n(),
+            median = median(.data[[cq_col]], na.rm = TRUE),
+            q25 = quantile(.data[[cq_col]], 0.25, na.rm = TRUE),
+            q75 = quantile(.data[[cq_col]], 0.75, na.rm = TRUE),
+            .groups = "drop"
+          )
+
+        if (nrow(group_stats) < 2) next
+
+        # Kruskal-Wallis test (overall comparison)
+        valid_data <- df %>% filter(!is.na(.data[[cq_col]]))
+        kw_test <- tryCatch(
+          kruskal.test(reformulate("FinalCall", cq_col), data = valid_data),
+          error = function(e) NULL
+        )
+
+        # Pairwise comparisons for key hypotheses
+        pairwise_results <- list()
+
+        # DNA Positive vs Negative (expect higher RNAseP-RNA in DNA positives)
+        dna_pos <- valid_data %>% filter(FinalCall == "Positive_DNA") %>% pull(cq_col)
+        neg <- valid_data %>% filter(FinalCall == "Negative") %>% pull(cq_col)
+        if (length(dna_pos) >= 2 && length(neg) >= 2) {
+          wt <- tryCatch(wilcox.test(dna_pos, neg), error = function(e) NULL)
+          if (!is.null(wt)) {
+            pairwise_results[["DNA+ vs Neg"]] <- sprintf("p=%.3f", wt$p.value)
+          }
+        }
+
+        # TNA Positive vs Negative
+        tna_pos <- valid_data %>% filter(FinalCall == "Positive") %>% pull(cq_col)
+        if (length(tna_pos) >= 2 && length(neg) >= 2) {
+          wt <- tryCatch(wilcox.test(tna_pos, neg), error = function(e) NULL)
+          if (!is.null(wt)) {
+            pairwise_results[["TNA+ vs Neg"]] <- sprintf("p=%.3f", wt$p.value)
+          }
+        }
+
+        # DNA Positive vs TNA Positive
+        if (length(dna_pos) >= 2 && length(tna_pos) >= 2) {
+          wt <- tryCatch(wilcox.test(dna_pos, tna_pos), error = function(e) NULL)
+          if (!is.null(wt)) {
+            pairwise_results[["DNA+ vs TNA+"]] <- sprintf("p=%.3f", wt$p.value)
+          }
+        }
+
+        # Build row
+        row_data <- data.frame(
+          Marker = marker_name,
+          stringsAsFactors = FALSE
+        )
+
+        # Add median (IQR) for each group
+        for (grp in c("TNA Positive", "DNA Positive", "RNA Positive", "Negative")) {
+          grp_stat <- group_stats %>% filter(FinalCall_Label == grp)
+          if (nrow(grp_stat) > 0) {
+            row_data[[grp]] <- sprintf("%.1f (%.1f-%.1f) n=%d",
+                                       grp_stat$median, grp_stat$q25, grp_stat$q75, grp_stat$n)
+          } else {
+            row_data[[grp]] <- "-"
+          }
+        }
+
+        # Add Kruskal-Wallis p-value
+        row_data[["Overall p"]] <- if (!is.null(kw_test)) sprintf("%.4f", kw_test$p.value) else "N/A"
+
+        # Add key pairwise comparison
+        row_data[["DNA+ vs Neg"]] <- if (!is.null(pairwise_results[["DNA+ vs Neg"]])) pairwise_results[["DNA+ vs Neg"]] else "-"
+
+        stats_list[[length(stats_list) + 1]] <- row_data
+      }
+
+      if (length(stats_list) == 0) {
+        return(data.frame(Message = "No RNAseP data available for analysis"))
+      }
+
+      result <- do.call(rbind, stats_list)
+      result
+    }, striped = TRUE, hover = TRUE, bordered = TRUE, spacing = "s")
 
     # Helper: Sample repeat frequency summary ---------------------------------
     sample_repeat_summary <- reactive({

@@ -966,7 +966,6 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
             FinalCall == "Positive" ~ "Positive\n(Both)",
             FinalCall == "Positive_DNA" ~ "Positive\n(DNA)",
             FinalCall == "Positive_RNA" ~ "Positive\n(RNA)",
-            FinalCall == "LatePositive" ~ "Late\nPositive",
             FinalCall == "Negative" ~ "Negative",
             FinalCall == "Indeterminate" ~ "Indeterminate",
             FinalCall == "Invalid_NoDNA" ~ "Invalid",
@@ -975,7 +974,7 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
           # Order factor by clinical importance
           FinalCall_Label = factor(FinalCall_Label, levels = c(
             "Positive\n(Both)", "Positive\n(DNA)", "Positive\n(RNA)",
-            "Late\nPositive", "Indeterminate", "Negative", "Invalid"
+            "Indeterminate", "Negative", "Invalid"
           ))
         )
 
@@ -990,7 +989,6 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
             FinalCall == "Positive" ~ "Positive\n(Both)",
             FinalCall == "Positive_DNA" ~ "Positive\n(DNA)",
             FinalCall == "Positive_RNA" ~ "Positive\n(RNA)",
-            FinalCall == "LatePositive" ~ "Late\nPositive",
             FinalCall == "Negative" ~ "Negative",
             FinalCall == "Indeterminate" ~ "Indeterminate",
             FinalCall == "Invalid_NoDNA" ~ "Invalid",
@@ -1050,7 +1048,7 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
             tickfont = list(size = 11),
             categoryorder = "array",
             categoryarray = c("Positive\n(Both)", "Positive\n(DNA)", "Positive\n(RNA)",
-                             "Late\nPositive", "Indeterminate", "Negative", "Invalid")
+                             "Indeterminate", "Negative", "Invalid")
           ),
           yaxis = list(
             title = "Cq Value",
@@ -1071,9 +1069,9 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
           margin = list(t = 80, b = 80),
           # Add reference lines for thresholds
           shapes = list(
-            list(type = "line", x0 = -0.5, x1 = 6.5, y0 = 35, y1 = 35,
+            list(type = "line", x0 = -0.5, x1 = 5.5, y0 = 35, y1 = 35,
                  line = list(color = "#f39c12", dash = "dash", width = 2)),
-            list(type = "line", x0 = -0.5, x1 = 6.5, y0 = 40, y1 = 40,
+            list(type = "line", x0 = -0.5, x1 = 5.5, y0 = 40, y1 = 40,
                  line = list(color = "#e74c3c", dash = "dot", width = 2))
           ),
           annotations = list(

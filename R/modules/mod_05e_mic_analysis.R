@@ -23,16 +23,16 @@ mod_mic_analysis_ui <- function(id) {
 
       /* Centerpiece styling for main detection plot */
       .mic-centerpiece {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
         border-radius: 16px;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        border: 2px solid #dee2e6;
       }
 
       .mic-centerpiece .card-header {
-        background: transparent;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        color: #ffffff;
+        background: #ffffff;
+        border-bottom: 2px solid #dee2e6;
+        color: #2c3e50;
         font-size: 1.25rem;
         font-weight: 600;
         padding: 1.25rem 1.5rem;
@@ -40,20 +40,23 @@ mod_mic_analysis_ui <- function(id) {
 
       .mic-centerpiece .card-body {
         padding: 1.5rem;
+        background: #ffffff;
+        border-radius: 0 0 14px 14px;
       }
 
       /* KPI boxes for detection summary */
       .mic-kpi-box {
-        background: rgba(255, 255, 255, 0.05);
+        background: #f8f9fa;
         border-radius: 12px;
         padding: 1rem 1.25rem;
         text-align: center;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid #dee2e6;
         transition: transform 0.2s ease;
       }
 
       .mic-kpi-box:hover {
         transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
       }
 
       .mic-kpi-value {
@@ -64,13 +67,13 @@ mod_mic_analysis_ui <- function(id) {
 
       .mic-kpi-label {
         font-size: 0.85rem;
-        color: rgba(255, 255, 255, 0.7);
+        color: #6c757d;
         text-transform: uppercase;
         letter-spacing: 0.5px;
       }
 
       .mic-kpi-positive { color: #2ecc71; }
-      .mic-kpi-negative { color: #95a5a6; }
+      .mic-kpi-negative { color: #7f8c8d; }
       .mic-kpi-dna { color: #3498db; }
       .mic-kpi-rna { color: #9b59b6; }
       .mic-kpi-late { color: #f39c12; }
@@ -163,7 +166,7 @@ mod_mic_analysis_ui <- function(id) {
           # Legend explanation
           div(
             class = "mt-3 text-center",
-            style = "color: rgba(255,255,255,0.6); font-size: 0.85rem;",
+            style = "color: #6c757d; font-size: 0.85rem;",
             HTML("Lower Cq = stronger detection &bull; Points at Cq 40 = No detection &bull; ◆ Diamond = retested sample")
           ),
           class = "p-3"
@@ -555,73 +558,125 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
           "Positive_DNA" = "#3498db",
           "Positive_RNA" = "#9b59b6",
           "LatePositive" = "#f39c12",
-          "Negative" = "#7f8c8d",
+          "Negative" = "#95a5a6",
           "Indeterminate" = "#e67e22",
           "Invalid_NoDNA" = "#e74c3c"
         )
 
-        plot_ly(df, x = ~Cq_median_177T_plot, y = ~Cq_median_18S2_plot,
-                color = ~FinalCall,
-                symbol = ~is_retested,
-                symbols = c("circle", "diamond"),
-                colors = call_colors,
-                type = 'scatter', mode = 'markers',
-                hovertext = ~hover_text,
-                hoverinfo = 'text',
-                marker = list(
-                  size = 12,
-                  opacity = 0.85,
-                  line = list(width = 2, color = "rgba(255,255,255,0.5)")
-                )) %>%
+        # Create symbol column with proper labels (not TRUE/FALSE)
+        df <- df %>%
+          mutate(
+            SymbolType = if_else(is_retested, "Retested", "Single Test"),
+            # Combine FinalCall and retest status for proper marker assignment
+            marker_symbol = if_else(is_retested, "diamond", "circle")
+          )
+
+        # Build plot by adding traces for each FinalCall category
+        fig <- plot_ly()
+
+        for (call_type in names(call_colors)) {
+          call_data <- df %>% filter(FinalCall == call_type)
+          if (nrow(call_data) > 0) {
+            # Single test samples (circles)
+            single_data <- call_data %>% filter(!is_retested)
+            if (nrow(single_data) > 0) {
+              fig <- fig %>%
+                add_trace(
+                  data = single_data,
+                  x = ~Cq_median_177T_plot,
+                  y = ~Cq_median_18S2_plot,
+                  type = 'scatter',
+                  mode = 'markers',
+                  name = call_type,
+                  legendgroup = call_type,
+                  hovertext = ~hover_text,
+                  hoverinfo = 'text',
+                  marker = list(
+                    symbol = "circle",
+                    size = 12,
+                    opacity = 0.85,
+                    color = call_colors[[call_type]],
+                    line = list(width = 1.5, color = "#ffffff")
+                  )
+                )
+            }
+
+            # Retested samples (diamonds) - same color, no separate legend entry
+            retest_data <- call_data %>% filter(is_retested)
+            if (nrow(retest_data) > 0) {
+              fig <- fig %>%
+                add_trace(
+                  data = retest_data,
+                  x = ~Cq_median_177T_plot,
+                  y = ~Cq_median_18S2_plot,
+                  type = 'scatter',
+                  mode = 'markers',
+                  name = call_type,
+                  legendgroup = call_type,
+                  showlegend = FALSE,  # Don't add separate legend entry
+                  hovertext = ~hover_text,
+                  hoverinfo = 'text',
+                  marker = list(
+                    symbol = "diamond",
+                    size = 14,
+                    opacity = 0.9,
+                    color = call_colors[[call_type]],
+                    line = list(width = 2, color = "#ffffff")
+                  )
+                )
+            }
+          }
+        }
+
+        fig %>%
           layout(
             xaxis = list(
-              title = list(text = "177T Cq (DNA Detection)", font = list(color = "white", size = 14)),
-              tickfont = list(color = "rgba(255,255,255,0.8)"),
-              gridcolor = "rgba(255,255,255,0.1)",
-              zerolinecolor = "rgba(255,255,255,0.2)",
+              title = list(text = "177T Cq (DNA Detection)", font = list(size = 14)),
+              gridcolor = "#e9ecef",
+              zerolinecolor = "#dee2e6",
               range = c(15, 42),
               dtick = 5
             ),
             yaxis = list(
-              title = list(text = "18S2 Cq (RNA Detection)", font = list(color = "white", size = 14)),
-              tickfont = list(color = "rgba(255,255,255,0.8)"),
-              gridcolor = "rgba(255,255,255,0.1)",
-              zerolinecolor = "rgba(255,255,255,0.2)",
+              title = list(text = "18S2 Cq (RNA Detection)", font = list(size = 14)),
+              gridcolor = "#e9ecef",
+              zerolinecolor = "#dee2e6",
               range = c(15, 42),
               dtick = 5
             ),
             legend = list(
-              title = list(text = "Final Call", font = list(color = "white")),
-              font = list(color = "white"),
-              bgcolor = "rgba(0,0,0,0.3)"
+              title = list(text = "Final Call"),
+              orientation = "v",
+              x = 1.02,
+              y = 0.5
             ),
             paper_bgcolor = "rgba(0,0,0,0)",
-            plot_bgcolor = "rgba(0,0,0,0)",
+            plot_bgcolor = "#ffffff",
             hovermode = 'closest',
             # Add quadrant reference lines at Cq 35 (typical threshold)
             shapes = list(
               list(type = "line", x0 = 35, x1 = 35, y0 = 15, y1 = 42,
-                   line = list(color = "rgba(255,255,255,0.3)", dash = "dash", width = 1)),
+                   line = list(color = "#adb5bd", dash = "dash", width = 1.5)),
               list(type = "line", x0 = 15, x1 = 42, y0 = 35, y1 = 35,
-                   line = list(color = "rgba(255,255,255,0.3)", dash = "dash", width = 1))
+                   line = list(color = "#adb5bd", dash = "dash", width = 1.5))
             ),
             annotations = list(
               list(x = 25, y = 25, text = "BOTH DETECTED", showarrow = FALSE,
-                   font = list(color = "rgba(46,204,113,0.6)", size = 12)),
+                   font = list(color = "#2ecc71", size = 13, family = "Arial Black")),
               list(x = 25, y = 38, text = "DNA ONLY", showarrow = FALSE,
-                   font = list(color = "rgba(52,152,219,0.6)", size = 12)),
+                   font = list(color = "#3498db", size = 13, family = "Arial Black")),
               list(x = 38, y = 25, text = "RNA ONLY", showarrow = FALSE,
-                   font = list(color = "rgba(155,89,182,0.6)", size = 12)),
+                   font = list(color = "#9b59b6", size = 13, family = "Arial Black")),
               list(x = 38, y = 38, text = "NOT DETECTED", showarrow = FALSE,
-                   font = list(color = "rgba(127,140,141,0.6)", size = 12))
+                   font = list(color = "#7f8c8d", size = 13, family = "Arial Black"))
             )
           )
       }, error = function(e) {
         plotly_empty() %>%
           layout(
-            title = list(text = "Error rendering plot", font = list(color = "white")),
+            title = list(text = "Error rendering plot"),
             paper_bgcolor = "rgba(0,0,0,0)",
-            plot_bgcolor = "rgba(0,0,0,0)",
+            plot_bgcolor = "#ffffff",
             annotations = list(
               list(
                 text = paste0("Error: ", conditionMessage(e)),

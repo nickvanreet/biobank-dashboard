@@ -35,6 +35,57 @@ assay_cutoffs <- function() {
   )
 }
 
+#' Parse dates safely with multiple format fallbacks
+#'
+#' Handles ambiguous date formats common in biobank data including:
+#' - ISO format (YYYY-MM-DD)
+#' - European format (DD/MM/YYYY) common in French Excel exports
+#' - US format (MM/DD/YYYY)
+#' - Excel numeric date serials
+#'
+#' @param x Vector of date values (character, Date, or numeric)
+#' @return Date vector
+parse_date_safe <- function(x) {
+  if (all(is.na(x))) return(as.Date(x))
+
+  suppressWarnings({
+    # First try standard Date parsing (handles ISO format)
+    d <- as.Date(x)
+    bad <- is.na(d)
+
+    if (any(bad)) {
+      xc <- as.character(x)
+
+      # Try dmy (DD/MM/YYYY - common in French data)
+      d[bad] <- lubridate::dmy(xc[bad], quiet = TRUE)
+      bad2 <- is.na(d)
+
+      # Try ymd (YYYY-MM-DD or YYYY/MM/DD)
+      if (any(bad2)) {
+        d[bad2] <- lubridate::ymd(xc[bad2], quiet = TRUE)
+        bad3 <- is.na(d)
+
+        # Try mdy (MM/DD/YYYY - US format)
+        if (any(bad3)) {
+          d[bad3] <- lubridate::mdy(xc[bad3], quiet = TRUE)
+          bad4 <- is.na(d)
+
+          # Handle Excel numeric date serials
+          if (any(bad4)) {
+            numeric_vals <- suppressWarnings(as.numeric(xc[bad4]))
+            valid_numeric <- !is.na(numeric_vals) & numeric_vals > 0 & numeric_vals < 100000
+            if (any(valid_numeric)) {
+              excel_dates <- as.Date(numeric_vals[valid_numeric], origin = "1899-12-30")
+              d[bad4][valid_numeric] <- excel_dates
+            }
+          }
+        }
+      }
+    }
+    d
+  })
+}
+
 #' Normalize sample identifiers across assays
 #'
 #' Less aggressive normalization to prevent sample ID collisions.
@@ -216,9 +267,9 @@ prepare_assay_dashboard_data <- function(
     biobank_base <- biobank_df %>%
       mutate(
         sample_id = biobank_barcodes_norm,
-        sample_date = suppressWarnings(lubridate::as_date(
+        sample_date = parse_date_safe(
           coalesce_any_column(., c("date_sample", "date_prelevement", "SampleDate"))
-        ))
+        )
       ) %>%
       filter(!is.na(sample_id) & sample_id != "") %>%
       select(sample_id, starts_with("province"), starts_with("Province"), starts_with("Health"), starts_with("Structure"),
@@ -270,7 +321,7 @@ prepare_assay_dashboard_data <- function(
         },
         quantitative = coalesce(PP_percent, DOD),
         metric = ifelse(!is.na(PP_percent), "PP%", "DOD"),
-        assay_date = suppressWarnings(lubridate::as_date(coalesce(plate_date, SampleDate)))
+        assay_date = parse_date_safe(coalesce(plate_date, SampleDate))
       ) %>%
       select(sample_id, assay, status, is_from_invalid_plate, quantitative, metric, assay_date, DOD, PP_percent)
 
@@ -322,9 +373,9 @@ prepare_assay_dashboard_data <- function(
           quantitative = if (!is.null(value_col)) suppressWarnings(as.numeric(.data[[value_col]])) else NA_real_,
           status = vapply(quantitative, classify_ielisa, character(1), cutoffs = cutoffs),
           metric = "% Inhibition",
-          assay_date = suppressWarnings(lubridate::as_date(
+          assay_date = parse_date_safe(
             if (length(date_cols)) coalesce(!!!syms(date_cols)) else NA
-          ))
+          )
         )
 
       if (!is.null(positive_col) && positive_col %in% names(ielisa_df)) {
@@ -371,9 +422,9 @@ prepare_assay_dashboard_data <- function(
     })
 
     # Extract assay date once
-    mic_assay_date <- suppressWarnings(lubridate::as_date(
+    mic_assay_date <- parse_date_safe(
       coalesce_any_column(mic_data$samples, c("CollectionDate", "SampleDate", "RunDate", "RunDateTime", "plate_date"))
-    ))
+    )
 
     # Create TWO rows per sample: one for 177T, one for 18S2
     # Extract marker statuses (if they exist, otherwise fall back to PipelineCategory)

@@ -237,7 +237,7 @@ prepare_biobank_lookup <- function(biobank_df) {
       Sex = if (!is.null(sex_col)) .data[[sex_col]] else NA_character_,
       Age = if (!is.null(age_col)) as.numeric(.data[[age_col]]) else NA_real_,
       AgeGroup = if (!is.null(age_group_col)) .data[[age_group_col]] else NA_character_,
-      SampleDate = if (!is.null(date_sample_col)) as.Date(.data[[date_sample_col]]) else as.Date(NA),
+      SampleDate = if (!is.null(date_sample_col)) as.Date(suppressWarnings(lubridate::parse_date_time(.data[[date_sample_col]], orders = c("ymd", "dmy", "mdy"), quiet = TRUE))) else as.Date(NA),
       Cohort = if (!is.null(cohort_col)) .data[[cohort_col]] else NA_character_
     ) %>%
     filter(!is.na(barcode_norm) | !is.na(numero_norm)) %>%

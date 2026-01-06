@@ -284,7 +284,7 @@ mod_data_manager_server <- function(id) {
             all(c("date_sample", "reason") %in% names(quality$row_flags_detailed))) {
           flags_weekly <- quality$row_flags_detailed %>%
             dplyr::mutate(
-              date_sample = suppressWarnings(lubridate::as_date(date_sample)),
+              date_sample = as.Date(suppressWarnings(lubridate::parse_date_time(date_sample, orders = c("ymd", "dmy", "mdy"), quiet = TRUE))),
               week = lubridate::floor_date(date_sample, "week"),
               quality_flag = dplyr::case_when(
                 is.na(reason) | reason == "" | reason == "OK" ~ "Valid",
@@ -563,7 +563,7 @@ mod_data_manager_server <- function(id) {
             all(c("date_sample", "reason") %in% names(quality$row_flags_detailed))) {
           flags_weekly <- quality$row_flags_detailed %>%
             dplyr::mutate(
-              date_sample = suppressWarnings(lubridate::as_date(date_sample)),
+              date_sample = as.Date(suppressWarnings(lubridate::parse_date_time(date_sample, orders = c("ymd", "dmy", "mdy"), quiet = TRUE))),
               week = lubridate::floor_date(date_sample, "week"),
               quality_flag = dplyr::case_when(
                 is.na(reason) | reason == "" | reason == "OK" ~ "Valid",

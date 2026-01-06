@@ -632,7 +632,7 @@ mod_data_quality_server <- function(id, raw_data, clean_data, quality_report) {
         if (is.data.frame(detailed) && all(c("date_sample", "reason") %in% names(detailed))) {
           weekly_flags <- detailed %>%
             dplyr::mutate(
-              date_sample = suppressWarnings(lubridate::as_date(date_sample)),
+              date_sample = as.Date(suppressWarnings(lubridate::parse_date_time(date_sample, orders = c("ymd", "dmy", "mdy"), quiet = TRUE))),
               week = lubridate::floor_date(date_sample, "week"),
               quality_flag = dplyr::case_when(
                 is.na(reason) | reason == "" | reason == "OK" ~ "Valid",

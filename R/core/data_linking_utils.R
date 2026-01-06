@@ -116,7 +116,7 @@ link_extraction_to_biobank <- function(extraction_df, biobank_df) {
       biobank_study_value = biobank_study_value,
       biobank_province_value = biobank_province_value,
       biobank_health_zone_value = biobank_health_zone_value,
-      biobank_date_sample_value = suppressWarnings(as.Date(biobank_date_sample_value))
+      biobank_date_sample_value = as.Date(suppressWarnings(lubridate::parse_date_time(biobank_date_sample_value, orders = c("ymd", "dmy", "mdy"), quiet = TRUE)))
     )
 
   # Normalize extraction identifiers

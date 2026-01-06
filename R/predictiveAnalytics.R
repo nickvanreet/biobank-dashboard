@@ -117,7 +117,7 @@ calculate_healthzone_risk <- function(biobank_df, mic_df = NULL,
     if (is.null(date_col)) {
       biobank_df$date_prel <- Sys.Date()
     } else {
-      biobank_df$date_prel <- as.Date(biobank_df[[date_col]])
+      biobank_df$date_prel <- as.Date(suppressWarnings(lubridate::parse_date_time(biobank_df[[date_col]], orders = c("ymd", "dmy", "mdy"), quiet = TRUE)))
     }
 
     # Get health zone data from biobank
@@ -440,7 +440,7 @@ calculate_structure_risk <- function(biobank_df, mic_df = NULL,
     if (is.null(date_col)) {
       biobank_df$date_prel <- Sys.Date()
     } else {
-      biobank_df$date_prel <- as.Date(biobank_df[[date_col]])
+      biobank_df$date_prel <- as.Date(suppressWarnings(lubridate::parse_date_time(biobank_df[[date_col]], orders = c("ymd", "dmy", "mdy"), quiet = TRUE)))
     }
 
     # Get structure data from biobank
@@ -996,7 +996,7 @@ calculate_temporal_predictions <- function(biobank_df, mic_df = NULL,
       ))
     }
 
-    biobank_df$date_prel <- as.Date(biobank_df[[date_col]])
+    biobank_df$date_prel <- as.Date(suppressWarnings(lubridate::parse_date_time(biobank_df[[date_col]], orders = c("ymd", "dmy", "mdy"), quiet = TRUE)))
 
     # Monthly sampling trends
     monthly_trend <- biobank_df %>%
@@ -1022,7 +1022,7 @@ calculate_temporal_predictions <- function(biobank_df, mic_df = NULL,
       mic_date_col <- get_col_name(mic_df, c("date_prel", "DatePrel", "sample_date", "plate_date"))
 
       if (!is.null(mic_date_col)) {
-        mic_df$date_prel <- as.Date(mic_df[[mic_date_col]])
+        mic_df$date_prel <- as.Date(suppressWarnings(lubridate::parse_date_time(mic_df[[mic_date_col]], orders = c("ymd", "dmy", "mdy"), quiet = TRUE)))
         final_call_col <- get_col_name(mic_df, c("FinalCall", "final_call", "status_final"))
 
         if (!is.null(final_call_col)) {
@@ -1095,7 +1095,7 @@ calculate_temporal_predictions <- function(biobank_df, mic_df = NULL,
         status_col <- get_col_name(pe_df, c("status_final", "status"))
 
         if (!is.null(pe_date_col) && !is.null(status_col)) {
-          pe_df$date_prel <- as.Date(pe_df[[pe_date_col]])
+          pe_df$date_prel <- as.Date(suppressWarnings(lubridate::parse_date_time(pe_df[[pe_date_col]], orders = c("ymd", "dmy", "mdy"), quiet = TRUE)))
           pe_df$is_positive <- pe_df[[status_col]] %in% c("Positive", "POSITIVE", "positive")
           sero_combined <- pe_df %>% dplyr::select(date_prel, is_positive)
         }
@@ -1108,7 +1108,7 @@ calculate_temporal_predictions <- function(biobank_df, mic_df = NULL,
         status_col <- get_col_name(vsg_df, c("status_final", "status"))
 
         if (!is.null(vsg_date_col) && !is.null(status_col)) {
-          vsg_df$date_prel <- as.Date(vsg_df[[vsg_date_col]])
+          vsg_df$date_prel <- as.Date(suppressWarnings(lubridate::parse_date_time(vsg_df[[vsg_date_col]], orders = c("ymd", "dmy", "mdy"), quiet = TRUE)))
           vsg_df$is_positive <- vsg_df[[status_col]] %in% c("Positive", "POSITIVE", "positive")
           vsg_data <- vsg_df %>% dplyr::select(date_prel, is_positive)
           if (!is.null(sero_combined)) {
@@ -1129,7 +1129,7 @@ calculate_temporal_predictions <- function(biobank_df, mic_df = NULL,
         positive_col <- get_col_name(ie_df, c("positive", "Positive"))
 
         if (!is.null(ie_date_col)) {
-          ie_df$date_prel <- as.Date(ie_df[[ie_date_col]])
+          ie_df$date_prel <- as.Date(suppressWarnings(lubridate::parse_date_time(ie_df[[ie_date_col]], orders = c("ymd", "dmy", "mdy"), quiet = TRUE)))
           if (has_l13 || has_l15) {
             ie_df$is_positive <- (if (has_l13) tidyr::replace_na(ie_df$positive_L13, FALSE) else FALSE) |
                                   (if (has_l15) tidyr::replace_na(ie_df$positive_L15, FALSE) else FALSE)

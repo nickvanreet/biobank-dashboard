@@ -8,20 +8,20 @@
 # DRS VOLUME THRESHOLDS
 # ============================================================================
 # Critical thresholds based on barcode numbering:
-# - Barcode < 2501500: Expected volume ~2 mL
-# - Barcode >= 2501500: Expected volume ~4 mL
+# - Barcode < 2502200: Expected volume ~2 mL
+# - Barcode >= 2502200: Expected volume ~4 mL
 
 DRS_QC_THRESHOLDS <- list(
-  # Volume thresholds for old barcodes (< 2501500)
+  # Volume thresholds for old barcodes (< 2502200)
   old_barcode = list(
-    cutoff = 2501500,
+    cutoff = 2502200,
     target_volume = 2.0,
     min_volume = 1.5,
     max_volume = 2.5,
     critical_low = 1.0,
     critical_high = 3.0
   ),
-  # Volume thresholds for new barcodes (>= 2501500)
+  # Volume thresholds for new barcodes (>= 2502200)
   new_barcode = list(
     target_volume = 4.0,
     min_volume = 3.5,

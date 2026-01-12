@@ -91,8 +91,8 @@ mod_drs_ui <- function(id) {
               ),
               card_body(
                 div(class = "alert alert-info",
-                  HTML("<strong>Barcode < 2501500:</strong> Expected volume ~2 mL (range: 1.5-2.5 mL)<br>"),
-                  HTML("<strong>Barcode >= 2501500:</strong> Expected volume ~4 mL (range: 3.5-4.5 mL)")
+                  HTML("<strong>Barcode < 2502200:</strong> Expected volume ~2 mL (range: 1.5-2.5 mL)<br>"),
+                  HTML("<strong>Barcode >= 2502200:</strong> Expected volume ~4 mL (range: 3.5-4.5 mL)")
                 )
               )
             )
@@ -431,7 +431,7 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
       # Determine expected volume based on barcode number
       ext_data$expected_volume_ml <- dplyr::case_when(
         is.na(ext_data$barcode_number) ~ NA_real_,
-        ext_data$barcode_number < 2501500 ~ 2.0,
+        ext_data$barcode_number < 2502200 ~ 2.0,
         TRUE ~ 4.0
       )
 
@@ -456,8 +456,8 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
       # Add barcode type category
       ext_data$barcode_type <- dplyr::case_when(
         is.na(ext_data$barcode_number) ~ "Unknown",
-        ext_data$barcode_number < 2501500 ~ "Old (<2501500, 2mL)",
-        TRUE ~ "New (>=2501500, 4mL)"
+        ext_data$barcode_number < 2502200 ~ "Old (<2502200, 2mL)",
+        TRUE ~ "New (>=2502200, 4mL)"
       )
 
       # ---- Join qPCR data if available ----
@@ -889,7 +889,7 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
         y = ~drs_volume_ml,
         type = "box",
         color = ~barcode_type,
-        colors = c("Old (<2501500, 2mL)" = "#3498DB", "New (>=2501500, 4mL)" = "#E74C3C")
+        colors = c("Old (<2502200, 2mL)" = "#3498DB", "New (>=2502200, 4mL)" = "#E74C3C")
       ) %>%
         plotly::layout(
           xaxis = list(title = "Barcode Type"),
@@ -1030,7 +1030,7 @@ mod_drs_server <- function(id, extractions_df, qpcr_data = NULL, biobank_df = NU
         x = ~week,
         y = ~mean_volume,
         color = ~barcode_type,
-        colors = c("Old (<2501500, 2mL)" = "#3498DB", "New (>=2501500, 4mL)" = "#E74C3C"),
+        colors = c("Old (<2502200, 2mL)" = "#3498DB", "New (>=2502200, 4mL)" = "#E74C3C"),
         type = "scatter",
         mode = "lines+markers",
         text = ~paste0("Week: ", week, "<br>Mean Volume: ", round(mean_volume, 2), " mL<br>N: ", n),

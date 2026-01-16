@@ -26,18 +26,38 @@ suppressPackageStartupMessages({
 # ============================================================================
 
 #' Standard cutoffs for all test types
+#'
+#' Loads cutoffs from config/thresholds.yaml when available, with fallback defaults.
+#' This ensures all modules use consistent threshold values.
+#'
 #' @return Named list of cutoffs
 standardized_cutoffs <- function() {
+  # Try to load from config file
+  config_cutoffs <- tryCatch({
+    if (exists("get_ielisa_threshold", mode = "function")) {
+      list(
+        ielisa_positive = get_ielisa_threshold("positive"),
+        ielisa_borderline = get_ielisa_threshold("borderline_low")
+      )
+    } else {
+      NULL
+    }
+  }, error = function(e) NULL)
+
+  # Use config values if available, otherwise use defaults
+  ielisa_pos <- if (!is.null(config_cutoffs$ielisa_positive)) config_cutoffs$ielisa_positive else 30
+  ielisa_border <- if (!is.null(config_cutoffs$ielisa_borderline)) config_cutoffs$ielisa_borderline else 25
+
   list(
-    # ELISA PE/VSG cutoffs
+    # ELISA PE/VSG cutoffs (from config/thresholds.yaml defaults)
     elisa_pp_positive = 20,
     elisa_pp_borderline = c(15, 20),
     elisa_dod_positive = 0.3,
     elisa_dod_borderline = c(0.2, 0.3),
 
-    # iELISA cutoffs (default, can be overridden by user settings)
-    ielisa_inhibition_positive = 30,
-    ielisa_inhibition_borderline = c(25, 30),
+    # iELISA cutoffs (loaded from config or defaults)
+    ielisa_inhibition_positive = ielisa_pos,
+    ielisa_inhibition_borderline = c(ielisa_border, ielisa_pos),
 
     # MIC FinalCall values that count as positive
     mic_positive_calls = c("Positive", "Positive_DNA", "Positive_RNA"),
@@ -850,4 +870,71 @@ filter_invalid_results <- function(data, exclude_invalid = TRUE, status_col = "F
   invalid_values <- c("Invalid", "Invalid_NoDNA", "Failed", "RunInvalid")
   data %>%
     dplyr::filter(!.data[[status_col]] %in% invalid_values)
+}
+
+# ============================================================================
+# STANDARDIZED PERCENTAGE FORMATTING
+# ============================================================================
+
+#' Format count with denominator and percentage
+#'
+#' Creates a consistent display format showing the count, denominator, and
+#' percentage across all dashboard modules. This ensures users always see
+#' the denominator used for percentage calculations.
+#'
+#' @param count Positive/target count
+#' @param total Total (denominator) for percentage calculation
+#' @param decimals Number of decimal places for percentage (default 1)
+#' @param show_denominator Whether to show the denominator (default TRUE)
+#' @param format_style Display style: "full" = "32 / 696 (4.6%)",
+#'                     "compact" = "32 (4.6% of 696)", "simple" = "32 (4.6%)"
+#' @return Formatted string
+#' @export
+#' @examples
+#' format_count_with_denominator(32, 696)
+#' # Returns: "32 / 696 (4.6%)"
+#'
+#' format_count_with_denominator(207, 1131, format_style = "compact")
+#' # Returns: "207 (18.3% of 1,131)"
+format_count_with_denominator <- function(count, total, decimals = 1,
+                                           show_denominator = TRUE,
+                                           format_style = "full") {
+  # Handle edge cases
+  if (is.na(count) || is.null(count)) count <- 0
+  if (is.na(total) || is.null(total) || total == 0) {
+    return(scales::comma(count))
+  }
+
+  pct <- round(count / total * 100, decimals)
+  count_fmt <- scales::comma(count)
+  total_fmt <- scales::comma(total)
+
+  if (!show_denominator) {
+    return(sprintf("%s (%.1f%%)", count_fmt, pct))
+  }
+
+  switch(format_style,
+    "full" = sprintf("%s / %s (%.1f%%)", count_fmt, total_fmt, pct),
+    "compact" = sprintf("%s (%.1f%% of %s)", count_fmt, pct, total_fmt),
+    "simple" = sprintf("%s (%.1f%%)", count_fmt, pct),
+    sprintf("%s / %s (%.1f%%)", count_fmt, total_fmt, pct)  # default to full
+  )
+}
+
+#' Format percentage only (without count)
+#'
+#' For cases where only the percentage is needed, but still calculated
+#' consistently.
+#'
+#' @param count Positive/target count
+#' @param total Total (denominator) for percentage calculation
+#' @param decimals Number of decimal places (default 1)
+#' @return Formatted percentage string
+#' @export
+format_percentage <- function(count, total, decimals = 1) {
+  if (is.na(total) || is.null(total) || total == 0) {
+    return("0%")
+  }
+  pct <- round(count / total * 100, decimals)
+  sprintf("%.1f%%", pct)
 }

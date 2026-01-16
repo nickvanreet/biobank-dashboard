@@ -438,7 +438,6 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
       negative <- sum(samples$FinalCall == "Negative", na.rm = TRUE)
 
       all_positive <- positive + positive_dna + positive_rna + late_positive
-      positivity_rate <- if (total > 0) round(100 * all_positive / total, 1) else 0
 
       tagList(
         div(class = "mic-kpi-box",
@@ -466,7 +465,8 @@ mod_mic_analysis_server <- function(id, filtered_base, filtered_replicates = NUL
           div(class = "mic-kpi-label", "Negative")
         ),
         div(class = "mic-kpi-box",
-          div(class = "mic-kpi-value", style = "color: #f39c12;", paste0(positivity_rate, "%")),
+          div(class = "mic-kpi-value", style = "color: #f39c12;",
+              format_count_with_denominator(all_positive, total, format_style = "full")),
           div(class = "mic-kpi-label", "Positivity Rate")
         )
       )

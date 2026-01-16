@@ -238,36 +238,12 @@ mod_ielisa_runs_server <- function(id, ielisa_data) {
         0
       }
 
-      # Calculate percentages
-      pct_positive_L13 <- if (total_samples > 0) {
-        (positive_L13 / total_samples) * 100
-      } else {
-        0
-      }
-
-      pct_positive_L15 <- if (total_samples > 0) {
-        (positive_L15 / total_samples) * 100
-      } else {
-        0
-      }
-
-      pct_both_positive <- if (total_samples > 0) {
-        (both_positive / total_samples) * 100
-      } else {
-        0
-      }
-
-      pct_either_positive <- if (total_samples > 0) {
-        (either_positive / total_samples) * 100
-      } else {
-        0
-      }
-
-      pct_single_positive <- if (total_samples > 0) {
-        (single_positive / total_samples) * 100
-      } else {
-        0
-      }
+      # Calculate percentages for theme logic
+      pct_positive_L13 <- if (total_samples > 0) (positive_L13 / total_samples) * 100 else 0
+      pct_positive_L15 <- if (total_samples > 0) (positive_L15 / total_samples) * 100 else 0
+      pct_both_positive <- if (total_samples > 0) (both_positive / total_samples) * 100 else 0
+      pct_either_positive <- if (total_samples > 0) (either_positive / total_samples) * 100 else 0
+      pct_single_positive <- if (total_samples > 0) (single_positive / total_samples) * 100 else 0
 
       layout_column_wrap(
         width = 1/7,
@@ -280,7 +256,7 @@ mod_ielisa_runs_server <- function(id, ielisa_data) {
         ),
         value_box(
           title = "Valid Runs (Both)",
-          value = paste0(comma(both_valid), " (", sprintf("%.1f%%", pct_valid), ")"),
+          value = format_count_with_denominator(both_valid, total_files, format_style = "full"),
           showcase = icon("circle-check"),
           theme = if (pct_valid >= 80) "success" else if (pct_valid >= 60) "warning" else "danger"
         ),
@@ -292,31 +268,31 @@ mod_ielisa_runs_server <- function(id, ielisa_data) {
         ),
         value_box(
           title = "Positive LiTat 1.3",
-          value = paste0(comma(positive_L13), " (", sprintf("%.1f%%", pct_positive_L13), ")"),
+          value = format_count_with_denominator(positive_L13, total_samples, format_style = "full"),
           showcase = icon("flask-vial"),
           theme = if (pct_positive_L13 >= 30) "success" else "secondary"
         ),
         value_box(
           title = "Positive LiTat 1.5",
-          value = paste0(comma(positive_L15), " (", sprintf("%.1f%%", pct_positive_L15), ")"),
+          value = format_count_with_denominator(positive_L15, total_samples, format_style = "full"),
           showcase = icon("flask"),
           theme = if (pct_positive_L15 >= 30) "success" else "secondary"
         ),
         value_box(
           title = "Positive Both",
-          value = paste0(comma(both_positive), " (", sprintf("%.1f%%", pct_both_positive), ")"),
+          value = format_count_with_denominator(both_positive, total_samples, format_style = "full"),
           showcase = icon("viruses"),
           theme = if (pct_both_positive >= 20) "success" else "secondary"
         ),
         value_box(
           title = "Positive ≥1 Antigen",
-          value = paste0(comma(either_positive), " (", sprintf("%.1f%%", pct_either_positive), ")"),
+          value = format_count_with_denominator(either_positive, total_samples, format_style = "full"),
           showcase = icon("check-double"),
           theme = if (pct_either_positive >= 30) "success" else "secondary"
         ),
         value_box(
           title = "Positive Single Antigen",
-          value = paste0(comma(single_positive), " (", sprintf("%.1f%%", pct_single_positive), ")"),
+          value = format_count_with_denominator(single_positive, total_samples, format_style = "full"),
           showcase = icon("circle-half-stroke"),
           theme = if (pct_single_positive >= 15) "warning" else "info"
         )

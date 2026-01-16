@@ -2472,17 +2472,17 @@ mod_mic_qpcr_server <- function(id, biobank_df, extractions_df, filters) {
     output$kpi_prevalence <- renderText({
       df <- filtered_samples()
       if (!nrow(df) || !"ControlType" %in% names(df) || !"FinalCall" %in% names(df)) {
-        return("0%")
+        return("0")
       }
 
       df <- df %>% filter(ControlType == "Sample")
-      if (!nrow(df)) return("0%")
+      if (!nrow(df)) return("0")
 
-      n_pos <- sum(df$FinalCall == "Positive", na.rm = TRUE)
+      # Count ALL positive types (not just exact "Positive")
+      n_pos <- sum(df$FinalCall %in% c("Positive", "Positive_DNA", "Positive_RNA"), na.rm = TRUE)
       total <- nrow(df)
-      pct <- if (total > 0) round(100 * n_pos / total, 1) else 0
 
-      paste0(pct, "%")
+      format_count_with_denominator(n_pos, total, format_style = "full")
     })
 
     output$kpi_flagged <- renderText({

@@ -862,7 +862,8 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           mic_invalid = sum(is_invalid, na.rm = TRUE),
           mic_rnasep_dna_pos = sum(is_rnasep_dna_pos, na.rm = TRUE),
           mic_rnasep_rna_pos = sum(is_rnasep_rna_pos, na.rm = TRUE),
-          mic_total = dplyr::n(),
+          # IMPORTANT: Exclude invalid tests from denominator for accurate positivity rates
+          mic_total = sum(!is_invalid, na.rm = TRUE),
           .groups = "drop"
         )
     })
@@ -1021,7 +1022,8 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           elisa_pe_neg = sum(std_status == "Negative", na.rm = TRUE),
           elisa_pe_border = sum(std_status == "Borderline", na.rm = TRUE),
           elisa_pe_invalid = sum(std_status == "Invalid", na.rm = TRUE),
-          elisa_pe_total = dplyr::n(),
+          # IMPORTANT: Exclude invalid tests from denominator for accurate positivity rates
+          elisa_pe_total = sum(std_status != "Invalid", na.rm = TRUE),
           .groups = "drop"
         )
     })
@@ -1179,7 +1181,8 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
           elisa_vsg_neg = sum(std_status == "Negative", na.rm = TRUE),
           elisa_vsg_border = sum(std_status == "Borderline", na.rm = TRUE),
           elisa_vsg_invalid = sum(std_status == "Invalid", na.rm = TRUE),
-          elisa_vsg_total = dplyr::n(),
+          # IMPORTANT: Exclude invalid tests from denominator for accurate positivity rates
+          elisa_vsg_total = sum(std_status != "Invalid", na.rm = TRUE),
           .groups = "drop"
         )
     })
@@ -1323,8 +1326,10 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
             if ("pct_inh_f1_15" %in% names(.)) pct_inh_f1_15 else NA_real_,
             if ("pct_inh_f2_15" %in% names(.)) pct_inh_f2_15 else NA_real_
           ),
-          # L1.3 classification using standardized thresholds
-          l13_status = std_classify_ielisa(inh_L13, positive_threshold = 30, borderline_threshold = 25),
+          # L1.3 classification using config-based thresholds
+          l13_status = std_classify_ielisa(inh_L13,
+                                            positive_threshold = get_ielisa_threshold("positive"),
+                                            borderline_threshold = get_ielisa_threshold("borderline_low")),
           l13_pos = l13_status == "Positive",
           l13_border = l13_status == "Borderline",
           # Override with boolean if available
@@ -1332,8 +1337,10 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
             !is.na(l13_pos), l13_pos,
             if ("positive_L13" %in% names(.)) positive_L13 == TRUE else FALSE
           ),
-          # L1.5 classification using standardized thresholds
-          l15_status = std_classify_ielisa(inh_L15, positive_threshold = 30, borderline_threshold = 25),
+          # L1.5 classification using config-based thresholds
+          l15_status = std_classify_ielisa(inh_L15,
+                                            positive_threshold = get_ielisa_threshold("positive"),
+                                            borderline_threshold = get_ielisa_threshold("borderline_low")),
           l15_pos = l15_status == "Positive",
           l15_border = l15_status == "Borderline",
           # Override with boolean if available

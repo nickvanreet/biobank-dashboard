@@ -26,18 +26,38 @@ suppressPackageStartupMessages({
 # ============================================================================
 
 #' Standard cutoffs for all test types
+#'
+#' Loads cutoffs from config/thresholds.yaml when available, with fallback defaults.
+#' This ensures all modules use consistent threshold values.
+#'
 #' @return Named list of cutoffs
 standardized_cutoffs <- function() {
+  # Try to load from config file
+  config_cutoffs <- tryCatch({
+    if (exists("get_ielisa_threshold", mode = "function")) {
+      list(
+        ielisa_positive = get_ielisa_threshold("positive"),
+        ielisa_borderline = get_ielisa_threshold("borderline_low")
+      )
+    } else {
+      NULL
+    }
+  }, error = function(e) NULL)
+
+  # Use config values if available, otherwise use defaults
+  ielisa_pos <- if (!is.null(config_cutoffs$ielisa_positive)) config_cutoffs$ielisa_positive else 30
+  ielisa_border <- if (!is.null(config_cutoffs$ielisa_borderline)) config_cutoffs$ielisa_borderline else 25
+
   list(
-    # ELISA PE/VSG cutoffs
+    # ELISA PE/VSG cutoffs (from config/thresholds.yaml defaults)
     elisa_pp_positive = 20,
     elisa_pp_borderline = c(15, 20),
     elisa_dod_positive = 0.3,
     elisa_dod_borderline = c(0.2, 0.3),
 
-    # iELISA cutoffs (default, can be overridden by user settings)
-    ielisa_inhibition_positive = 30,
-    ielisa_inhibition_borderline = c(25, 30),
+    # iELISA cutoffs (loaded from config or defaults)
+    ielisa_inhibition_positive = ielisa_pos,
+    ielisa_inhibition_borderline = c(ielisa_border, ielisa_pos),
 
     # MIC FinalCall values that count as positive
     mic_positive_calls = c("Positive", "Positive_DNA", "Positive_RNA"),

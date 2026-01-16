@@ -111,13 +111,13 @@ mod_elisa_samples_server <- function(id, elisa_data) {
         ),
         value_box(
           title = "Positive Samples",
-          value = sprintf("%d (%.1f%%)", n_positive, pos_pct),
+          value = format_count_with_denominator(n_positive, n_total, format_style = "full"),
           showcase = icon("plus-circle"),
           theme = "primary"
         ),
         value_box(
           title = "QC Pass",
-          value = sprintf("%d (%.1f%%)", n_qc_pass, qc_pct),
+          value = format_count_with_denominator(n_qc_pass, n_total, format_style = "full"),
           showcase = icon("check"),
           theme = if (qc_pct >= 90) "success" else if (qc_pct >= 70) "warning" else "danger"
         )

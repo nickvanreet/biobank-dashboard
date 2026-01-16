@@ -1166,7 +1166,7 @@ mod_study_comparison_server <- function(id,
       }
 
       if (da_total == 0) return("N/A")
-      sprintf("%.1f%%", da_pos / da_total * 100)
+      format_count_with_denominator(da_pos, da_total, format_style = "full")
     })
 
     output$kpi_dp_elisa <- renderText({
@@ -1197,7 +1197,7 @@ mod_study_comparison_server <- function(id,
       }
 
       if (dp_total == 0) return("N/A")
-      sprintf("%.1f%%", dp_pos / dp_total * 100)
+      format_count_with_denominator(dp_pos, dp_total, format_style = "full")
     })
 
     # iELISA KPIs - with borderline handling

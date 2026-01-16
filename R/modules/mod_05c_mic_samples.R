@@ -507,20 +507,9 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         arrange(FinalCall, ConfidenceScore)
     })
 
+    # Use standardized format_count_with_denominator from utils_standardized_counting.R
     format_count_pct <- function(count, total, percentage = NULL) {
-      pct_value <- if (!is.null(percentage)) {
-        percentage
-      } else if (!is.null(total) && total > 0) {
-        round(100 * count / total, 1)
-      } else {
-        NA_real_
-      }
-
-      formatted_count <- scales::comma(count)
-
-      if (is.na(pct_value)) return(formatted_count)
-
-      paste0(formatted_count, " (", sprintf("%.1f%%", pct_value), ")")
+      format_count_with_denominator(count, total, format_style = "full")
     }
 
     sample_metrics <- reactive({
@@ -609,6 +598,7 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         tna = tna,
         dna = dna,
         rna = rna,
+        any_positive = any_positive,
         indeterminate = indeterminate,
         negative = negative,
         invalid = invalid,
@@ -620,7 +610,10 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
         high_confidence = high_confidence,
         medium_confidence = medium_confidence,
         low_confidence = low_confidence,
-        conflict_count = conflict_count
+        conflict_count = conflict_count,
+        linked_biobank = linked_biobank,
+        linked_extraction = linked_extraction,
+        run_links = run_links
       )
     })
 
@@ -651,20 +644,20 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
 
     output$kpi_biobank_linked <- renderText({
       metrics <- sample_metrics()
-      if (is.null(metrics) || is.na(metrics$biobank_pct)) return("0%")
-      sprintf("%.1f%%", metrics$biobank_pct)
+      if (is.null(metrics) || is.na(metrics$linked_biobank)) return("0")
+      format_count_with_denominator(metrics$linked_biobank, metrics$deduped_total, format_style = "full")
     })
 
     output$kpi_extraction_linked <- renderText({
       metrics <- sample_metrics()
-      if (is.null(metrics) || is.na(metrics$extraction_pct)) return("0%")
-      sprintf("%.1f%%", metrics$extraction_pct)
+      if (is.null(metrics) || is.na(metrics$linked_extraction)) return("0")
+      format_count_with_denominator(metrics$linked_extraction, metrics$deduped_total, format_style = "full")
     })
 
     output$kpi_run_linked <- renderText({
       metrics <- sample_metrics()
-      if (is.null(metrics) || is.na(metrics$run_pct)) return("0%")
-      sprintf("%.1f%%", metrics$run_pct)
+      if (is.null(metrics) || is.na(metrics$run_links)) return("0")
+      format_count_with_denominator(metrics$run_links, metrics$deduped_total, format_style = "full")
     })
 
     output$kpi_samples_tna <- renderText({
@@ -705,14 +698,14 @@ mod_mic_samples_server <- function(id, filtered_base, processed_data) {
 
     output$kpi_samples_tna_prev <- renderText({
       metrics <- sample_metrics()
-      if (is.null(metrics) || is.na(metrics$tna_prev)) return("0%")
-      sprintf("%.1f%%", metrics$tna_prev)
+      if (is.null(metrics)) return("0")
+      format_count_with_denominator(metrics$tna, metrics$deduped_total, format_style = "full")
     })
 
     output$kpi_samples_any_prev <- renderText({
       metrics <- sample_metrics()
-      if (is.null(metrics) || is.na(metrics$any_prev)) return("0%")
-      sprintf("%.1f%%", metrics$any_prev)
+      if (is.null(metrics)) return("0")
+      format_count_with_denominator(metrics$any_positive, metrics$deduped_total, format_style = "full")
     })
 
     output$kpi_confidence_high <- renderText({

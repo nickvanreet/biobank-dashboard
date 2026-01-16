@@ -851,3 +851,70 @@ filter_invalid_results <- function(data, exclude_invalid = TRUE, status_col = "F
   data %>%
     dplyr::filter(!.data[[status_col]] %in% invalid_values)
 }
+
+# ============================================================================
+# STANDARDIZED PERCENTAGE FORMATTING
+# ============================================================================
+
+#' Format count with denominator and percentage
+#'
+#' Creates a consistent display format showing the count, denominator, and
+#' percentage across all dashboard modules. This ensures users always see
+#' the denominator used for percentage calculations.
+#'
+#' @param count Positive/target count
+#' @param total Total (denominator) for percentage calculation
+#' @param decimals Number of decimal places for percentage (default 1)
+#' @param show_denominator Whether to show the denominator (default TRUE)
+#' @param format_style Display style: "full" = "32 / 696 (4.6%)",
+#'                     "compact" = "32 (4.6% of 696)", "simple" = "32 (4.6%)"
+#' @return Formatted string
+#' @export
+#' @examples
+#' format_count_with_denominator(32, 696)
+#' # Returns: "32 / 696 (4.6%)"
+#'
+#' format_count_with_denominator(207, 1131, format_style = "compact")
+#' # Returns: "207 (18.3% of 1,131)"
+format_count_with_denominator <- function(count, total, decimals = 1,
+                                           show_denominator = TRUE,
+                                           format_style = "full") {
+  # Handle edge cases
+  if (is.na(count) || is.null(count)) count <- 0
+  if (is.na(total) || is.null(total) || total == 0) {
+    return(scales::comma(count))
+  }
+
+  pct <- round(count / total * 100, decimals)
+  count_fmt <- scales::comma(count)
+  total_fmt <- scales::comma(total)
+
+  if (!show_denominator) {
+    return(sprintf("%s (%.1f%%)", count_fmt, pct))
+  }
+
+  switch(format_style,
+    "full" = sprintf("%s / %s (%.1f%%)", count_fmt, total_fmt, pct),
+    "compact" = sprintf("%s (%.1f%% of %s)", count_fmt, pct, total_fmt),
+    "simple" = sprintf("%s (%.1f%%)", count_fmt, pct),
+    sprintf("%s / %s (%.1f%%)", count_fmt, total_fmt, pct)  # default to full
+  )
+}
+
+#' Format percentage only (without count)
+#'
+#' For cases where only the percentage is needed, but still calculated
+#' consistently.
+#'
+#' @param count Positive/target count
+#' @param total Total (denominator) for percentage calculation
+#' @param decimals Number of decimal places (default 1)
+#' @return Formatted percentage string
+#' @export
+format_percentage <- function(count, total, decimals = 1) {
+  if (is.na(total) || is.null(total) || total == 0) {
+    return("0%")
+  }
+  pct <- round(count / total * 100, decimals)
+  sprintf("%.1f%%", pct)
+}

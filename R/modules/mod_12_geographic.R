@@ -1468,11 +1468,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       if (nrow(data) == 0) return("0")
       total <- sum(data$mic_total, na.rm = TRUE)
       pos <- sum(data$mic_dna_pos, na.rm = TRUE)
-      if (total > 0) {
-        sprintf("%s (%.1f%%)", scales::comma(pos), pos/total*100)
-      } else {
-        "0"
-      }
+      format_count_with_denominator(pos, total, format_style = "full")
     })
 
     output$mic_rna_positive <- renderText({
@@ -1480,11 +1476,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       if (nrow(data) == 0) return("0")
       total <- sum(data$mic_total, na.rm = TRUE)
       pos <- sum(data$mic_rna_pos, na.rm = TRUE)
-      if (total > 0) {
-        sprintf("%s (%.1f%%)", scales::comma(pos), pos/total*100)
-      } else {
-        "0"
-      }
+      format_count_with_denominator(pos, total, format_style = "full")
     })
 
     output$elisa_positive <- renderText({
@@ -1492,11 +1484,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       if (nrow(data) == 0) return("0")
       total <- sum(data$elisa_total, na.rm = TRUE)
       pos <- sum(data$elisa_pos, na.rm = TRUE)
-      if (total > 0) {
-        sprintf("%s (%.1f%%)", scales::comma(pos), pos/total*100)
-      } else {
-        "0"
-      }
+      format_count_with_denominator(pos, total, format_style = "full")
     })
 
     output$ielisa_positive <- renderText({
@@ -1504,11 +1492,7 @@ mod_geographic_server <- function(id, filtered_data, mic_data = NULL,
       if (nrow(data) == 0) return("0")
       total <- sum(data$ielisa_total, na.rm = TRUE)
       pos <- sum(data$ielisa_any_pos, na.rm = TRUE)
-      if (total > 0) {
-        sprintf("%s (%.1f%%)", scales::comma(pos), pos/total*100)
-      } else {
-        "0"
-      }
+      format_count_with_denominator(pos, total, format_style = "full")
     })
 
     # ========================================================================

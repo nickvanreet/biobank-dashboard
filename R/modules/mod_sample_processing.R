@@ -41,7 +41,6 @@ normalize_sample_id <- function(barcode = NULL, lab_id = NULL) {
   ids <- tolower(ids)
 
   # Only remove spaces and special punctuation, but keep dashes, underscores, dots
-  # This prevents "001-A" and "001-B" from collapsing to the same ID
   ids <- gsub("[^a-z0-9._-]", "", ids)
 
   # Remove any resulting empty strings
@@ -49,6 +48,17 @@ normalize_sample_id <- function(barcode = NULL, lab_id = NULL) {
   if (!length(ids)) return(NA_character_)
 
   ids[1]
+}
+
+#' Safely format the most recent date in a vector to dd/mm/yyyy
+#' Returns NA_character_ if no valid dates are present
+#' @param dates Vector of dates (Date or POSIXct)
+#' @return Character string "dd/mm/yyyy" or NA_character_
+safe_latest_date_dmy <- function(dates) {
+  if (is.null(dates) || length(dates) == 0) return(NA_character_)
+  valid <- tryCatch(as.Date(dates[!is.na(dates)]), error = function(e) as.Date(character(0)))
+  if (length(valid) == 0) return(NA_character_)
+  tryCatch(format(max(valid), "%d/%m/%Y"), error = function(e) NA_character_)
 }
 
 #' Sample Processing UI
@@ -166,8 +176,9 @@ mod_sample_processing_ui <- function(id) {
           )
         ),
 
-        # Samples table
+        # Sample Details (wide format)
         card(
+          class = "mb-3",
           card_header(
             div(
               class = "d-flex justify-content-between align-items-center",
@@ -175,12 +186,27 @@ mod_sample_processing_ui <- function(id) {
               div(
                 class = "btn-group btn-group-sm",
                 downloadButton(ns("download_csv"), "CSV", class = "btn-sm"),
-                downloadButton(ns("download_excel"), "Excel", class = "btn-sm")
+                downloadButton(ns("download_excel"), "Excel (Wide)", class = "btn-sm"),
+                downloadButton(ns("download_long_excel"), "Excel (Long)", class = "btn-sm")
               )
             )
           ),
           card_body(
             DTOutput(ns("samples_table"))
+          )
+        ),
+
+        # Test History (long format)
+        card(
+          card_header(
+            div(
+              class = "d-flex justify-content-between align-items-center",
+              span("Test History (Long Format)"),
+              downloadButton(ns("download_long_excel2"), "Download Excel", class = "btn-sm")
+            )
+          ),
+          card_body(
+            DTOutput(ns("long_format_table"))
           )
         )
       )
@@ -247,6 +273,11 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             has_extraction = TRUE,
             n_extractions = n(),
             latest_extraction_date = max(extraction_date, na.rm = TRUE),
+            extraction_date_display = safe_latest_date_dmy(extraction_date),
+            extraction_qc_results = paste(
+              ifelse(coalesce(extract_quality, "Clear") != "Échec", "PASS", "FAIL"),
+              collapse = ", "
+            ),
             drs_volume = last(drs_volume_ml, order_by = extraction_date),
             .groups = "drop"
           )
@@ -260,50 +291,42 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             has_extraction = FALSE,
             n_extractions = 0,
             latest_extraction_date = as.Date(NA),
+            extraction_date_display = NA_character_,
+            extraction_qc_results = NA_character_,
             drs_volume = NA_real_
           )
       }
 
+      # Build biobank lookup for MIC lab-number matching
+      biobank_lookup <- NULL
+      if (nrow(biobank) > 0) {
+        col_numero_labo <- safe_get_col(biobank, "numero_labo")
+        col_lab_id <- safe_get_col(biobank, "lab_id")
+        col_numero <- safe_get_col(biobank, "numero")
+        cols_to_coalesce <- Filter(Negate(is.null), list(col_numero_labo, col_lab_id, col_numero))
+        biobank_lab_numbers_raw <- if (length(cols_to_coalesce) > 0) {
+          do.call(coalesce, cols_to_coalesce)
+        } else {
+          rep(NA_character_, nrow(biobank))
+        }
+        biobank_lab_numbers_norm <- sapply(biobank_lab_numbers_raw, function(x) {
+          if (is.na(x) || x == "") return(NA_character_)
+          trimws(tolower(as.character(x)))
+        })
+        biobank_lookup <- tibble(
+          lab_number_norm = biobank_lab_numbers_norm,
+          sample_id = samples$sample_id
+        ) %>%
+          filter(!is.na(lab_number_norm) & lab_number_norm != "" &
+                 !is.na(sample_id) & sample_id != "") %>%
+          distinct(lab_number_norm, .keep_all = TRUE)
+      }
+
       # Add MIC test info
       if (nrow(mic_data) > 0) {
-        # MIC uses lab numbers (SampleID = "1", "2", "3"), not barcodes
-        # We need to create a lookup from biobank data to match lab numbers to barcodes
-        biobank_lookup <- NULL
-        if (nrow(biobank) > 0) {
-          # Extract lab numbers from biobank (safely access columns that may not exist)
-          col_numero_labo <- safe_get_col(biobank, "numero_labo")
-          col_lab_id <- safe_get_col(biobank, "lab_id")
-          col_numero <- safe_get_col(biobank, "numero")
-
-          # Build list of non-NULL columns for coalesce
-          cols_to_coalesce <- Filter(Negate(is.null), list(col_numero_labo, col_lab_id, col_numero))
-          biobank_lab_numbers_raw <- if (length(cols_to_coalesce) > 0) {
-            do.call(coalesce, cols_to_coalesce)
-          } else {
-            rep(NA_character_, nrow(biobank))
-          }
-
-          # Normalize lab numbers (just trim and lowercase: "1" → "1")
-          biobank_lab_numbers_norm <- sapply(biobank_lab_numbers_raw, function(x) {
-            if (is.na(x) || x == "") return(NA_character_)
-            trimws(tolower(as.character(x)))
-          })
-
-          biobank_lookup <- tibble(
-            lab_number_norm = biobank_lab_numbers_norm,
-            sample_id = samples$sample_id
-          ) %>%
-            filter(!is.na(lab_number_norm) & lab_number_norm != "" &
-                   !is.na(sample_id) & sample_id != "") %>%
-            distinct(lab_number_norm, .keep_all = TRUE)
-        }
-
-        # Extract lab numbers from MIC data (safely access columns that may not exist)
         mic_col_sampleid <- safe_get_col(mic_data, "SampleID")
         mic_col_samplename <- safe_get_col(mic_data, "SampleName")
         mic_col_name <- safe_get_col(mic_data, "Name")
-
-        # Build list of non-NULL columns for coalesce
         mic_cols_to_coalesce <- Filter(Negate(is.null), list(mic_col_sampleid, mic_col_samplename, mic_col_name))
         mic_lab_numbers_raw <- if (length(mic_cols_to_coalesce) > 0) {
           do.call(coalesce, mic_cols_to_coalesce)
@@ -315,15 +338,12 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           trimws(tolower(as.character(x)))
         })
 
-        # Create MIC data frame with lab numbers
         mic_with_lab_numbers <- mic_data %>%
           mutate(
             lab_number_norm = mic_lab_numbers_norm,
-            # Calculate QC_Pass_Count from available columns
             QC_Pass_Count = coalesce(ReplicatesTotal, 4) - coalesce(Replicates_Failed, 0)
           )
 
-        # Join with biobank lookup to convert lab numbers → barcodes
         if (!is.null(biobank_lookup) && nrow(biobank_lookup) > 0) {
           mic_summary <- mic_with_lab_numbers %>%
             left_join(biobank_lookup, by = "lab_number_norm") %>%
@@ -332,8 +352,6 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             summarise(
               has_mic = TRUE,
               n_mic_tests = n(),
-              # FinalCall contains: "Positive" (TNA), "Positive_DNA", "Positive_RNA", "LatePositive", "Negative", "Invalid_NoDNA", "Indeterminate"
-              # Convert to simplified symbols: + for positive, - for negative, ? for indeterminate
               mic_results = paste(
                 case_when(
                   FinalCall %in% c("Positive", "Positive_DNA", "Positive_RNA", "LatePositive") ~ "+",
@@ -348,6 +366,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
               mic_positive_rna = any(FinalCall == "Positive_RNA", na.rm = TRUE),
               mic_result = first(FinalCall),
               mic_qc_pass = all(QC_Pass_Count > 0, na.rm = TRUE),
+              mic_date_display = safe_latest_date_dmy(as.Date(RunDate)),
+              mic_qc_results = paste(ifelse(QC_Pass_Count > 0, "PASS", "FAIL"), collapse = ", "),
               # Replicate information
               mic_wells_total = first(coalesce(ReplicatesTotal, 4)),
               mic_wells_tna_positive = first(coalesce(Wells_TNA_Positive, 0)),
@@ -356,7 +376,6 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
               .groups = "drop"
             )
         } else {
-          # No biobank lookup available - can't match MIC samples
           mic_summary <- tibble()
         }
 
@@ -386,6 +405,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
               mic_positive_rna = FALSE,
               mic_result = NA_character_,
               mic_qc_pass = TRUE,
+              mic_date_display = NA_character_,
+              mic_qc_results = NA_character_,
               mic_wells_total = 4,
               mic_wells_tna_positive = 0,
               mic_wells_dna_positive = 0,
@@ -403,6 +424,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             mic_positive_rna = FALSE,
             mic_result = NA_character_,
             mic_qc_pass = TRUE,
+            mic_date_display = NA_character_,
+            mic_qc_results = NA_character_,
             mic_wells_total = 4,
             mic_wells_tna_positive = 0,
             mic_wells_dna_positive = 0,
@@ -415,7 +438,6 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         elisa_pe_summary <- elisa_pe_data %>%
           filter(sample_type == "sample") %>%
           mutate(
-            # ELISA uses code_barres_kps
             sample_id = map_chr(code_barres_kps, ~normalize_sample_id(barcode = .x))
           ) %>%
           filter(!is.na(sample_id) & sample_id != "") %>%
@@ -423,11 +445,12 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           summarise(
             has_elisa_pe = TRUE,
             n_elisa_pe_tests = n(),
-            # Convert to simplified symbols: + for positive, - for negative
             elisa_pe_results = paste(ifelse(sample_positive, "+", "-"), collapse = ", "),
             elisa_pe_positive = any(sample_positive, na.rm = TRUE),
             elisa_pe_qc_pass = all(qc_overall, na.rm = TRUE),
             elisa_pe_dod = mean(DOD, na.rm = TRUE),
+            elisa_pe_date_display = safe_latest_date_dmy(plate_date),
+            elisa_pe_qc_results = paste(ifelse(qc_overall, "PASS", "FAIL"), collapse = ", "),
             .groups = "drop"
           )
 
@@ -447,7 +470,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             elisa_pe_results = "✗",
             elisa_pe_positive = FALSE,
             elisa_pe_qc_pass = TRUE,
-            elisa_pe_dod = NA_real_
+            elisa_pe_dod = NA_real_,
+            elisa_pe_date_display = NA_character_,
+            elisa_pe_qc_results = NA_character_
           )
       }
 
@@ -456,7 +481,6 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         elisa_vsg_summary <- elisa_vsg_data %>%
           filter(sample_type == "sample") %>%
           mutate(
-            # ELISA uses code_barres_kps
             sample_id = map_chr(code_barres_kps, ~normalize_sample_id(barcode = .x))
           ) %>%
           filter(!is.na(sample_id) & sample_id != "") %>%
@@ -464,11 +488,12 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           summarise(
             has_elisa_vsg = TRUE,
             n_elisa_vsg_tests = n(),
-            # Convert to simplified symbols: + for positive, - for negative
             elisa_vsg_results = paste(ifelse(sample_positive, "+", "-"), collapse = ", "),
             elisa_vsg_positive = any(sample_positive, na.rm = TRUE),
             elisa_vsg_qc_pass = all(qc_overall, na.rm = TRUE),
             elisa_vsg_dod = mean(DOD, na.rm = TRUE),
+            elisa_vsg_date_display = safe_latest_date_dmy(plate_date),
+            elisa_vsg_qc_results = paste(ifelse(qc_overall, "PASS", "FAIL"), collapse = ", "),
             .groups = "drop"
           )
 
@@ -488,7 +513,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             elisa_vsg_results = "✗",
             elisa_vsg_positive = FALSE,
             elisa_vsg_qc_pass = TRUE,
-            elisa_vsg_dod = NA_real_
+            elisa_vsg_dod = NA_real_,
+            elisa_vsg_date_display = NA_character_,
+            elisa_vsg_qc_results = NA_character_
           )
       }
 
@@ -503,7 +530,6 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           summarise(
             has_ielisa = TRUE,
             n_ielisa_tests = n(),
-            # Convert to simplified symbols: + for positive, - for negative
             ielisa_results = paste(
               ifelse(positive_L13 | positive_L15, "+", "-"),
               collapse = ", "
@@ -511,6 +537,11 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             ielisa_positive = any(positive_L13 | positive_L15, na.rm = TRUE),
             ielisa_l13_positive = any(positive_L13, na.rm = TRUE),
             ielisa_l15_positive = any(positive_L15, na.rm = TRUE),
+            ielisa_date_display = safe_latest_date_dmy(plate_date),
+            ielisa_qc_results = paste(
+              ifelse(coalesce(status_final, "Invalid") != "Invalid", "PASS", "FAIL"),
+              collapse = ", "
+            ),
             .groups = "drop"
           )
 
@@ -529,7 +560,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             ielisa_results = "✗",
             ielisa_positive = FALSE,
             ielisa_l13_positive = FALSE,
-            ielisa_l15_positive = FALSE
+            ielisa_l15_positive = FALSE,
+            ielisa_date_display = NA_character_,
+            ielisa_qc_results = NA_character_
           )
       }
 
@@ -542,6 +575,10 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           # Aggregate ELISA results
           elisa_positive = elisa_pe_positive | elisa_vsg_positive,
           has_elisa = has_elisa_pe | has_elisa_vsg,
+
+          # Distinguish molecular vs serological positivity
+          molecular_positive = mic_positive | mic_positive_dna | mic_positive_rna,
+          serological_positive = elisa_pe_positive | elisa_vsg_positive | ielisa_positive,
 
           # Overall QC status (all tests that were done must pass)
           overall_qc_pass = case_when(
@@ -560,9 +597,11 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
             TRUE ~ "Biobank Only"
           ),
 
-          # Create a processing status indicator
+          # Processing status: distinguish molecular vs serological positivity
           processing_status = case_when(
-            any_positive ~ "Positive",
+            molecular_positive & serological_positive ~ "Positive",
+            molecular_positive ~ "Molecular Positive",
+            serological_positive ~ "Serological Positive",
             n_test_types >= 2 & !any_positive ~ "Tested - Negative",
             n_test_types == 1 ~ "Limited Testing",
             has_extraction ~ "Awaiting Testing",
@@ -571,6 +610,178 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         )
 
       samples
+    })
+
+    # ========================================================================
+    # LONG FORMAT DATA: one row per test per sample
+    # ========================================================================
+
+    long_format_data <- reactive({
+      req(biobank_df())
+
+      biobank <- biobank_df()
+      extractions <- tryCatch(extraction_df(), error = function(e) tibble())
+      mic_data <- tryCatch(mic_df(), error = function(e) tibble())
+      elisa_pe_data <- tryCatch(elisa_pe_df(), error = function(e) tibble())
+      elisa_vsg_data <- tryCatch(elisa_vsg_df(), error = function(e) tibble())
+      ielisa_data <- tryCatch(ielisa_df(), error = function(e) tibble())
+
+      # Build sample lookup (rename to avoid clashes in joins)
+      sample_lookup <- biobank %>%
+        mutate(.sid = map_chr(barcode, ~normalize_sample_id(barcode = .x))) %>%
+        filter(!is.na(.sid)) %>%
+        select(
+          .sid,
+          .bc  = barcode,
+          .lid = lab_id,
+          .prov = province,
+          .hz   = health_zone
+        ) %>%
+        distinct(.sid, .keep_all = TRUE)
+
+      # Build biobank lookup for MIC lab-number matching
+      biobank_lookup_long <- NULL
+      if (nrow(biobank) > 0) {
+        col_numero_labo <- safe_get_col(biobank, "numero_labo")
+        col_lab_id      <- safe_get_col(biobank, "lab_id")
+        col_numero      <- safe_get_col(biobank, "numero")
+        cols_to_coalesce <- Filter(Negate(is.null), list(col_numero_labo, col_lab_id, col_numero))
+        lab_numbers_raw  <- if (length(cols_to_coalesce) > 0) do.call(coalesce, cols_to_coalesce) else rep(NA_character_, nrow(biobank))
+        lab_numbers_norm <- sapply(lab_numbers_raw, function(x) {
+          if (is.na(x) || x == "") return(NA_character_)
+          trimws(tolower(as.character(x)))
+        })
+        bc_norm <- map_chr(biobank$barcode, ~normalize_sample_id(barcode = .x))
+        biobank_lookup_long <- tibble(lab_number_norm = lab_numbers_norm, .sid = bc_norm) %>%
+          filter(!is.na(lab_number_norm) & lab_number_norm != "" & !is.na(.sid)) %>%
+          distinct(lab_number_norm, .keep_all = TRUE)
+      }
+
+      rows <- list()
+
+      # --- Extraction rows ---
+      if (nrow(extractions) > 0 && "extraction_date" %in% names(extractions)) {
+        ext_rows <- extractions %>%
+          mutate(.sid = map_chr(barcode, ~normalize_sample_id(barcode = .x))) %>%
+          filter(!is.na(.sid)) %>%
+          left_join(sample_lookup, by = ".sid") %>%
+          transmute(
+            Barcode      = coalesce(.bc, barcode),
+            Lab_ID       = .lid,
+            Province     = .prov,
+            Health_Zone  = .hz,
+            Test_Type    = "Extraction",
+            Test_Date    = tryCatch(format(as.Date(extraction_date), "%d/%m/%Y"), error = function(e) NA_character_),
+            Result       = coalesce(extract_quality, NA_character_),
+            QC_Pass      = coalesce(extract_quality, "Clear") != "Échec"
+          )
+        rows[["extraction"]] <- ext_rows
+      }
+
+      # --- MIC rows ---
+      if (nrow(mic_data) > 0 && !is.null(biobank_lookup_long) && nrow(biobank_lookup_long) > 0) {
+        mic_col_sampleid   <- safe_get_col(mic_data, "SampleID")
+        mic_col_samplename <- safe_get_col(mic_data, "SampleName")
+        mic_col_name       <- safe_get_col(mic_data, "Name")
+        mic_cols_to_coalesce <- Filter(Negate(is.null), list(mic_col_sampleid, mic_col_samplename, mic_col_name))
+        mic_lab_numbers_raw  <- if (length(mic_cols_to_coalesce) > 0) do.call(coalesce, mic_cols_to_coalesce) else rep(NA_character_, nrow(mic_data))
+        mic_lab_numbers_norm <- sapply(mic_lab_numbers_raw, function(x) {
+          if (is.na(x) || x == "") return(NA_character_)
+          trimws(tolower(as.character(x)))
+        })
+
+        mic_rows <- mic_data %>%
+          mutate(
+            lab_number_norm  = mic_lab_numbers_norm,
+            .qc_pass_count   = coalesce(ReplicatesTotal, 4) - coalesce(Replicates_Failed, 0)
+          ) %>%
+          left_join(biobank_lookup_long, by = "lab_number_norm") %>%
+          filter(!is.na(.sid)) %>%
+          left_join(sample_lookup, by = ".sid") %>%
+          transmute(
+            Barcode      = .bc,
+            Lab_ID       = .lid,
+            Province     = .prov,
+            Health_Zone  = .hz,
+            Test_Type    = "MIC",
+            Test_Date    = tryCatch(format(as.Date(RunDate), "%d/%m/%Y"), error = function(e) NA_character_),
+            Result       = FinalCall,
+            QC_Pass      = .qc_pass_count > 0
+          )
+        rows[["mic"]] <- mic_rows
+      }
+
+      # --- ELISA PE rows ---
+      if (nrow(elisa_pe_data) > 0) {
+        pe_rows <- elisa_pe_data %>%
+          filter(sample_type == "sample") %>%
+          mutate(.sid = map_chr(code_barres_kps, ~normalize_sample_id(barcode = .x))) %>%
+          filter(!is.na(.sid)) %>%
+          left_join(sample_lookup, by = ".sid") %>%
+          transmute(
+            Barcode      = coalesce(.bc, code_barres_kps),
+            Lab_ID       = coalesce(.lid, numero_labo),
+            Province     = .prov,
+            Health_Zone  = .hz,
+            Test_Type    = "ELISA-PE",
+            Test_Date    = tryCatch(format(as.Date(plate_date), "%d/%m/%Y"), error = function(e) NA_character_),
+            Result       = ifelse(sample_positive, "Positive", "Negative"),
+            QC_Pass      = qc_overall
+          )
+        rows[["elisa_pe"]] <- pe_rows
+      }
+
+      # --- ELISA VSG rows ---
+      if (nrow(elisa_vsg_data) > 0) {
+        vsg_rows <- elisa_vsg_data %>%
+          filter(sample_type == "sample") %>%
+          mutate(.sid = map_chr(code_barres_kps, ~normalize_sample_id(barcode = .x))) %>%
+          filter(!is.na(.sid)) %>%
+          left_join(sample_lookup, by = ".sid") %>%
+          transmute(
+            Barcode      = coalesce(.bc, code_barres_kps),
+            Lab_ID       = coalesce(.lid, numero_labo),
+            Province     = .prov,
+            Health_Zone  = .hz,
+            Test_Type    = "ELISA-VSG",
+            Test_Date    = tryCatch(format(as.Date(plate_date), "%d/%m/%Y"), error = function(e) NA_character_),
+            Result       = ifelse(sample_positive, "Positive", "Negative"),
+            QC_Pass      = qc_overall
+          )
+        rows[["elisa_vsg"]] <- vsg_rows
+      }
+
+      # --- iELISA rows ---
+      if (nrow(ielisa_data) > 0) {
+        ielisa_rows <- ielisa_data %>%
+          mutate(.sid = map_chr(Barcode, ~normalize_sample_id(barcode = .x))) %>%
+          filter(!is.na(.sid)) %>%
+          left_join(sample_lookup, by = ".sid") %>%
+          transmute(
+            Barcode      = coalesce(.bc, Barcode),
+            Lab_ID       = coalesce(.lid, LabID),
+            Province     = .prov,
+            Health_Zone  = .hz,
+            Test_Type    = "iELISA",
+            Test_Date    = tryCatch(format(as.Date(plate_date), "%d/%m/%Y"), error = function(e) NA_character_),
+            Result       = coalesce(status_final, NA_character_),
+            QC_Pass      = coalesce(status_final, "Invalid") != "Invalid"
+          )
+        rows[["ielisa"]] <- ielisa_rows
+      }
+
+      if (length(rows) == 0) {
+        return(tibble(
+          Barcode = character(), Lab_ID = character(), Province = character(),
+          Health_Zone = character(), Test_Type = character(), Test_Date = character(),
+          Result = character(), QC_Pass = logical()
+        ))
+      }
+
+      bind_rows(rows) %>%
+        mutate(QC = ifelse(QC_Pass, "PASS", "FAIL")) %>%
+        select(Barcode, Lab_ID, Province, Health_Zone, Test_Type, Test_Date, Result, QC) %>%
+        arrange(Barcode, Lab_ID, Test_Type, Test_Date)
     })
 
     # Filtered samples based on user selections
@@ -645,18 +856,14 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
     # ========================================================================
 
     output$summary_kpis <- renderUI({
-      # Explicitly depend on all filter inputs to ensure reactivity
-      # This forces the KPIs to re-render when any filter changes
       filter_positivity <- input$filter_positivity
       filter_completeness <- input$filter_completeness
       filter_processing <- input$filter_processing
       filter_qc <- input$filter_qc
 
-      # Get comprehensive and filtered samples
       all_samples <- comprehensive_samples()
       samples <- filtered_samples()
 
-      # Safety check
       if (is.null(all_samples) || nrow(all_samples) == 0) {
         return(div(class = "alert alert-info", "No samples available"))
       }
@@ -752,24 +959,18 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
     # ========================================================================
 
     output$processing_flow <- renderPlotly({
-      # Explicitly depend on all filter inputs to ensure reactivity
-      # This forces the chart to re-render when any filter changes
       filter_positivity <- input$filter_positivity
       filter_completeness <- input$filter_completeness
       filter_processing <- input$filter_processing
       filter_qc <- input$filter_qc
 
-      # Now get filtered samples
       samples <- filtered_samples()
 
-      # Safety check
       if (is.null(samples) || nrow(samples) == 0) {
         return(plotly_empty() %>%
           layout(title = list(text = "No sample data available")))
       }
 
-      # Calculate numbers for each stage from filtered samples
-      # All counts are based on the filtered dataset
       n_biobank <- as.integer(nrow(samples))
       n_extracted <- as.integer(sum(samples$has_extraction, na.rm = TRUE))
       n_mic <- as.integer(sum(samples$has_mic, na.rm = TRUE))
@@ -778,17 +979,9 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       n_ielisa <- as.integer(sum(samples$has_ielisa, na.rm = TRUE))
       n_fully_tested <- as.integer(sum(samples$n_test_types == 3, na.rm = TRUE))
 
-      # Force evaluation of counts before creating vector
-      # This ensures counts are calculated before being used in the visualization
-      force(n_biobank)
-      force(n_extracted)
-      force(n_mic)
-      force(n_elisa_pe)
-      force(n_elisa_vsg)
-      force(n_ielisa)
-      force(n_fully_tested)
+      force(n_biobank); force(n_extracted); force(n_mic)
+      force(n_elisa_pe); force(n_elisa_vsg); force(n_ielisa); force(n_fully_tested)
 
-      # Create count vector
       count_vector <- c(n_biobank, n_extracted, n_mic, n_elisa_pe, n_elisa_vsg, n_ielisa, n_fully_tested)
 
       flow_data <- tibble(
@@ -823,18 +1016,15 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
     })
 
     # ========================================================================
-    # SAMPLES TABLE
+    # SAMPLES TABLE (wide format)
     # ========================================================================
 
     output$samples_table <- renderDT({
-      # Explicitly depend on all filter inputs to ensure reactivity
-      # This forces the table to re-render when any filter changes
       filter_positivity <- input$filter_positivity
       filter_completeness <- input$filter_completeness
       filter_processing <- input$filter_processing
       filter_qc <- input$filter_qc
 
-      # Now get filtered samples
       samples <- filtered_samples()
 
       if (nrow(samples) == 0) {
@@ -845,49 +1035,37 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         ))
       }
 
-      # Select and format columns for display
+      # Select and format columns for display (wide format with dates and QC)
       display_data <- samples %>%
         select(
-          barcode,
-          lab_id,
-          province,
-          health_zone,
-          processing_status,
-          processing_stage,
-          has_extraction,
-          n_mic_tests,
-          mic_results,
-          n_elisa_pe_tests,
-          elisa_pe_results,
-          n_elisa_vsg_tests,
-          elisa_vsg_results,
-          n_ielisa_tests,
-          ielisa_results,
-          any_positive,
-          overall_qc_pass
+          barcode, lab_id,
+          province, health_zone,
+          processing_status, processing_stage,
+          has_extraction, extraction_date_display,
+          n_mic_tests, mic_date_display, mic_results, mic_qc_results,
+          n_elisa_pe_tests, elisa_pe_date_display, elisa_pe_results, elisa_pe_qc_results,
+          n_elisa_vsg_tests, elisa_vsg_date_display, elisa_vsg_results, elisa_vsg_qc_results,
+          n_ielisa_tests, ielisa_date_display, ielisa_results, ielisa_qc_results,
+          any_positive, overall_qc_pass
         ) %>%
         mutate(
-          # Convert extraction to ✓/✗ (keep this one as is)
           has_extraction = ifelse(has_extraction, "✓", "✗"),
-          # Show test counts (number of tests performed, or "✗" if none)
           n_mic_tests = ifelse(is.na(n_mic_tests) | n_mic_tests == 0, "✗", as.character(n_mic_tests)),
           n_elisa_pe_tests = ifelse(is.na(n_elisa_pe_tests) | n_elisa_pe_tests == 0, "✗", as.character(n_elisa_pe_tests)),
           n_elisa_vsg_tests = ifelse(is.na(n_elisa_vsg_tests) | n_elisa_vsg_tests == 0, "✗", as.character(n_elisa_vsg_tests)),
           n_ielisa_tests = ifelse(is.na(n_ielisa_tests) | n_ielisa_tests == 0, "✗", as.character(n_ielisa_tests)),
-          # Results show all test outcomes using simplified symbols (+/-/?)
-          # Multiple results per sample are comma-separated (e.g., "+, -, +" for 3 tests)
           any_positive = ifelse(any_positive, "YES", "NO"),
           overall_qc_pass = ifelse(overall_qc_pass, "PASS", "FAIL")
         )
 
-      # Rename columns
       names(display_data) <- c(
         "Barcode", "Lab ID", "Province", "Health Zone",
-        "Status", "Stage", "Extracted",
-        "MIC Tests", "MIC Results",
-        "ELISA PE Tests", "ELISA PE Results",
-        "ELISA VSG Tests", "ELISA VSG Results",
-        "iELISA Tests", "iELISA Results",
+        "Status", "Stage",
+        "Extracted", "Extraction Date",
+        "MIC Tests", "MIC Date", "MIC Results", "MIC QC",
+        "ELISA PE Tests", "ELISA PE Date", "ELISA PE Results", "ELISA PE QC",
+        "ELISA VSG Tests", "ELISA VSG Date", "ELISA VSG Results", "ELISA VSG QC",
+        "iELISA Tests", "iELISA Date", "iELISA Results", "iELISA QC",
         "Any Positive", "Overall QC"
       )
 
@@ -919,107 +1097,141 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         formatStyle(
           "Status",
           backgroundColor = styleEqual(
-            c("Positive", "Tested - Negative", "Limited Testing", "Awaiting Testing", "Not Processed"),
-            c('#f8d7da', '#d4edda', '#fff3cd', '#cfe2ff', '#e9ecef')
+            c("Positive", "Molecular Positive", "Serological Positive",
+              "Tested - Negative", "Limited Testing", "Awaiting Testing", "Not Processed"),
+            c('#f8d7da', '#f5c2c7', '#fde8f0',
+              '#d4edda', '#fff3cd', '#cfe2ff', '#e9ecef')
           )
         ) %>%
-        # Color code MIC Results
         formatStyle(
           "MIC Results",
           backgroundColor = JS(
             "function(value, type, row, meta) {
               if (!value || value === '') return '';
-
-              // Not done
-              if (value === '\u2717') return '#e9ecef'; // Gray for not done
-
+              if (value === '\u2717') return '#e9ecef';
               var hasPositive = value.includes('+');
               var hasNegative = value.includes('-');
               var hasIndeterminate = value.includes('?');
-
-              if (hasIndeterminate) {
-                return '#fff3cd'; // Yellow for indeterminate
-              } else if (hasPositive && hasNegative) {
-                return '#fff3cd'; // Yellow for conflicting results
-              } else if (hasPositive) {
-                return '#f8d7da'; // Red for positive
-              } else if (hasNegative) {
-                return '#d4edda'; // Green for negative
-              }
+              if (hasIndeterminate) return '#fff3cd';
+              if (hasPositive && hasNegative) return '#fff3cd';
+              if (hasPositive) return '#f8d7da';
+              if (hasNegative) return '#d4edda';
               return '';
             }"
           )
         ) %>%
-        # Color code ELISA PE Results
         formatStyle(
           "ELISA PE Results",
           backgroundColor = JS(
             "function(value, type, row, meta) {
               if (!value || value === '') return '';
-
-              // Not done
-              if (value === '\u2717') return '#e9ecef'; // Gray for not done
-
+              if (value === '\u2717') return '#e9ecef';
               var hasPos = value.includes('+');
               var hasNeg = value.includes('-');
-
-              if (hasPos && hasNeg) {
-                return '#fff3cd'; // Yellow for conflicting results
-              } else if (hasPos) {
-                return '#f8d7da'; // Red for positive
-              } else if (hasNeg) {
-                return '#d4edda'; // Green for negative
-              }
+              if (hasPos && hasNeg) return '#fff3cd';
+              if (hasPos) return '#f8d7da';
+              if (hasNeg) return '#d4edda';
               return '';
             }"
           )
         ) %>%
-        # Color code ELISA VSG Results
         formatStyle(
           "ELISA VSG Results",
           backgroundColor = JS(
             "function(value, type, row, meta) {
               if (!value || value === '') return '';
-
-              // Not done
-              if (value === '\u2717') return '#e9ecef'; // Gray for not done
-
+              if (value === '\u2717') return '#e9ecef';
               var hasPos = value.includes('+');
               var hasNeg = value.includes('-');
-
-              if (hasPos && hasNeg) {
-                return '#fff3cd'; // Yellow for conflicting results
-              } else if (hasPos) {
-                return '#f8d7da'; // Red for positive
-              } else if (hasNeg) {
-                return '#d4edda'; // Green for negative
-              }
+              if (hasPos && hasNeg) return '#fff3cd';
+              if (hasPos) return '#f8d7da';
+              if (hasNeg) return '#d4edda';
               return '';
             }"
           )
         ) %>%
-        # Color code iELISA Results
         formatStyle(
           "iELISA Results",
           backgroundColor = JS(
             "function(value, type, row, meta) {
               if (!value || value === '') return '';
-
-              // Not done
-              if (value === '\u2717') return '#e9ecef'; // Gray for not done
-
+              if (value === '\u2717') return '#e9ecef';
               var hasPos = value.includes('+');
               var hasNeg = value.includes('-');
-
-              if (hasPos && hasNeg) {
-                return '#fff3cd'; // Yellow for conflicting results
-              } else if (hasPos) {
-                return '#f8d7da'; // Red for positive
-              } else if (hasNeg) {
-                return '#d4edda'; // Green for negative
-              }
+              if (hasPos && hasNeg) return '#fff3cd';
+              if (hasPos) return '#f8d7da';
+              if (hasNeg) return '#d4edda';
               return '';
             }"
+          )
+        ) %>%
+        formatStyle(
+          c("MIC QC", "ELISA PE QC", "ELISA VSG QC", "iELISA QC"),
+          backgroundColor = JS(
+            "function(value, type, row, meta) {
+              if (!value || value === '') return '';
+              if (value.includes('FAIL')) return '#f8d7da';
+              if (value.includes('PASS')) return '#d4edda';
+              return '';
+            }"
+          )
+        )
+    })
+
+    # ========================================================================
+    # LONG FORMAT TABLE
+    # ========================================================================
+
+    output$long_format_table <- renderDT({
+      lf <- long_format_data()
+
+      if (nrow(lf) == 0) {
+        return(datatable(
+          tibble(Message = "No test data available"),
+          options = list(dom = 't'),
+          rownames = FALSE
+        ))
+      }
+
+      datatable(
+        lf,
+        options = list(
+          pageLength = 25,
+          scrollX = TRUE,
+          scrollY = "600px",
+          scrollCollapse = TRUE,
+          dom = 'frtip',
+          columnDefs = list(list(className = 'dt-center', targets = "_all"))
+        ),
+        rownames = FALSE,
+        filter = 'top',
+        class = "table table-striped table-hover table-sm"
+      ) %>%
+        formatStyle(
+          "Result",
+          backgroundColor = JS(
+            "function(value, type, row, meta) {
+              if (!value) return '';
+              var v = value.toLowerCase();
+              if (v === 'positive' || v === '+') return '#f8d7da';
+              if (v === 'negative' || v === '-') return '#d4edda';
+              if (v === 'borderline') return '#fff3cd';
+              if (v === 'invalid') return '#e9ecef';
+              if (v.includes('positive')) return '#f8d7da';
+              if (v.includes('negative')) return '#d4edda';
+              return '';
+            }"
+          )
+        ) %>%
+        formatStyle(
+          "QC",
+          backgroundColor = styleEqual(c("PASS", "FAIL"), c('#d4edda', '#f8d7da'))
+        ) %>%
+        formatStyle(
+          "Test_Type",
+          backgroundColor = styleEqual(
+            c("Extraction", "MIC", "ELISA-PE", "ELISA-VSG", "iELISA"),
+            c('#e2e3e5', '#cff4fc', '#d1ecf1', '#d6eaf8', '#e8daef')
           )
         )
     })
@@ -1028,113 +1240,78 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
     # DOWNLOAD HANDLERS
     # ========================================================================
 
-    # Download CSV
+    # Helper to build the wide export data frame
+    build_wide_export <- function(samples) {
+      samples %>%
+        select(
+          barcode, lab_id,
+          province, health_zone,
+          processing_status, processing_stage,
+          has_extraction, extraction_date_display, extraction_qc_results,
+          n_mic_tests, mic_date_display, mic_results, mic_qc_results,
+          n_elisa_pe_tests, elisa_pe_date_display, elisa_pe_results, elisa_pe_qc_results,
+          n_elisa_vsg_tests, elisa_vsg_date_display, elisa_vsg_results, elisa_vsg_qc_results,
+          n_ielisa_tests, ielisa_date_display, ielisa_results, ielisa_qc_results,
+          any_positive, overall_qc_pass
+        ) %>%
+        mutate(
+          has_extraction = ifelse(has_extraction, "Yes", "No"),
+          n_mic_tests = ifelse(is.na(n_mic_tests) | n_mic_tests == 0, "-", as.character(n_mic_tests)),
+          n_elisa_pe_tests = ifelse(is.na(n_elisa_pe_tests) | n_elisa_pe_tests == 0, "-", as.character(n_elisa_pe_tests)),
+          n_elisa_vsg_tests = ifelse(is.na(n_elisa_vsg_tests) | n_elisa_vsg_tests == 0, "-", as.character(n_elisa_vsg_tests)),
+          n_ielisa_tests = ifelse(is.na(n_ielisa_tests) | n_ielisa_tests == 0, "-", as.character(n_ielisa_tests)),
+          any_positive = ifelse(any_positive, "YES", "NO"),
+          overall_qc_pass = ifelse(overall_qc_pass, "PASS", "FAIL")
+        ) %>%
+        setNames(c(
+          "Barcode", "Lab ID", "Province", "Health Zone",
+          "Status", "Stage",
+          "Extracted", "Extraction Date", "Extraction QC",
+          "MIC Tests", "MIC Date", "MIC Results", "MIC QC",
+          "ELISA PE Tests", "ELISA PE Date", "ELISA PE Results", "ELISA PE QC",
+          "ELISA VSG Tests", "ELISA VSG Date", "ELISA VSG Results", "ELISA VSG QC",
+          "iELISA Tests", "iELISA Date", "iELISA Results", "iELISA QC",
+          "Any Positive", "Overall QC"
+        ))
+    }
+
+    # Download CSV (wide format)
     output$download_csv <- downloadHandler(
       filename = function() {
         paste0("sample_processing_", format(Sys.Date(), "%Y%m%d"), ".csv")
       },
       content = function(file) {
-        # Get the filtered samples data
-        samples <- filtered_samples()
-
-        # Format for export (same as display)
-        export_data <- samples %>%
-          select(
-            barcode,
-            lab_id,
-            province,
-            health_zone,
-            processing_status,
-            processing_stage,
-            has_extraction,
-            n_mic_tests,
-            mic_results,
-            n_elisa_pe_tests,
-            elisa_pe_results,
-            n_elisa_vsg_tests,
-            elisa_vsg_results,
-            n_ielisa_tests,
-            ielisa_results,
-            any_positive,
-            overall_qc_pass
-          ) %>%
-          mutate(
-            has_extraction = ifelse(has_extraction, "Yes", "No"),
-            n_mic_tests = ifelse(is.na(n_mic_tests) | n_mic_tests == 0, "-", as.character(n_mic_tests)),
-            n_elisa_pe_tests = ifelse(is.na(n_elisa_pe_tests) | n_elisa_pe_tests == 0, "-", as.character(n_elisa_pe_tests)),
-            n_elisa_vsg_tests = ifelse(is.na(n_elisa_vsg_tests) | n_elisa_vsg_tests == 0, "-", as.character(n_elisa_vsg_tests)),
-            n_ielisa_tests = ifelse(is.na(n_ielisa_tests) | n_ielisa_tests == 0, "-", as.character(n_ielisa_tests)),
-            any_positive = ifelse(any_positive, "YES", "NO"),
-            overall_qc_pass = ifelse(overall_qc_pass, "PASS", "FAIL")
-          )
-
-        # Rename columns for export
-        names(export_data) <- c(
-          "Barcode", "Lab ID", "Province", "Health Zone",
-          "Status", "Stage", "Extracted",
-          "MIC Tests", "MIC Results",
-          "ELISA PE Tests", "ELISA PE Results",
-          "ELISA VSG Tests", "ELISA VSG Results",
-          "iELISA Tests", "iELISA Results",
-          "Any Positive", "Overall QC"
-        )
-
-        write_csv(export_data, file)
+        write_csv(build_wide_export(filtered_samples()), file)
       }
     )
 
-    # Download Excel
+    # Download Excel (wide format)
     output$download_excel <- downloadHandler(
       filename = function() {
-        paste0("sample_processing_", format(Sys.Date(), "%Y%m%d"), ".xlsx")
+        paste0("sample_processing_wide_", format(Sys.Date(), "%Y%m%d"), ".xlsx")
       },
       content = function(file) {
-        # Get the filtered samples data
-        samples <- filtered_samples()
+        writexl::write_xlsx(build_wide_export(filtered_samples()), file)
+      }
+    )
 
-        # Format for export (same as display)
-        export_data <- samples %>%
-          select(
-            barcode,
-            lab_id,
-            province,
-            health_zone,
-            processing_status,
-            processing_stage,
-            has_extraction,
-            n_mic_tests,
-            mic_results,
-            n_elisa_pe_tests,
-            elisa_pe_results,
-            n_elisa_vsg_tests,
-            elisa_vsg_results,
-            n_ielisa_tests,
-            ielisa_results,
-            any_positive,
-            overall_qc_pass
-          ) %>%
-          mutate(
-            has_extraction = ifelse(has_extraction, "Yes", "No"),
-            n_mic_tests = ifelse(is.na(n_mic_tests) | n_mic_tests == 0, "-", as.character(n_mic_tests)),
-            n_elisa_pe_tests = ifelse(is.na(n_elisa_pe_tests) | n_elisa_pe_tests == 0, "-", as.character(n_elisa_pe_tests)),
-            n_elisa_vsg_tests = ifelse(is.na(n_elisa_vsg_tests) | n_elisa_vsg_tests == 0, "-", as.character(n_elisa_vsg_tests)),
-            n_ielisa_tests = ifelse(is.na(n_ielisa_tests) | n_ielisa_tests == 0, "-", as.character(n_ielisa_tests)),
-            any_positive = ifelse(any_positive, "YES", "NO"),
-            overall_qc_pass = ifelse(overall_qc_pass, "PASS", "FAIL")
-          )
+    # Download Excel (long format) - button in Sample Details card
+    output$download_long_excel <- downloadHandler(
+      filename = function() {
+        paste0("sample_processing_long_", format(Sys.Date(), "%Y%m%d"), ".xlsx")
+      },
+      content = function(file) {
+        writexl::write_xlsx(long_format_data(), file)
+      }
+    )
 
-        # Rename columns for export
-        names(export_data) <- c(
-          "Barcode", "Lab ID", "Province", "Health Zone",
-          "Status", "Stage", "Extracted",
-          "MIC Tests", "MIC Results",
-          "ELISA PE Tests", "ELISA PE Results",
-          "ELISA VSG Tests", "ELISA VSG Results",
-          "iELISA Tests", "iELISA Results",
-          "Any Positive", "Overall QC"
-        )
-
-        writexl::write_xlsx(export_data, file)
+    # Download Excel (long format) - button in Test History card
+    output$download_long_excel2 <- downloadHandler(
+      filename = function() {
+        paste0("sample_processing_long_", format(Sys.Date(), "%Y%m%d"), ".xlsx")
+      },
+      content = function(file) {
+        writexl::write_xlsx(long_format_data(), file)
       }
     )
   })

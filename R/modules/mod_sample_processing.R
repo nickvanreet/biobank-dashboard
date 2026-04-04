@@ -50,6 +50,18 @@ normalize_sample_id <- function(barcode = NULL, lab_id = NULL) {
   ids[1]
 }
 
+#' Convert a character vector to numeric if ALL non-NA values are valid numbers.
+#' Returns the original vector unchanged if any non-NA value is non-numeric.
+#' This ensures Excel writes the column as a number (sortable 1→10000)
+#' rather than as text (which sorts 1, 10, 100, …).
+#' @param x Character (or any) vector
+#' @return Numeric vector, or original vector if conversion would lose data
+try_numeric <- function(x) {
+  nums <- suppressWarnings(as.numeric(x))
+  # Only convert if no NEW NAs were introduced (i.e. every non-NA became a number)
+  if (all(is.na(nums) == is.na(x))) nums else x
+}
+
 #' Safely format the most recent date in a vector to dd/mm/yyyy
 #' Returns NA_character_ if no valid dates are present
 #' @param dates Vector of dates (Date or POSIXct)
@@ -1255,6 +1267,8 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
           any_positive, overall_qc_pass
         ) %>%
         mutate(
+          # Numeric lab_id → Excel number column so rows sort 1 → 10000
+          lab_id        = try_numeric(lab_id),
           has_extraction = ifelse(has_extraction, "Yes", "No"),
           n_mic_tests = ifelse(is.na(n_mic_tests) | n_mic_tests == 0, "-", as.character(n_mic_tests)),
           n_elisa_pe_tests = ifelse(is.na(n_elisa_pe_tests) | n_elisa_pe_tests == 0, "-", as.character(n_elisa_pe_tests)),
@@ -1295,13 +1309,20 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
       }
     )
 
+    # Helper: prepare long-format data for Excel export
+    # Converts Lab_ID to numeric so Excel sorts 1 → 10000 instead of lexicographically
+    long_export_data <- function() {
+      long_format_data() %>%
+        mutate(Lab_ID = try_numeric(Lab_ID))
+    }
+
     # Download Excel (long format) - button in Sample Details card
     output$download_long_excel <- downloadHandler(
       filename = function() {
         paste0("sample_processing_long_", format(Sys.Date(), "%Y%m%d"), ".xlsx")
       },
       content = function(file) {
-        writexl::write_xlsx(long_format_data(), file)
+        writexl::write_xlsx(long_export_data(), file)
       }
     )
 
@@ -1311,7 +1332,7 @@ mod_sample_processing_server <- function(id, biobank_df, extraction_df, mic_df,
         paste0("sample_processing_long_", format(Sys.Date(), "%Y%m%d"), ".xlsx")
       },
       content = function(file) {
-        writexl::write_xlsx(long_format_data(), file)
+        writexl::write_xlsx(long_export_data(), file)
       }
     )
   })

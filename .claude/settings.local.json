@@ -7,7 +7,8 @@
       "Read(//c//**)",
       "Read(//c/Users/nvanreet/AppData/Local/Programs/**)",
       "Bash(find /c -name Rscript.exe -maxdepth 6)",
-      "Bash(\"/c/Program Files/R/R-4.5.1/bin/Rscript.exe\" -e \"suppressMessages\\(source\\(''''R/modules/mod_sample_processing.R''''\\)\\); cat\\(''''OK\\\\n''''\\)\")"
+      "Bash(\"/c/Program Files/R/R-4.5.1/bin/Rscript.exe\" -e \"suppressMessages\\(source\\(''''R/modules/mod_sample_processing.R''''\\)\\); cat\\(''''OK\\\\n''''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.5.1/bin/Rscript.exe\" -e \"suppressMessages\\(source\\(''R/modules/mod_sample_processing.R''\\)\\); cat\\(''OK\\\\n''\\)\")"
     ]
   }
 }

@@ -58,15 +58,6 @@ server <- function(input, output, session) {
     quality_report = data$quality_report
   )
 
-  mod_overview_assays_server(
-    "overview_assays",
-    biobank_df = data$filtered_data,
-    elisa_df = data$elisa_data,
-    ielisa_df = data$ielisa_data,
-    mic_df = data$mic_data,
-    filters = data$filters
-  )
-
   # Pass data to overview & demographics module
   mod_overview_demographics_server(
     "overview_demographics",
@@ -164,6 +155,25 @@ server <- function(input, output, session) {
 
     dplyr::bind_rows(pe_data, vsg_data)
   })
+
+  # Overview assays module — placed here so all coordinator data sources are
+  # already defined (ielisa_data, elisa_pe_data, elisa_vsg_data, mic_data,
+  # combined_elisa_data).  mic_df is wrapped to match the list(samples=…) shape
+  # that prepare_assay_dashboard_data() expects.
+  mic_for_overview <- reactive({
+    s <- tryCatch(mic_data$qpcr_samples(), error = function(e) NULL)
+    if (is.null(s) || !is.data.frame(s) || !nrow(s)) return(NULL)
+    list(samples = s)
+  })
+
+  mod_overview_assays_server(
+    "overview_assays",
+    biobank_df = data$filtered_data,
+    elisa_df   = combined_elisa_data,
+    ielisa_df  = ielisa_data$samples,
+    mic_df     = mic_for_overview,
+    filters    = data$filters
+  )
 
   # Pass filtered data to transport module so visuals respect dashboard filters
   mod_transport_server(

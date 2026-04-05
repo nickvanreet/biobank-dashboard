@@ -178,7 +178,9 @@ list_extraction_files <- function(directory) {
   out
 }
 
-#' Read a single extraction data file and normalise columns
+#' Read a single extraction data file and normalise columns.
+#' Results are cached to an RDS file keyed by the source file's mtime so that
+#' subsequent app restarts skip the Excel read entirely when files have not changed.
 #' @param filepath Path to the file
 #' @return Tibble with standardised columns
 #' @export
@@ -186,6 +188,31 @@ load_extraction_file <- function(filepath) {
   if (!file.exists(filepath)) {
     stop(sprintf("Extraction file not found: %s", filepath))
   }
+
+  # --- Per-file RDS cache (mtime-based invalidation) ---
+  cache_dir <- tryCatch(
+    {
+      d <- if (!is.null(config$site_paths)) config$site_paths$cache_dir else "data/cache"
+      if (!dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
+      d
+    },
+    error = function(e) "data/cache"
+  )
+  cache_path <- file.path(
+    cache_dir,
+    paste0("extraction_", tools::file_path_sans_ext(basename(filepath)), ".rds")
+  )
+
+  src_mtime   <- tryCatch(file.info(filepath)$mtime,  error = function(e) NA)
+  cache_mtime <- tryCatch(file.info(cache_path)$mtime, error = function(e) NA)
+
+  if (!is.na(cache_mtime) && !is.na(src_mtime) && cache_mtime >= src_mtime) {
+    cached <- tryCatch(readRDS(cache_path), error = function(e) NULL)
+    if (!is.null(cached) && is.data.frame(cached) && nrow(cached) > 0) {
+      return(cached)
+    }
+  }
+  # --- end cache check ---
 
   ext <- tools::file_ext(filepath)
   df <- switch(tolower(ext),
@@ -346,6 +373,12 @@ load_extraction_file <- function(filepath) {
       ),
       ready_for_freezer = !flag_issue
     )
+
+  # Persist normalised result to per-file RDS cache for fast subsequent loads
+  tryCatch(
+    saveRDS(df, cache_path),
+    error = function(e) NULL   # Non-fatal: cache write failure is silently ignored
+  )
 
   df
 }

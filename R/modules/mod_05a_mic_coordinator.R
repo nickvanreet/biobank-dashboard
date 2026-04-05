@@ -151,10 +151,18 @@ mod_mic_qpcr_coordinator_server <- function(id, biobank_df, extractions_df, filt
       })
     }) %>% bindCache(mic_dir(), settings())
     
-    # Force refresh
+    # Force refresh (manual button)
     observeEvent(input$refresh, {
       cache_state(list())
     })
+
+    # Clear the session cache whenever QC settings change.
+    # Because the session cache now stores only raw Cq data (no interpreted
+    # results), clearing it simply forces reapply_calls_to_replicates to
+    # re-run with the new thresholds — no Excel re-reads required.
+    observeEvent(settings(), {
+      cache_state(list())
+    }, ignoreInit = TRUE)
     
     # Processed data - shared by all modules
     processed_data <- reactive({

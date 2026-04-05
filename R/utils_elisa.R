@@ -580,12 +580,17 @@ load_elisa_data <- function(
 
   hash_val <- digest(list(.elisa_cache_version, file_info$path, file_info$mtime, cv_max_ag_plus, cv_max_ag0, recursive, exclude_pattern))
 
-  # Check cache
+  # Path for the combined disk cache (survives app restarts unlike the env cache)
+  combined_cache_path <- file.path(
+    get_elisa_cache_dir(),
+    paste0("elisa_combined_", hash_val, ".rds")
+  )
+
+  # 1. Check in-memory session cache (fastest)
   cached <- .elisa_cache_env$data
   cached_hash <- .elisa_cache_env$hash
   cached_version <- .elisa_cache_env$version
 
-  # Invalidate cache if version changed or hash doesn't match
   cache_valid <- !is.null(cached) && !is.null(cached_hash) && identical(cached_hash, hash_val) &&
                  !is.null(cached_version) && identical(cached_version, .elisa_cache_version)
 
@@ -599,12 +604,37 @@ load_elisa_data <- function(
       cached$data <- link_elisa_to_biobank(cached$data, biobank_df)
     }
     return(ensure_elisa_columns(cached$data))
-  } else {
-    if (!is.null(cached_version)) {
-      message("DEBUG: Cache invalidated. Old version: ", cached_version, ", New version: ", .elisa_cache_version)
-    } else {
-      message("DEBUG: No cache found, will parse fresh data")
+  }
+
+  # 2. Check disk cache (survives app restarts — avoids re-linking & re-numbering)
+  if (file.exists(combined_cache_path)) {
+    disk_cached <- tryCatch(readRDS(combined_cache_path), error = function(e) NULL)
+    if (!is.null(disk_cached) &&
+        identical(disk_cached$hash,    hash_val) &&
+        identical(disk_cached$version, .elisa_cache_version) &&
+        is.data.frame(disk_cached$data) && nrow(disk_cached$data) > 0) {
+
+      message("✓ Using disk-cached ELISA data (", nrow(disk_cached$data), " rows)")
+
+      # Populate in-memory cache so subsequent calls this session are instant
+      .elisa_cache_env$data    <- list(data = disk_cached$data)
+      .elisa_cache_env$hash    <- hash_val
+      .elisa_cache_env$version <- .elisa_cache_version
+
+      # Re-link to biobank in case biobank_df changed since cache was written
+      result <- disk_cached$data
+      if (!is.null(biobank_df)) {
+        result <- link_elisa_to_biobank(result, biobank_df)
+      }
+      return(ensure_elisa_columns(result))
     }
+  }
+
+  # 3. Full parse needed
+  if (!is.null(cached_version)) {
+    message("DEBUG: Cache invalidated. Old version: ", cached_version, ", New version: ", .elisa_cache_version)
+  } else {
+    message("DEBUG: No cache found, will parse fresh data")
   }
 
   # Parse ELISA files (using per-file RDS caching)
@@ -716,10 +746,20 @@ load_elisa_data <- function(
   message("Calculating screening numbers...")
   parsed <- add_screening_numbers(parsed)
 
-  # Cache results with version
-  .elisa_cache_env$data <- list(data = parsed)
-  .elisa_cache_env$hash <- hash_val
+  # Cache results — in-memory (instant within this session)
+  .elisa_cache_env$data    <- list(data = parsed)
+  .elisa_cache_env$hash    <- hash_val
   .elisa_cache_env$version <- .elisa_cache_version
+
+  # Cache results — on disk (survives app restarts; skips plate-numbering,
+  # biobank-linking and screening-number calculation on next startup)
+  tryCatch(
+    saveRDS(
+      list(data = parsed, hash = hash_val, version = .elisa_cache_version),
+      combined_cache_path
+    ),
+    error = function(e) message("ELISA combined disk cache write failed: ", e$message)
+  )
 
   parsed
 }

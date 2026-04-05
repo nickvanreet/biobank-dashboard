@@ -81,12 +81,20 @@ server <- function(input, output, session) {
     filters = data$filters                      # ← Filters from data manager (FIXED)
   )
 
+  # Safe wrapper: DRS loads immediately without blocking on MIC.
+  # MIC data is passed only when already available; NULL is handled gracefully inside mod_drs_server.
+  mic_for_drs <- reactive({
+    tryCatch({
+      s <- mic_data$qpcr_samples()
+      if (is.null(s) || !is.data.frame(s) || !nrow(s)) NULL else s
+    }, error = function(e) NULL)
+  })
+
   # Unified DRS module (extraction quality + RNAseP + QC warnings)
-  # Now initialized after MIC module so qPCR data is available
   mod_drs_server(
     "drs",
     extractions_df = data$filtered_extractions,
-    qpcr_data = mic_data$qpcr_samples,
+    qpcr_data = mic_for_drs,
     biobank_df = data$filtered_data,
     filters = data$filters
   )

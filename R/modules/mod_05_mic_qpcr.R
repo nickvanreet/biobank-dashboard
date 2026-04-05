@@ -220,128 +220,126 @@ parse_run_datetime <- function(filename) {
 # FILE PARSING (leveraging qpcr_analysis.R)
 # =============================================================================
 
+# parse_single_mic_file: reads Excel and returns THRESHOLD-FREE raw data.
+#
+# The on-disk RDS cache stores only raw Cq values + metadata (no FinalCall,
+# no threshold-derived columns). This means:
+#   - The cache is keyed by file mtime only — it never goes stale when QC
+#     settings change.
+#   - Interpretation (Call, FinalCall, …) is always applied freshly in
+#     parse_mic_directory using the current settings.
+#
+# Return value: list(run, replicates_cq, sample_summary, success)
+#   replicates_cq  — tibble with Cq column but NO Call column
+#   sample_summary — pipeline sample summary from analyze_qpcr (may be NULL)
 parse_single_mic_file <- function(file_info, settings) {
   cache_path <- get_mic_cache_path(file_info$file_path)
 
+  # --- Disk cache hit (raw data only) ---
   if (cache_is_fresh(file_info$file_path, cache_path)) {
     cached <- tryCatch(readRDS(cache_path), error = function(e) NULL)
+    # Accept both new-style raw caches (has replicates_cq) and old-style full
+    # caches (has replicates). Old-style caches are used as-is this session but
+    # will be replaced on the next full re-parse (when mtime changes).
     if (is.list(cached) && isTRUE(cached$success)) {
-      return(cached)
+      if (!is.null(cached$replicates_cq)) {
+        return(cached)           # new-style raw cache
+      } else if (!is.null(cached$replicates)) {
+        # old-style cache: promote to new format so caller can still use it
+        cached$replicates_cq <- select(cached$replicates, -any_of("Call"))
+        cached$sample_summary <- cached$sample_summary %||% tibble()
+        return(cached)
+      }
     }
   }
 
+  # --- Fresh parse from Excel ---
   result <- tryCatch({
-    
-    # Use the analyze_qpcr function from qpcr_analysis.R
+
     analysis <- analyze_qpcr(
       micrun_file = file_info$file_path,
       rnasep_rna_cutoff = settings$thresholds$RNAseP_RNA$positive,
       cutoffs = settings$thresholds,
       verbose = FALSE
     )
-    
-    run_id <- tools::file_path_sans_ext(file_info$file_name)
+
+    run_id       <- tools::file_path_sans_ext(file_info$file_name)
     run_datetime <- parse_run_datetime(file_info$file_name)
-    
-    # Get replicate data and ensure it has required columns
-    rep_data <- analysis$replicate_data
-    
+    rep_data     <- analysis$replicate_data
+
     if (!nrow(rep_data)) {
       warning(glue("No replicate data in {file_info$file_name}"))
       return(list(success = FALSE, error = "No replicate data"))
     }
-    
-    # Create replicates_long with proper structure
-    replicates_long <- tibble()
 
-    # Process each target
     target_mappings <- list(
-      "177T" = list(cq = "Cq_177T", marker = "marker_177T"),
-      "18S2" = list(cq = "Cq_18S2", marker = "marker_18S2"),
-      "RNAseP_DNA" = list(cq = "RNAseP_DNA_Cq", marker = "RNAseP_DNA"),  # DIFFERENT!
-      "RNAseP_RNA" = list(cq = "RNAseP_RNA_Cq", marker = "RNAseP_RNA")   # DIFFERENT!
+      "177T"       = list(cq = "Cq_177T",       marker = "marker_177T"),
+      "18S2"       = list(cq = "Cq_18S2",        marker = "marker_18S2"),
+      "RNAseP_DNA" = list(cq = "RNAseP_DNA_Cq",  marker = "RNAseP_DNA"),
+      "RNAseP_RNA" = list(cq = "RNAseP_RNA_Cq",  marker = "RNAseP_RNA")
     )
-    
+
+    replicates_cq <- tibble()   # Cq only — no Call column
+
     for (target in names(target_mappings)) {
       cq_col <- target_mappings[[target]]$cq
-      marker_col <- target_mappings[[target]]$marker
-
-      if (cq_col %in% names(rep_data) && marker_col %in% names(rep_data)) {
+      if (cq_col %in% names(rep_data)) {
         target_data <- rep_data %>%
           mutate(
-            RunID = run_id,
-            SampleID = normalize_id(Name),
-            SampleName = Name,
-            Target = target,
-            Cq = .data[[cq_col]],
-            Call = .data[[marker_col]],
+            RunID       = run_id,
+            SampleID    = normalize_id(Name),
+            SampleName  = Name,
+            Target      = target,
+            Cq          = .data[[cq_col]],   # raw measured value — no thresholds
             ControlType = case_when(
               Type %in% c("Positive", "Standard", "CP") ~ "PC",
-              Type %in% c("Negative", "NTC", "CN") ~ "NC",
+              Type %in% c("Negative", "NTC", "CN")      ~ "NC",
               TRUE ~ "Sample"
             )
           ) %>%
-          select(RunID, SampleID, SampleName, Replicate, ControlType, Target, Cq, Call)
-        
-        replicates_long <- bind_rows(replicates_long, target_data)
+          select(RunID, SampleID, SampleName, Replicate, ControlType, Target, Cq)
+
+        replicates_cq <- bind_rows(replicates_cq, target_data)
       }
     }
-    
-    if (!nrow(replicates_long)) {
+
+    if (!nrow(replicates_cq)) {
       warning(glue("No valid target data in {file_info$file_name}"))
       return(list(success = FALSE, error = "No valid target data"))
     }
-    
-    # Aggregate samples using pipeline-derived sample summary where available
-    sample_summary <- analysis$sample_summary
-    if (is.null(sample_summary)) {
-      sample_summary <- tibble()
-    }
 
-    samples <- aggregate_samples_from_replicates(
-      replicates_long,
-      sample_summary,
-      settings,
-      run_id
-    )
-    
-    if (!nrow(samples)) {
-      warning(glue("Failed to aggregate samples in {file_info$file_name}"))
-      return(list(success = FALSE, error = "Failed to aggregate samples"))
-    }
-    
-    # Run metadata - FIXED: Convert JSON to character
+    sample_summary <- analysis$sample_summary %||% tibble()
+
+    # Run metadata — no ThresholdsJSON (thresholds are no longer baked in)
     run_meta <- tibble(
-      RunID = run_id,
-      FilePath = file_info$file_path,
-      FileName = file_info$file_name,
-      FileMTime = file_info$mtime,
+      RunID       = run_id,
+      FilePath    = file_info$file_path,
+      FileName    = file_info$file_name,
+      FileMTime   = file_info$mtime,
       RunDateTime = run_datetime,
-      WellCount = n_distinct(rep_data$Name),
-      ThresholdsJSON = as.character(toJSON(settings$thresholds, auto_unbox = TRUE))
-    )
-    
-    parsed <- list(
-      run = run_meta,
-      replicates = replicates_long,
-      samples = samples,
-      success = TRUE
+      WellCount   = n_distinct(rep_data$Name)
     )
 
+    raw <- list(
+      run            = run_meta,
+      replicates_cq  = replicates_cq,
+      sample_summary = sample_summary,
+      success        = TRUE
+    )
+
+    # Persist threshold-free raw data to disk
     tryCatch(
-      saveRDS(parsed, cache_path),
-      error = function(e) {
-        warning(glue("Failed to save MIC cache for {file_info$file_name}: {e$message}"))
-      }
+      saveRDS(raw, cache_path),
+      error = function(e) warning(glue("Failed to save MIC cache for {file_info$file_name}: {e$message}"))
     )
 
-    parsed
+    raw
 
   }, error = function(e) {
     warning(glue("Failed to parse {file_info$file_name}: {e$message}"))
     list(success = FALSE, error = as.character(e$message))
   })
-  
+
   result
 }
 
@@ -1162,6 +1160,22 @@ classify_target_vectorized <- function(cq_vector, target_name, settings) {
   })
 }
 
+# Given replicates_cq (no Call column) + current settings, compute the Call
+# column for every replicate row using the same threshold logic as analyze_qpcr.
+# This is the bridge between the threshold-free disk cache and the
+# threshold-aware aggregate_samples_from_replicates function.
+reapply_calls_to_replicates <- function(replicates_cq, settings) {
+  if (!nrow(replicates_cq)) return(replicates_cq %>% mutate(Call = character()))
+
+  # classify_target_vectorized is already defined above
+  replicates_cq %>%
+    group_by(Target) %>%
+    mutate(
+      Call = classify_target_vectorized(Cq, unique(Target), settings)
+    ) %>%
+    ungroup()
+}
+
 # =============================================================================
 # DIRECTORY PARSING WITH CACHING
 # =============================================================================
@@ -1224,7 +1238,10 @@ parse_mic_directory <- function(path, settings, cache_state) {
   all_results <- c(cached_results, uncached_results)
   all_hashes <- c(cached_files$hash, uncached_files$hash)
 
-  # Filter successful results and build output lists
+  # Filter successful results and build output lists.
+  # The session cache (new_cache) stores only THRESHOLD-FREE raw data so that
+  # changing QC settings never requires re-reading Excel files — interpretation
+  # is always re-applied with the *current* settings below.
   all_runs <- list()
   all_samples <- list()
   all_replicates <- list()
@@ -1232,14 +1249,40 @@ parse_mic_directory <- function(path, settings, cache_state) {
 
   for (i in seq_along(all_results)) {
     parsed <- all_results[[i]]
-    hash <- all_hashes[i]
+    hash   <- all_hashes[i]
 
     if (!parsed$success) next
 
-    new_cache[[hash]] <- parsed
-    all_runs[[length(all_runs) + 1]] <- parsed$run
-    all_samples[[length(all_samples) + 1]] <- parsed$samples
-    all_replicates[[length(all_replicates) + 1]] <- parsed$replicates
+    # Persist only raw (threshold-free) data to the session cache
+    new_cache[[hash]] <- list(
+      run            = parsed$run,
+      replicates_cq  = parsed$replicates_cq,
+      sample_summary = parsed$sample_summary %||% tibble(),
+      success        = TRUE
+    )
+
+    # Apply current thresholds → Call column, then aggregate to sample-level
+    replicates_with_calls <- reapply_calls_to_replicates(parsed$replicates_cq, settings)
+
+    samples_for_run <- tryCatch(
+      aggregate_samples_from_replicates(
+        replicates_with_calls,
+        parsed$sample_summary %||% tibble(),
+        settings,
+        parsed$run$RunID
+      ),
+      error = function(e) {
+        warning("aggregate_samples_from_replicates failed for run ",
+                parsed$run$RunID, ": ", e$message)
+        tibble()
+      }
+    )
+
+    if (!nrow(samples_for_run)) next
+
+    all_runs[[length(all_runs) + 1]]            <- parsed$run
+    all_samples[[length(all_samples) + 1]]      <- samples_for_run
+    all_replicates[[length(all_replicates) + 1]] <- replicates_with_calls
   }
 
   runs_df <- if (length(all_runs)) bind_rows(all_runs) else tibble()

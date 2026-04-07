@@ -153,6 +153,72 @@ get_mic_cache_dir <- function() {
   cache_dir
 }
 
+# =============================================================================
+# CONSOLIDATED SNAPSHOT CACHE
+# =============================================================================
+# Instead of reading one RDS file per Excel file on startup (N reads),
+# we store ALL raw (threshold-free) data in a single mic_snapshot.rds.
+# Startup cost: 1 file read (< 2 s for a full dataset).
+# The snapshot is rebuilt only when new / changed Excel files are detected.
+# Old runs that are already in the snapshot are never re-read from Excel again.
+# =============================================================================
+
+.mic_snapshot_version <- 2L   # bump to force snapshot rebuild after schema changes
+
+# Parser version embedded in every per-file RDS cache.
+# Bump this string when parse_single_mic_file output structure changes.
+# Stale per-file caches are detected individually and re-parsed on first access;
+# no bulk deletion is ever needed.
+.mic_parser_version <- "raw_v2"
+
+load_mic_snapshot_into_cache <- function(files, cache_state, cache_dir) {
+  snapshot_path <- file.path(cache_dir, "mic_snapshot.rds")
+  snapshot <- if (file.exists(snapshot_path)) {
+    tryCatch(readRDS(snapshot_path), error = function(e) NULL)
+  } else NULL
+
+  if (is.null(snapshot) ||
+      !identical(snapshot$version, .mic_snapshot_version) ||
+      !is.list(snapshot$items) ||
+      !is.data.frame(snapshot$manifest)) {
+    return(cache_state)
+  }
+
+  # Pre-populate the session cache with raw data from the snapshot.
+  # Only add entries whose hash matches a known file (stale entries are ignored).
+  valid_hashes <- files$hash
+  cache <- cache_state
+  for (h in names(snapshot$items)) {
+    if (h %in% valid_hashes && is.null(cache[[h]])) {
+      cache[[h]] <- snapshot$items[[h]]
+    }
+  }
+
+  n_from_snap <- sum(valid_hashes %in% names(snapshot$items))
+  message(sprintf("[MIC snapshot] Loaded %d / %d files from snapshot",
+                  n_from_snap, nrow(files)))
+  cache
+}
+
+save_mic_snapshot <- function(items, files, cache_dir) {
+  snapshot_path <- file.path(cache_dir, "mic_snapshot.rds")
+  snapshot <- list(
+    version  = .mic_snapshot_version,
+    manifest = tibble(
+      file_path = files$file_path,
+      hash      = files$hash,
+      mtime     = files$mtime
+    ),
+    items    = items,
+    saved_at = Sys.time()
+  )
+  tryCatch(
+    saveRDS(snapshot, snapshot_path),
+    error = function(e) message("[MIC snapshot] Could not save snapshot: ", e$message)
+  )
+  invisible(NULL)
+}
+
 get_mic_cache_path <- function(mic_file) {
   file.path(
     get_mic_cache_dir(),
@@ -235,19 +301,19 @@ parse_run_datetime <- function(filename) {
 parse_single_mic_file <- function(file_info, settings) {
   cache_path <- get_mic_cache_path(file_info$file_path)
 
-  # --- Disk cache hit (raw data only) ---
+  # --- Disk cache hit ---
+  # Accept the cache only when:
+  #   1. the source Excel file hasn't changed (mtime check), AND
+  #   2. the parser version matches (version check).
+  # If either fails we fall through to a fresh Excel parse and overwrite the
+  # cache file — no bulk deletion needed anywhere.
   if (cache_is_fresh(file_info$file_path, cache_path)) {
     cached <- tryCatch(readRDS(cache_path), error = function(e) NULL)
-    # Accept both new-style raw caches (has replicates_cq) and old-style full
-    # caches (has replicates). Old-style caches are used as-is this session but
-    # will be replaced on the next full re-parse (when mtime changes).
     if (is.list(cached) && isTRUE(cached$success)) {
-      if (!is.null(cached$replicates_cq)) {
-        return(cached)           # new-style raw cache
-      } else if (!is.null(cached$replicates)) {
-        # old-style cache: promote to new format so caller can still use it
-        cached$replicates_cq <- select(cached$replicates, -any_of("Call"))
-        cached$sample_summary <- cached$sample_summary %||% tibble()
+      # Version check — stale caches are silently re-parsed
+      if (!identical(cached$parser_version, .mic_parser_version)) {
+        cached <- NULL   # fall through to re-parse
+      } else if (!is.null(cached$replicates_cq)) {
         return(cached)
       }
     }
@@ -324,7 +390,8 @@ parse_single_mic_file <- function(file_info, settings) {
       run            = run_meta,
       replicates_cq  = replicates_cq,
       sample_summary = sample_summary,
-      success        = TRUE
+      success        = TRUE,
+      parser_version = .mic_parser_version   # checked on next load
     )
 
     # Persist threshold-free raw data to disk
@@ -1193,7 +1260,10 @@ parse_mic_directory <- function(path, settings, cache_state) {
     ))
   }
 
-  cache <- cache_state
+  # Load consolidated snapshot into session cache first.
+  # This pre-populates raw data for all previously-seen files so that the loop
+  # below treats them as "cached" and skips per-file RDS reads entirely.
+  cache <- load_mic_snapshot_into_cache(files, cache_state, get_mic_cache_dir())
 
   # Separate files into cached and non-cached
   files_with_cache_status <- files %>%
@@ -1205,31 +1275,27 @@ parse_mic_directory <- function(path, settings, cache_state) {
   # Get cached results
   cached_results <- map(cached_files$hash, ~cache[[.x]])
 
-  # Parse uncached files (use parallel only for larger batches to avoid overhead)
+  # Parse uncached files — parallel on all platforms (Windows + Unix)
   uncached_results <- list()
   if (nrow(uncached_files) > 0) {
-    # Only use parallel processing for 5+ files to avoid fork overhead
-    if (nrow(uncached_files) >= 5 && .Platform$OS.type == "unix") {
-      # Use mclapply on Unix systems for parallel processing
-      # Determine number of cores to use (max 4 or half of available cores)
-      n_cores <- min(4, max(1, parallel::detectCores() %/% 2))
+    n_uncached <- nrow(uncached_files)
 
-      uncached_results <- parallel::mclapply(
-        seq_len(nrow(uncached_files)),
-        function(i) {
-          file_row <- uncached_files[i, ]
-          parse_single_mic_file(file_row, settings)
-        },
-        mc.cores = n_cores
+    use_parallel <- n_uncached >= 4 &&
+      requireNamespace("future.apply", quietly = TRUE) &&
+      !inherits(future::plan(), "sequential")
+
+    if (use_parallel) {
+      message(sprintf("[MIC] Parsing %d files in parallel...", n_uncached))
+      uncached_results <- future.apply::future_lapply(
+        seq_len(n_uncached),
+        function(i) parse_single_mic_file(uncached_files[i, ], settings),
+        future.seed = TRUE
       )
     } else {
-      # Sequential processing for small batches, Windows, or single file
+      message(sprintf("[MIC] Parsing %d files sequentially...", n_uncached))
       uncached_results <- lapply(
-        seq_len(nrow(uncached_files)),
-        function(i) {
-          file_row <- uncached_files[i, ]
-          parse_single_mic_file(file_row, settings)
-        }
+        seq_len(n_uncached),
+        function(i) parse_single_mic_file(uncached_files[i, ], settings)
       )
     }
   }
@@ -1300,6 +1366,10 @@ parse_mic_directory <- function(path, settings, cache_state) {
         RunDate = as.Date(RunDateTime)
       )
   }
+
+  # Persist the updated raw cache as a consolidated snapshot so future startups
+  # only need to read this one file instead of N per-file RDS files.
+  save_mic_snapshot(new_cache, files, get_mic_cache_dir())
 
   list(
     runs = runs_df,

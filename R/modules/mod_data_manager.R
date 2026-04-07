@@ -11,32 +11,7 @@ mod_data_manager_ui <- function(id) {
   bslib::sidebar(
     width = 280,
 
-    # Biobank Selection Section
-    h5(icon("hospital"), " Select Biobank"),
-    tags$p(
-      class = "text-muted small",
-      "Select a biobank to load all data automatically"
-    ),
-
-    # Biobank buttons
-    if (!is.null(config$sites)) {
-      tagList(
-        lapply(names(config$sites), function(site_id) {
-          site_info <- config$sites[[site_id]]
-          actionButton(
-            ns(paste0("load_site_", site_id)),
-            site_info$short_name,
-            icon = icon("database"),
-            class = "btn-primary w-100 mb-2",
-            style = "text-align: left;"
-          )
-        })
-      )
-    },
-
-    hr(),
-
-    # Current Site Information
+    # Active site indicator (replaces the old biobank selection buttons)
     uiOutput(ns("current_site_info")),
 
     hr(),
@@ -110,7 +85,7 @@ mod_data_manager_ui <- function(id) {
 #' Data Manager Server
 #' @param id Module namespace ID
 #' @export
-mod_data_manager_server <- function(id) {
+mod_data_manager_server <- function(id, trigger_site = NULL) {
   moduleServer(id, function(input, output, session) {
     
     # ========================================================================
@@ -174,8 +149,12 @@ mod_data_manager_server <- function(id) {
         # Update current site
         rv$current_site <- site_id
 
-        # Get site-specific paths
+        # Get site-specific paths and update the global config so that all
+        # utility functions (get_mic_cache_dir, get_elisa_cache_dir, etc.)
+        # read from the correct site's cache directory.
         site_paths <- get_site_paths(site_id)
+        config$site_paths  <<- site_paths
+        config$current_site <<- site_id
 
         incProgress(0.05, detail = "Finding biobank file...")
 
@@ -378,13 +357,23 @@ mod_data_manager_server <- function(id) {
       }) # End withProgress
     }
 
-    # Create observers for each biobank button
+    # Create observers for each biobank button (sidebar)
     if (!is.null(config$sites)) {
       lapply(names(config$sites), function(site_id) {
         observeEvent(input[[paste0("load_site_", site_id)]], {
           load_site_data(site_id)
         })
       })
+    }
+
+    # External trigger — from startup screen card clicks
+    if (!is.null(trigger_site) && is.reactive(trigger_site)) {
+      observeEvent(trigger_site(), {
+        site_id <- trigger_site()
+        if (!is.null(site_id) && nzchar(site_id)) {
+          load_site_data(site_id)
+        }
+      }, ignoreNULL = TRUE)
     }
 
     # ========================================================================
@@ -1103,22 +1092,7 @@ mod_data_manager_server <- function(id) {
     # AUTO-LOAD DEFAULT SITE ON STARTUP
     # ========================================================================
 
-    # Automatically load the default site when the app starts
-    observe({
-      # Only run once when the session starts
-      isolate({
-        if (is.null(rv$clean_data) && !is.null(config$app$default_site)) {
-          default_site <- config$app$default_site
-          message("Auto-loading default site: ", default_site)
-
-          # Use a small delay to ensure UI is ready
-          shiny::invalidateLater(100)
-
-          # Trigger the load for the default site
-          load_site_data(default_site)
-        }
-      })
-    })
+    # Auto-load disabled — user selects a biobank from the startup screen.
 
     # ========================================================================
     # RETURN VALUES
@@ -1132,6 +1106,7 @@ mod_data_manager_server <- function(id) {
       filtered_extractions = filtered_extractions,
       quality_report = reactive(rv$quality_report),
       filters = filters,
+      current_site = reactive(rv$current_site),
       ielisa_data = reactive(rv$ielisa_data),
       elisa_data = reactive(rv$elisa_data),
       mic_data = reactive(rv$mic_data)

@@ -81,6 +81,9 @@ gather_sample_journey <- function(sample_id, biobank_df = NULL, extraction_df = 
 
   # Search extraction/QC data
   if (!is.null(extraction_df) && nrow(extraction_df) > 0) {
+    numero_candidates <- c("numero", "numero_labo", "lab_id")
+    numero_candidates <- numero_candidates[numero_candidates %in% names(extraction_df)]
+
     results$extraction_data <- extraction_df %>%
       mutate(
         sample_norm = normalize_barcode(as.character(sample_id)),
@@ -89,11 +92,9 @@ gather_sample_journey <- function(sample_id, biobank_df = NULL, extraction_df = 
             if ("barcode" %in% names(.)) .data$barcode else NA_character_
           )
         ),
-        numero_norm = normalize_barcode(
-          as.character(
-            if ("numero" %in% names(.)) .data$numero else NA_character_
-          )
-        )
+        numero_norm = normalize_barcode(as.character(
+          if (length(numero_candidates)) coalesce(!!!syms(numero_candidates)) else NA_character_
+        ))
       ) %>%
       filter(sample_norm == search_id | barcode_norm == search_id | numero_norm == search_id)
     if (nrow(results$extraction_data) > 0) results$found <- TRUE
@@ -101,6 +102,9 @@ gather_sample_journey <- function(sample_id, biobank_df = NULL, extraction_df = 
 
   # Search MIC/qPCR data
   if (!is.null(mic_df) && nrow(mic_df) > 0) {
+    numero_candidates <- c("LinkedNumero", "numero_labo", "lab_id")
+    numero_candidates <- numero_candidates[numero_candidates %in% names(mic_df)]
+
     results$mic_data <- mic_df %>%
       mutate(
         sample_norm = normalize_barcode(
@@ -111,11 +115,9 @@ gather_sample_journey <- function(sample_id, biobank_df = NULL, extraction_df = 
             if ("Barcode" %in% names(.)) .data$Barcode else NA_character_
           ))
         ),
-        numero_norm = normalize_barcode(
-          as.character(
-            if ("LinkedNumero" %in% names(.)) .data$LinkedNumero else NA_character_
-          )
-        )
+        numero_norm = normalize_barcode(as.character(
+          if (length(numero_candidates)) coalesce(!!!syms(numero_candidates)) else NA_character_
+        ))
       ) %>%
       filter(sample_norm == search_id | numero_norm == search_id)
     if (nrow(results$mic_data) > 0) results$found <- TRUE

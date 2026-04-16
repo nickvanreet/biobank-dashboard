@@ -183,9 +183,7 @@ mod_results_export_server <- function(id,
           "no trypanosome DNA or RNA detected; RNA control failed",
         result == "N" ~
           "no trypanosome DNA or RNA detected",
-        # Positive — but latest retest may be negative (discordant)
-        result == "P" & is.na(cq_177T) & is.na(cq_18S2) ~
-          "positive in earlier run; latest retest negative",
+        # Positive
         result == "P" & tryp_rna == "High" ~
           "trypanosome DNA and RNA detected",
         result == "P" & tryp_rna == "DNA only" ~
@@ -325,20 +323,20 @@ mod_results_export_server <- function(id,
 
           } else {
             # ---- CONSOLIDATED MODE: one row per sample (latest run) ----------
-            # Always show Cq values from the LATEST run — if a sample was
-            # retested it is because there was doubt about the earlier run.
-            # The consolidated result (mic_status_final) still uses the
-            # "any positive = positive" rule from the MIC pipeline.
+            # Always use the LATEST run — if a sample was retested it is
+            # because there was doubt about the earlier run, so the latest
+            # result is the most reliable. Both the result code and the Cq
+            # values come from the latest run.
             mic_summary <- mic_prep %>%
               dplyr::arrange(SampleID, dplyr::desc(.mic_date_parsed)) %>%
               dplyr::group_by(SampleID) %>%
               dplyr::summarise(
-                # Latest run date
+                # Latest run
                 mic_run_date    = dplyr::first(.mic_date_parsed),
                 mic_barcode     = dplyr::first(.mic_barcode),
                 mic_numero      = dplyr::first(.mic_numero),
-                # Consolidated status (handles retests: any positive = positive)
-                mic_result      = mic_result_code(dplyr::first(.status_consolidated)),
+                # Result from latest run (not the pipeline's "any positive" rule)
+                mic_result      = mic_result_code(dplyr::first(.status_per_run)),
                 # Cq values from latest run
                 mic_177T        = fmt_cq(dplyr::first(.cq_mean_177T),
                                          dplyr::first(.cq_sd_177T), use_mean_sd),

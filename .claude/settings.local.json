@@ -14,7 +14,18 @@
       "Bash(RSCRIPT=\"/c/Program Files/R/R-4.5.1/bin/Rscript.exe\" \"$RSCRIPT\" -e \"suppressMessages\\({library\\(tidyverse\\); source\\(''''R/modules/mod_05_mic_qpcr.R'''', local=TRUE\\)}\\); cat\\(''''OK\\\\n''''\\)\")",
       "Bash(python3 -c \":*)",
       "Bash(Rscript -e \":*)",
-      "Bash(powershell -Command \":*)"
+      "Bash(powershell -Command \":*)",
+      "Bash(gh pr create --title 'Make Ag0 high CV a warning only, not a QC failure' --base main --body ':*)",
+      "Bash(cmd.exe /c \"where gh\")",
+      "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI:/c/Users/nvanreet/AppData/Local/GitHub CLI:/c/Users/nvanreet/scoop/shims:/c/ProgramData/chocolatey/bin\")",
+      "Bash(gh --version)",
+      "Bash(powershell.exe -Command \"Get-Command gh -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source\")",
+      "Bash(powershell.exe -Command \"winget install --id GitHub.cli --accept-source-agreements --accept-package-agreements\")",
+      "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" --version)",
+      "Bash(powershell.exe -Command \"\\(Get-Command gh\\).Source\")",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" auth status)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" auth login --hostname github.com --git-protocol https --web)"
     ]
   }
 }

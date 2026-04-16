@@ -183,7 +183,9 @@ mod_results_export_server <- function(id,
           "no trypanosome DNA or RNA detected; RNA control failed",
         result == "N" ~
           "no trypanosome DNA or RNA detected",
-        # Positive
+        # Positive — but latest retest may be negative (discordant)
+        result == "P" & is.na(cq_177T) & is.na(cq_18S2) ~
+          "positive in earlier run; latest retest negative",
         result == "P" & tryp_rna == "High" ~
           "trypanosome DNA and RNA detected",
         result == "P" & tryp_rna == "DNA only" ~
@@ -322,32 +324,22 @@ mod_results_export_server <- function(id,
                                relationship = "many-to-many")
 
           } else {
-            # ---- CONSOLIDATED MODE: one row per sample -----------------------
-            # Sort: positive runs first, then latest date. This ensures that
-            # when the consolidated result is Positive (any positive = positive),
-            # we show the Cq values from the actual positive run, not the latest
-            # (potentially negative) retest run.
-            call_priority <- function(call) {
-              dplyr::case_when(
-                grepl("Positive|Detected|Trypanozoon", call, TRUE) ~ 1L,
-                grepl("Suspect|Borderline|Indeterminate", call, TRUE) ~ 2L,
-                grepl("Negative", call, TRUE) ~ 3L,
-                TRUE ~ 4L
-              )
-            }
-
+            # ---- CONSOLIDATED MODE: one row per sample (latest run) ----------
+            # Always show Cq values from the LATEST run — if a sample was
+            # retested it is because there was doubt about the earlier run.
+            # The consolidated result (mic_status_final) still uses the
+            # "any positive = positive" rule from the MIC pipeline.
             mic_summary <- mic_prep %>%
-              dplyr::mutate(.call_rank = call_priority(.status_per_run)) %>%
-              dplyr::arrange(SampleID, .call_rank, dplyr::desc(.mic_date_parsed)) %>%
+              dplyr::arrange(SampleID, dplyr::desc(.mic_date_parsed)) %>%
               dplyr::group_by(SampleID) %>%
               dplyr::summarise(
-                # First = most informative run (positive > suspect > negative)
+                # Latest run date
                 mic_run_date    = dplyr::first(.mic_date_parsed),
                 mic_barcode     = dplyr::first(.mic_barcode),
                 mic_numero      = dplyr::first(.mic_numero),
                 # Consolidated status (handles retests: any positive = positive)
                 mic_result      = mic_result_code(dplyr::first(.status_consolidated)),
-                # Cq values from the most informative run
+                # Cq values from latest run
                 mic_177T        = fmt_cq(dplyr::first(.cq_mean_177T),
                                          dplyr::first(.cq_sd_177T), use_mean_sd),
                 mic_18S2        = fmt_cq(dplyr::first(.cq_mean_18S2),

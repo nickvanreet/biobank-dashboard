@@ -10,6 +10,8 @@ required_packages <- c(
   "shiny", "bslib", "tidyverse", "readxl", "writexl", "janitor",
   "DT", "plotly", "lubridate", "scales", "stringr", "stringi",
   "purrr", "dplyr", "tidyr", "ggplot2", "jsonlite", "digest", "glue",
+  # Parallel file loading (works on Windows + Unix)
+  "future", "future.apply",
   # New packages for Sample Journey and Concordance modules
   "irr", "pROC", "randomForest", "xgboost", "rmarkdown", "openxlsx", "officer",
   # Packages for PDF export functionality
@@ -25,6 +27,21 @@ for (pkg in required_packages) {
     install.packages(pkg, quietly = TRUE)
     require(pkg, quietly = TRUE, character.only = TRUE)
   }
+}
+
+# ============================================================================
+# PARALLEL PROCESSING SETUP
+# ============================================================================
+# Use multisession plan so file parsing runs in parallel worker processes.
+# Works on Windows AND Unix (unlike mclapply which is Unix-only).
+# Workers = half the available cores, capped at 4 to avoid memory pressure.
+if (requireNamespace("future", quietly = TRUE) &&
+    requireNamespace("future.apply", quietly = TRUE)) {
+  n_workers <- min(4L, max(1L, parallel::detectCores(logical = FALSE) %/% 2L))
+  future::plan(future::multisession, workers = n_workers)
+  message(sprintf("[parallel] Using %d worker(s) for file loading", n_workers))
+} else {
+  message("[parallel] future/future.apply not available — sequential loading")
 }
 
 # Check for TinyTeX (required for PDF export)
@@ -170,6 +187,7 @@ cat("✓ Consolidation utilities loaded\n")
 # LOAD ALL MODULES
 # ============================================================================
 
+source("R/modules/mod_startup.R")
 source("R/modules/mod_data_manager.R")
 source("R/modules/mod_01_data_quality.R")
 source("R/modules/mod_02_overview_demographics.R")

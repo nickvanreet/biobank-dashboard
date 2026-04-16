@@ -240,7 +240,7 @@ create_qc_flags <- function(qc_ag_plus, qc_ag0) {
     }
 
     if (!is.na(zero) && !zero) {
-      flags <- c(flags, "High CV Ag0")
+      flags <- c(flags, "High CV Ag0 (warning)")
     }
 
     if (length(flags) == 0) {

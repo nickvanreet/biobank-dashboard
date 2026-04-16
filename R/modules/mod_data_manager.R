@@ -11,32 +11,7 @@ mod_data_manager_ui <- function(id) {
   bslib::sidebar(
     width = 280,
 
-    # Biobank Selection Section
-    h5(icon("hospital"), " Select Biobank"),
-    tags$p(
-      class = "text-muted small",
-      "Select a biobank to load all data automatically"
-    ),
-
-    # Biobank buttons
-    if (!is.null(config$sites)) {
-      tagList(
-        lapply(names(config$sites), function(site_id) {
-          site_info <- config$sites[[site_id]]
-          actionButton(
-            ns(paste0("load_site_", site_id)),
-            site_info$short_name,
-            icon = icon("database"),
-            class = "btn-primary w-100 mb-2",
-            style = "text-align: left;"
-          )
-        })
-      )
-    },
-
-    hr(),
-
-    # Current Site Information
+    # Active site indicator (replaces the old biobank selection buttons)
     uiOutput(ns("current_site_info")),
 
     hr(),
@@ -110,7 +85,7 @@ mod_data_manager_ui <- function(id) {
 #' Data Manager Server
 #' @param id Module namespace ID
 #' @export
-mod_data_manager_server <- function(id) {
+mod_data_manager_server <- function(id, trigger_site = NULL) {
   moduleServer(id, function(input, output, session) {
     
     # ========================================================================
@@ -174,8 +149,12 @@ mod_data_manager_server <- function(id) {
         # Update current site
         rv$current_site <- site_id
 
-        # Get site-specific paths
+        # Get site-specific paths and update the global config so that all
+        # utility functions (get_mic_cache_dir, get_elisa_cache_dir, etc.)
+        # read from the correct site's cache directory.
         site_paths <- get_site_paths(site_id)
+        config$site_paths  <<- site_paths
+        config$current_site <<- site_id
 
         incProgress(0.05, detail = "Finding biobank file...")
 
@@ -339,96 +318,30 @@ mod_data_manager_server <- function(id) {
         # Update filter choices
         update_filter_choices(session, df_clean)
 
-        incProgress(0.1, detail = "Loading iELISA data...")
+        # iELISA, ELISA, and MIC are loaded lazily by their coordinator modules
+        # (mod_ielisa_coordinator, mod_elisa_pe, mod_elisa_vsg, mod_mic_qpcr_coordinator).
+        # Loading them here as well caused a costly double-load on startup.
+        rv$ielisa_data <- NULL
+        rv$elisa_data  <- NULL
+        rv$mic_data    <- NULL
 
-        # Load iELISA data
-        tryCatch({
-          ielisa_data <- load_ielisa_data(
-            ielisa_dir = site_paths$ielisa_dir,
-            cache_dir = site_paths$cache_dir
-          )
-          rv$ielisa_data <- ielisa_data
-        }, error = function(e) {
-          message("Failed to load iELISA data: ", e$message)
-          rv$ielisa_data <- NULL
-        })
-
-        incProgress(0.15, detail = "Loading ELISA PE/VSG data...")
-
-        # Load ELISA PE/VSG data
-        tryCatch({
-          elisa_data <- load_elisa_data(
-            dirs = c(site_paths$elisa_pe_dir, site_paths$elisa_vsg_dir),
-            biobank_df = df_clean
-          )
-          rv$elisa_data <- elisa_data
-        }, error = function(e) {
-          message("Failed to load ELISA PE/VSG data: ", e$message)
-          rv$elisa_data <- NULL
-        })
-
-        incProgress(0.15, detail = "Loading MIC qPCR data...")
-
-        # Load MIC qPCR data
-        tryCatch({
-          if (dir.exists(site_paths$mic_dir)) {
-            # Use default settings
-            mic_settings <- list(
-              thresholds = list(
-                `177T` = list(positive = 35, negative = 40),
-                `18S2` = list(positive = 35, negative = 40),
-                RNAseP_DNA = list(positive = 32, negative = 45),
-                RNAseP_RNA = list(positive = 30, negative = 45)
-              ),
-              late_window = c(38, 40),
-              delta_rp_limit = 8,
-              allow_review_controls = FALSE,
-              min_positive_reps = 2
-            )
-
-            # Initialize cache state if not exists
-            if (is.null(rv$mic_cache_state)) {
-              rv$mic_cache_state <- list()
-            }
-
-            mic_data <- parse_mic_directory(
-              site_paths$mic_dir,
-              mic_settings,
-              rv$mic_cache_state
-            )
-            rv$mic_data <- mic_data
-            rv$mic_cache_state <- mic_data$cache
-          } else {
-            rv$mic_data <- NULL
-          }
-        }, error = function(e) {
-          message("Failed to load MIC qPCR data: ", e$message)
-          rv$mic_data <- NULL
-        })
-
-        incProgress(0.1, detail = "Finalizing...")
+        incProgress(0.4, detail = "Finalizing...")
 
         # Calculate loading time
         elapsed_time <- round(difftime(Sys.time(), start_time, units = "secs"), 1)
 
-        # Calculate counts for all data types
         n_extractions <- if (!is.null(rv$extraction_data)) nrow(rv$extraction_data) else 0
-        n_ielisa <- if (!is.null(rv$ielisa_data)) nrow(rv$ielisa_data) else 0
-        n_elisa <- if (!is.null(rv$elisa_data)) nrow(rv$elisa_data) else 0
-        n_mic <- if (!is.null(rv$mic_data) && !is.null(rv$mic_data$samples)) nrow(rv$mic_data$samples) else 0
 
         showNotification(
           HTML(sprintf(
             "<strong>Loaded %s data in %.1fs:</strong><br/>
             • Biobank: %d rows (cleaned to %d)<br/>
             • Extractions: %d samples<br/>
-            • iELISA: %d samples<br/>
-            • ELISA PE/VSG: %d samples<br/>
-            • MIC qPCR: %d samples",
+            <em class='text-muted'>Assay data loads when you open the MIC / ELISA / iELISA tabs.</em>",
             config$sites[[site_id]]$short_name,
             elapsed_time,
             nrow(df_raw), nrow(df_clean),
-            n_extractions, n_ielisa, n_elisa, n_mic
+            n_extractions
           )),
           type = "message",
           duration = 7
@@ -444,13 +357,23 @@ mod_data_manager_server <- function(id) {
       }) # End withProgress
     }
 
-    # Create observers for each biobank button
+    # Create observers for each biobank button (sidebar)
     if (!is.null(config$sites)) {
       lapply(names(config$sites), function(site_id) {
         observeEvent(input[[paste0("load_site_", site_id)]], {
           load_site_data(site_id)
         })
       })
+    }
+
+    # External trigger — from startup screen card clicks
+    if (!is.null(trigger_site) && is.reactive(trigger_site)) {
+      observeEvent(trigger_site(), {
+        site_id <- trigger_site()
+        if (!is.null(site_id) && nzchar(site_id)) {
+          load_site_data(site_id)
+        }
+      }, ignoreNULL = TRUE)
     }
 
     # ========================================================================
@@ -1169,22 +1092,7 @@ mod_data_manager_server <- function(id) {
     # AUTO-LOAD DEFAULT SITE ON STARTUP
     # ========================================================================
 
-    # Automatically load the default site when the app starts
-    observe({
-      # Only run once when the session starts
-      isolate({
-        if (is.null(rv$clean_data) && !is.null(config$app$default_site)) {
-          default_site <- config$app$default_site
-          message("Auto-loading default site: ", default_site)
-
-          # Use a small delay to ensure UI is ready
-          shiny::invalidateLater(100)
-
-          # Trigger the load for the default site
-          load_site_data(default_site)
-        }
-      })
-    })
+    # Auto-load disabled — user selects a biobank from the startup screen.
 
     # ========================================================================
     # RETURN VALUES
@@ -1198,6 +1106,7 @@ mod_data_manager_server <- function(id) {
       filtered_extractions = filtered_extractions,
       quality_report = reactive(rv$quality_report),
       filters = filters,
+      current_site = reactive(rv$current_site),
       ielisa_data = reactive(rv$ielisa_data),
       elisa_data = reactive(rv$elisa_data),
       mic_data = reactive(rv$mic_data)

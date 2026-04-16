@@ -40,7 +40,8 @@ summarize_od_replicates <- function(wells_long, qc_settings) {
 
     qc_Ag_plus <- if(is.na(cv_Ag_plus)) NA else cv_Ag_plus <= qc_settings$cv_max_ag_plus
     qc_Ag0 <- if(is.na(cv_Ag0)) NA else cv_Ag0 <= qc_settings$cv_max_ag0
-    qc_overall <- if(is.na(qc_Ag_plus) || is.na(qc_Ag0)) NA else (qc_Ag_plus & qc_Ag0)
+    # QC overall only based on Ag+ (Ag0 CV is warning only)
+    qc_overall <- qc_Ag_plus
 
     tibble(
       Ag_plus_1 = Ag_plus_1,

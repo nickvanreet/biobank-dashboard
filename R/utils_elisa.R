@@ -391,6 +391,71 @@ get_elisa_cache_dir <- function() {
   cache_dir
 }
 
+# =============================================================================
+# ELISA CONSOLIDATED SNAPSHOT CACHE
+# =============================================================================
+# Same incremental snapshot approach as MIC: one file read on startup,
+# rebuild only when new Excel files are detected.
+# =============================================================================
+
+.elisa_snapshot_version <- 1L
+
+load_elisa_snapshot <- function(file_list, cache_dir) {
+  snapshot_path <- file.path(cache_dir, "elisa_snapshot.rds")
+  snapshot <- if (file.exists(snapshot_path)) {
+    tryCatch(readRDS(snapshot_path), error = function(e) NULL)
+  } else NULL
+
+  # Build per-file hashes based on path + mtime
+  info <- file.info(file_list)
+  file_hashes <- setNames(
+    mapply(function(p, m) digest::digest(paste(p, m)), file_list, info$mtime),
+    file_list
+  )
+
+  # If snapshot exists and is the right version, find unchanged files
+  reused_data <- list()
+  if (!is.null(snapshot) &&
+      identical(snapshot$version, .elisa_snapshot_version) &&
+      is.list(snapshot$parsed_files) &&
+      is.data.frame(snapshot$manifest)) {
+
+    snap_hashes <- setNames(snapshot$manifest$file_hash, snapshot$manifest$file_path)
+
+    for (fp in file_list) {
+      h <- file_hashes[[fp]]
+      if (!is.null(snap_hashes[[fp]]) && identical(snap_hashes[[fp]], h)) {
+        reused_data[[fp]] <- snapshot$parsed_files[[fp]]
+      }
+    }
+    n_reused <- sum(sapply(reused_data, Negate(is.null)))
+    message(sprintf("[ELISA snapshot] Reusing %d / %d files from snapshot",
+                    n_reused, length(file_list)))
+  }
+
+  list(reused = reused_data, file_hashes = file_hashes)
+}
+
+save_elisa_snapshot <- function(parsed_files, file_list, file_hashes, cache_dir) {
+  snapshot_path <- file.path(cache_dir, "elisa_snapshot.rds")
+  info <- file.info(file_list)
+  snapshot <- list(
+    version = .elisa_snapshot_version,
+    manifest = tibble(
+      file_path  = file_list,
+      file_hash  = unname(file_hashes[file_list]),
+      mtime      = info$mtime
+    ),
+    parsed_files = parsed_files,
+    saved_at = Sys.time()
+  )
+  tryCatch(
+    saveRDS(snapshot, snapshot_path),
+    error = function(e) message("[ELISA snapshot] Could not save: ", e$message)
+  )
+  invisible(NULL)
+}
+
 #' Get cache path for an ELISA file
 #' @param elisa_file Path to ELISA file
 #' @return Path to RDS cache file
@@ -428,39 +493,17 @@ elisa_cache_is_fresh <- function(elisa_file, cache_path) {
 .elisa_cache_version <- "v14_status_raw_fix"
 
 #' Ensure ELISA modular pipeline is loaded
+#' Sources the modular parser script if the function isn't in memory yet.
+#' Cache invalidation is handled per-file via embedded parser_version fields —
+#' no bulk deletion is ever performed here.
 ensure_elisa_parser <- function() {
   modular_path <- file.path("R", "modules", "elisa_shared", "process_elisa_modular.R")
-
   if (!file.exists(modular_path)) {
     stop("ELISA modular processing script not found: ", modular_path)
   }
-
-  parser_digest <- digest(file = modular_path)
-  cached_digest <- .elisa_cache_env$parser_digest
-
-  # Always (re)load when the function is missing or when the modular pipeline changed
-  if (!exists("process_elisa_file_modular", mode = "function") ||
-      is.null(cached_digest) || !identical(cached_digest, parser_digest)) {
+  if (!exists("process_elisa_file_modular", mode = "function")) {
     source(modular_path, local = .GlobalEnv)
-    .elisa_cache_env$parser_digest <- parser_digest
-
-    # Invalidate RDS caches when parser changes
-    message("✓ Modular pipeline changed, clearing RDS caches...")
-    cache_dir <- get_elisa_cache_dir()
-    if (dir.exists(cache_dir)) {
-      cache_files <- list.files(cache_dir, pattern = "\\.rds$", full.names = TRUE)
-      if (length(cache_files) > 0) {
-        file.remove(cache_files)
-        message("  Removed ", length(cache_files), " RDS cache file(s)")
-      }
-    }
-
-    # Also invalidate session cache
-    .elisa_cache_env$data <- NULL
-    .elisa_cache_env$hash <- NULL
-    .elisa_cache_env$version <- NULL
-
-    message("✓ Loaded ELISA modular pipeline from ", modular_path, " (digest: ", parser_digest, ")")
+    message("✓ ELISA modular pipeline loaded")
   }
 }
 
@@ -472,24 +515,24 @@ ensure_elisa_parser <- function() {
 parse_single_elisa_file <- function(file_path, cv_max_ag_plus = 20, cv_max_ag0 = 20) {
   cache_path <- get_elisa_cache_path(file_path)
 
-  # Try loading from cache if fresh
+  # Try loading from cache if fresh.
+  # The cache carries a parser_version field; if it doesn't match the current
+  # version this single file is silently re-parsed and the cache overwritten.
+  # No bulk deletion is ever needed.
   if (elisa_cache_is_fresh(file_path, cache_path)) {
-    cached <- tryCatch(
-      {
-        data <- readRDS(cache_path)
-        # Validate cached data structure
-        if (is.data.frame(data) && nrow(data) > 0) {
-          return(data)
-        }
-        NULL
-      },
-      error = function(e) {
-        warning("Failed to read cache for ", basename(file_path), ": ", e$message)
-        NULL
-      }
-    )
+    cached <- tryCatch(readRDS(cache_path), error = function(e) NULL)
     if (!is.null(cached)) {
-      return(cached)
+      # Handle both old format (plain data frame) and new format (list with $data + $parser_version)
+      if (is.data.frame(cached) && nrow(cached) > 0) {
+        # Old format — no version → treat as stale, re-parse once to upgrade
+        cached <- NULL
+      } else if (is.list(cached) &&
+                 identical(cached$parser_version, .elisa_cache_version) &&
+                 is.data.frame(cached$data) && nrow(cached$data) > 0) {
+        return(cached$data)
+      } else {
+        cached <- NULL  # stale version or corrupt
+      }
     }
   }
 
@@ -512,12 +555,10 @@ parse_single_elisa_file <- function(file_path, cv_max_ag_plus = 20, cv_max_ag0 =
       # Convert to legacy format for backward compatibility
       parsed <- convert_to_legacy_format(modular_output)
 
-      # Save to cache
+      # Save to cache — wrap in a list that carries the parser version
       tryCatch(
-        saveRDS(parsed, cache_path),
-        error = function(e) {
-          warning("Failed to save cache for ", basename(file_path), ": ", e$message)
-        }
+        saveRDS(list(data = parsed, parser_version = .elisa_cache_version), cache_path),
+        error = function(e) warning("Failed to save cache for ", basename(file_path), ": ", e$message)
       )
 
       parsed
@@ -572,79 +613,74 @@ load_elisa_data <- function(
     file_list <- file_list[!grepl(exclude_pattern, basename(file_list))]
   }
 
-  # Calculate hash for cache (include version to invalidate on structure changes)
-  file_info <- tibble(
-    path = file_list,
-    mtime = suppressWarnings(file.info(file_list)$mtime)
-  )
+  # Build a session-level key so in-memory cache is still invalidated if biobank changes
+  session_hash <- digest(list(.elisa_cache_version, sort(file_list)))
 
-  hash_val <- digest(list(.elisa_cache_version, file_info$path, file_info$mtime, cv_max_ag_plus, cv_max_ag0, recursive, exclude_pattern))
-
-  # Check cache
+  # 1. Check in-memory session cache (fastest — avoids all disk I/O)
   cached <- .elisa_cache_env$data
-  cached_hash <- .elisa_cache_env$hash
-  cached_version <- .elisa_cache_env$version
-
-  # Invalidate cache if version changed or hash doesn't match
-  cache_valid <- !is.null(cached) && !is.null(cached_hash) && identical(cached_hash, hash_val) &&
-                 !is.null(cached_version) && identical(cached_version, .elisa_cache_version)
-
-  if (cache_valid) {
-    message("✓ Using cached ELISA data (", nrow(cached$data), " rows)")
-    message("DEBUG: Cache version: ", cached_version)
-    message("DEBUG: Unique elisa_type values in cache: ", paste(unique(cached$data$elisa_type), collapse = ", "))
-
-    # Re-link to biobank in case biobank_df changed
-    if (!is.null(biobank_df)) {
-      cached$data <- link_elisa_to_biobank(cached$data, biobank_df)
-    }
-    return(ensure_elisa_columns(cached$data))
-  } else {
-    if (!is.null(cached_version)) {
-      message("DEBUG: Cache invalidated. Old version: ", cached_version, ", New version: ", .elisa_cache_version)
-    } else {
-      message("DEBUG: No cache found, will parse fresh data")
-    }
+  if (!is.null(cached) &&
+      identical(.elisa_cache_env$hash, session_hash) &&
+      identical(.elisa_cache_env$version, .elisa_cache_version)) {
+    message("✓ ELISA in-memory cache hit (", nrow(cached$data), " rows)")
+    result <- cached$data
+    if (!is.null(biobank_df)) result <- link_elisa_to_biobank(result, biobank_df)
+    return(ensure_elisa_columns(result))
   }
 
-  # Parse ELISA files (using per-file RDS caching)
+  # 2. Incremental snapshot cache — only parse new/changed files
+  elisa_cache_dir <- get_elisa_cache_dir()
+  snap <- load_elisa_snapshot(file_list, elisa_cache_dir)
+
+  # Parse ELISA files — reuse snapshot for unchanged files, only parse new ones
+  empty_elisa <- tibble(
+    plate_id = character(), plate_num = integer(),
+    plate_date = as.Date(character()), elisa_type = character(),
+    sample_type = character(), sample = character(),
+    sample_code = character(), numero_labo = character(),
+    code_barres_kps = character()
+  )
+
   if (!length(file_list)) {
     message("No ELISA files found in specified directories")
-    parsed <- tibble(
-      plate_id = character(),
-      plate_num = integer(),
-      plate_date = as.Date(character()),
-      elisa_type = character(),
-      sample_type = character(),
-      sample = character(),
-      sample_code = character(),
-      numero_labo = character(),
-      code_barres_kps = character()
-    )
+    parsed <- empty_elisa
   } else {
-    message("Loading ", length(file_list), " ELISA file(s) (using RDS cache where available)...")
+    # Determine which files need (re-)parsing
+    files_to_parse <- file_list[!file_list %in% names(snap$reused)]
+    n_reused       <- length(snap$reused)
+    n_new          <- length(files_to_parse)
 
-    # Parse each file individually with caching
-    parsed_list <- lapply(file_list, function(f) {
-      parse_single_elisa_file(f, cv_max_ag_plus = cv_max_ag_plus, cv_max_ag0 = cv_max_ag0)
-    })
+    message(sprintf("[ELISA] %d file(s) reused from snapshot, %d to parse",
+                    n_reused, n_new))
 
-    # Combine all non-NULL results
-    parsed_list <- Filter(Negate(is.null), parsed_list)
+    # Parse only new/changed files in parallel where possible
+    newly_parsed <- list()
+    if (n_new > 0) {
+      use_parallel <- n_new >= 4 &&
+        requireNamespace("future.apply", quietly = TRUE) &&
+        !inherits(future::plan(), "sequential")
 
+      if (use_parallel) {
+        cv_plus <- cv_max_ag_plus; cv_zero <- cv_max_ag0
+        newly_parsed <- future.apply::future_lapply(files_to_parse, function(f)
+          parse_single_elisa_file(f, cv_max_ag_plus = cv_plus, cv_max_ag0 = cv_zero),
+          future.seed = TRUE)
+      } else {
+        newly_parsed <- lapply(files_to_parse, function(f)
+          parse_single_elisa_file(f, cv_max_ag_plus = cv_max_ag_plus, cv_max_ag0 = cv_max_ag0))
+      }
+      names(newly_parsed) <- files_to_parse
+    }
+
+    # Merge reused + newly parsed into a named list keyed by file path
+    all_parsed_files <- c(snap$reused, newly_parsed)
+    all_parsed_files <- Filter(Negate(is.null), all_parsed_files)
+
+    # Save updated snapshot (includes newly parsed data)
+    save_elisa_snapshot(all_parsed_files, file_list, snap$file_hashes, elisa_cache_dir)
+
+    parsed_list <- unname(all_parsed_files)
     if (length(parsed_list) == 0) {
-      message("No valid ELISA data parsed")
-      parsed <- tibble(
-        plate_id = character(),
-        plate_num = integer(),
-        plate_date = as.Date(character()),
-        elisa_type = character(),
-        sample_type = character(),
-        sample = character(),
-        sample_code = character(),
-        numero_labo = character(),
-        code_barres_kps = character()
-      )
+      parsed <- empty_elisa
     } else {
       parsed <- bind_rows(parsed_list)
       message("✓ Loaded ", nrow(parsed), " ELISA records from ", length(parsed_list), " file(s)")
@@ -716,9 +752,9 @@ load_elisa_data <- function(
   message("Calculating screening numbers...")
   parsed <- add_screening_numbers(parsed)
 
-  # Cache results with version
-  .elisa_cache_env$data <- list(data = parsed)
-  .elisa_cache_env$hash <- hash_val
+  # Update in-memory session cache (instant on subsequent calls this session)
+  .elisa_cache_env$data    <- list(data = parsed)
+  .elisa_cache_env$hash    <- session_hash
   .elisa_cache_env$version <- .elisa_cache_version
 
   parsed

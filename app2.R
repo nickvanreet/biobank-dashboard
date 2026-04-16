@@ -12,7 +12,8 @@ ui <- do.call(
   page_navbar,
   c(
     list(
-      title = config$app$title,
+      id    = "main_nav",
+      title = "Dashboard",
       theme = app_theme,
 
       # Sidebar with data loading and filters
@@ -21,23 +22,55 @@ ui <- do.call(
 
     # Navigation panels
     list(
-      mod_data_quality_ui("data_quality"),
-      #mod_overview_assays_ui("overview_assays"),
-      mod_overview_demographics_ui("overview_demographics"),
-      mod_geographic_ui("geographic"),
-      mod_transport_ui("transport"),
-      mod_drs_ui("drs"),
-      mod_mic_qpcr_coordinator_ui("mic"),
-      mod_ielisa_coordinator_ui("ielisa"),
-      mod_elisa_pe_ui("elisa_pe"),
-      mod_elisa_vsg_ui("elisa_vsg"),
-      mod_elisa_concordance_ui("concordance"),
-      # New comprehensive analysis modules
-      mod_sample_journey_ui("sample_journey"),
-      mod_sample_processing_ui("sample_processing"),
+      # ── Home (startup screen) ─────────────────────────────────────────────
+      mod_startup_ui("startup"),
+
+      # ── Standalones (always visible, high priority) ───────────────────────
       mod_overview_assays_ui("overview_assays"),
-      mod_study_comparison_ui("study_comparison"),  # Study Results Comparison (DA vs DP)
-      mod_predictive_analytics_ui("predictive_analytics")  # Predictive Analytics (renamed from Concordance)
+      mod_data_quality_ui("data_quality"),
+
+      # ── Molecular ─────────────────────────────────────────────────────────
+      nav_menu(
+        title = "Molecular",
+        icon  = icon("dna"),
+        mod_drs_ui("drs"),
+        mod_mic_qpcr_coordinator_ui("mic")
+      ),
+
+      # ── Serological ───────────────────────────────────────────────────────
+      nav_menu(
+        title = "Serological",
+        icon  = icon("droplet"),
+        mod_ielisa_coordinator_ui("ielisa"),
+        mod_elisa_pe_ui("elisa_pe"),
+        mod_elisa_vsg_ui("elisa_vsg"),
+        mod_elisa_concordance_ui("concordance")
+      ),
+
+      # ── Samples ───────────────────────────────────────────────────────────
+      nav_menu(
+        title = "Samples",
+        icon  = icon("vials"),
+        mod_sample_processing_ui("sample_processing"),
+        mod_sample_journey_ui("sample_journey")
+      ),
+
+      # ── Field ─────────────────────────────────────────────────────────────
+      nav_menu(
+        title = "Field",
+        icon  = icon("map"),
+        mod_geographic_ui("geographic"),
+        mod_transport_ui("transport"),
+        mod_overview_demographics_ui("overview_demographics")
+      ),
+
+      # ── Analysis ──────────────────────────────────────────────────────────
+      nav_menu(
+        title = "Analysis",
+        icon  = icon("chart-line"),
+        mod_study_comparison_ui("study_comparison"),
+        mod_predictive_analytics_ui("predictive_analytics")
+      )
     )
   )
 )
@@ -47,24 +80,29 @@ ui <- do.call(
 # ============================================================================
 server <- function(input, output, session) {
   
+  # ── Startup screen ────────────────────────────────────────────────────────
+  # Mediator so startup and data_manager don't need a circular reference.
+  site_to_load <- reactiveVal(NULL)
+
   # Core data management module - returns reactive data
-  data <- mod_data_manager_server("data_manager")
-  
+  data <- mod_data_manager_server("data_manager", trigger_site = site_to_load)
+
+  # Startup screen — shows site cards, returns selected site
+  startup_selection <- mod_startup_server("startup", current_site = data$current_site)
+
+  # When user clicks a card: relay to data_manager and jump to Sample Overview
+  observeEvent(startup_selection(), {
+    req(startup_selection())
+    site_to_load(startup_selection())
+    bslib::nav_select("main_nav", "Sample Overview", session = session)
+  }, ignoreNULL = TRUE, ignoreInit = TRUE)
+
   # Pass data to data quality module
   mod_data_quality_server(
     "data_quality",
     raw_data = data$raw_data,
     clean_data = data$clean_data,
     quality_report = data$quality_report
-  )
-
-  mod_overview_assays_server(
-    "overview_assays",
-    biobank_df = data$filtered_data,
-    elisa_df = data$elisa_data,
-    ielisa_df = data$ielisa_data,
-    mic_df = data$mic_data,
-    filters = data$filters
   )
 
   # Pass data to overview & demographics module
@@ -81,12 +119,20 @@ server <- function(input, output, session) {
     filters = data$filters                      # ← Filters from data manager (FIXED)
   )
 
+  # Safe wrapper: DRS loads immediately without blocking on MIC.
+  # MIC data is passed only when already available; NULL is handled gracefully inside mod_drs_server.
+  mic_for_drs <- reactive({
+    tryCatch({
+      s <- mic_data$qpcr_samples()
+      if (is.null(s) || !is.data.frame(s) || !nrow(s)) NULL else s
+    }, error = function(e) NULL)
+  })
+
   # Unified DRS module (extraction quality + RNAseP + QC warnings)
-  # Now initialized after MIC module so qPCR data is available
   mod_drs_server(
     "drs",
     extractions_df = data$filtered_extractions,
-    qpcr_data = mic_data$qpcr_samples,
+    qpcr_data = mic_for_drs,
     biobank_df = data$filtered_data,
     filters = data$filters
   )
@@ -156,6 +202,25 @@ server <- function(input, output, session) {
 
     dplyr::bind_rows(pe_data, vsg_data)
   })
+
+  # Overview assays module — placed here so all coordinator data sources are
+  # already defined (ielisa_data, elisa_pe_data, elisa_vsg_data, mic_data,
+  # combined_elisa_data).  mic_df is wrapped to match the list(samples=…) shape
+  # that prepare_assay_dashboard_data() expects.
+  mic_for_overview <- reactive({
+    s <- tryCatch(mic_data$qpcr_samples(), error = function(e) NULL)
+    if (is.null(s) || !is.data.frame(s) || !nrow(s)) return(NULL)
+    list(samples = s)
+  })
+
+  mod_overview_assays_server(
+    "overview_assays",
+    biobank_df = data$filtered_data,
+    elisa_df   = combined_elisa_data,
+    ielisa_df  = ielisa_data$samples,
+    mic_df     = mic_for_overview,
+    filters    = data$filters
+  )
 
   # Pass filtered data to transport module so visuals respect dashboard filters
   mod_transport_server(

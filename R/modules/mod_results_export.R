@@ -39,6 +39,14 @@ mod_results_export_ui <- function(id) {
           selected = "mean_sd"
         ),
         hr(),
+        checkboxInput(
+          ns("show_all_runs"),
+          "Show all runs (retested samples)",
+          value = FALSE
+        ),
+        tags$small(class = "text-muted d-block mb-2",
+                   "When checked: one row per run. When unchecked: consolidated (latest run)."),
+        hr(),
         h6("RNA interpretation thresholds"),
         numericInput(
           ns("tryp_rna_delta"),
@@ -86,6 +94,7 @@ mod_results_export_server <- function(id,
 
     # ========================================================================
     # HELPER: format Cq value as "mean +/- sd" with comma decimal (FR locale)
+    #         Returns "-" when target was not detected (NA) on a tested sample
     # ========================================================================
     fmt_cq <- function(mean_val, sd_val, use_mean_sd = TRUE) {
       if (is.na(mean_val)) return(NA_character_)
@@ -101,8 +110,14 @@ mod_results_export_server <- function(id,
       paste0(m, " +/- ", s)
     }
 
+    # Replace NA with "-" for Cq columns on tested samples
+    # (tested = has a result code; "-" = not detected; blank = not tested)
+    dash_na <- function(cq_str, has_result) {
+      dplyr::if_else(!is.na(has_result) & is.na(cq_str), "\u2013", cq_str)
+    }
+
     # ========================================================================
-    # MAP MIC FinalCall → short result code (P/S/R/N/T/F)
+    # MAP MIC FinalCall -> short result code (P/S/R/N/T/F)
     # ========================================================================
     mic_result_code <- function(call) {
       dplyr::case_when(
@@ -119,8 +134,6 @@ mod_results_export_server <- function(id,
     # RNA INTERPRETATION (from qPCR template Decision/Settings logic)
     # ========================================================================
 
-    # Trypanosome RNA content: compares 18S2 (RNA) vs 177T (DNA)
-    # Both must be detected; delta < threshold = High
     classify_tryp_rna <- function(cq_177T, cq_18S2, threshold) {
       dplyr::case_when(
         is.na(cq_177T) & is.na(cq_18S2) ~ NA_character_,
@@ -131,8 +144,6 @@ mod_results_export_server <- function(id,
       )
     }
 
-    # Human RNA quality: compares RNAseP-RNA vs RNAseP-DNA
-    # Small delta = well-preserved RNA
     classify_human_rna <- function(cq_rp_dna, cq_rp_rna, threshold) {
       dplyr::case_when(
         is.na(cq_rp_dna) & is.na(cq_rp_rna)  ~ NA_character_,
@@ -143,7 +154,6 @@ mod_results_export_server <- function(id,
       )
     }
 
-    # Auto-generate remark based on result + quality indicators
     mic_auto_remark <- function(result, tryp_rna, human_rna,
                                 cq_rp_dna, cq_rp_rna) {
       dplyr::case_when(
@@ -181,6 +191,7 @@ mod_results_export_server <- function(id,
 
       tryp_delta  <- input$tryp_rna_delta  %||% 5
       human_delta <- input$human_rna_delta %||% 8
+      all_runs    <- isTRUE(input$show_all_runs)
 
       # ----- Biobank base columns -------------------------------------------
       base <- bb %>%
@@ -216,7 +227,9 @@ mod_results_export_server <- function(id,
         if (!is.null(mic) && nrow(mic) > 0) {
           use_mean_sd <- identical(input$mic_cq_format, "mean_sd")
 
-          status_col <- if ("mic_status_final" %in% names(mic)) "mic_status_final" else "FinalCall"
+          # For consolidated view use mic_status_final; for all-runs use FinalCall
+          status_col_consolidated <- if ("mic_status_final" %in% names(mic)) "mic_status_final" else "FinalCall"
+          status_col_per_run <- "FinalCall"
           mic_nms <- names(mic)
 
           safe_col <- function(df, col, default = NA_character_) {
@@ -229,9 +242,10 @@ mod_results_export_server <- function(id,
                 if ("RunDate" %in% mic_nms) suppressWarnings(as.character(RunDate)) else NA_character_,
                 if ("RunDateTime" %in% mic_nms) suppressWarnings(as.character(RunDateTime)) else NA_character_
               ),
+              .mic_date_parsed = suppressWarnings(as.Date(.mic_date_raw)),
               .mic_barcode    = safe_col(mic, "LinkedBarcode"),
               .mic_numero     = safe_col(mic, "LinkedNumero"),
-              .mic_status     = .data[[status_col]],
+              .mic_run_id     = safe_col(mic, "RunID"),
               .cq_mean_177T   = safe_col(mic, "Cq_mean_177T", NA_real_),
               .cq_sd_177T     = safe_col(mic, "Cq_sd_177T", NA_real_),
               .cq_mean_18S2   = safe_col(mic, "Cq_mean_18S2", NA_real_),
@@ -239,42 +253,112 @@ mod_results_export_server <- function(id,
               .cq_mean_RP_DNA = safe_col(mic, "Cq_mean_RNAseP_DNA", NA_real_),
               .cq_sd_RP_DNA   = safe_col(mic, "Cq_sd_RNAseP_DNA", NA_real_),
               .cq_mean_RP_RNA = safe_col(mic, "Cq_mean_RNAseP_RNA", NA_real_),
-              .cq_sd_RP_RNA   = safe_col(mic, "Cq_sd_RNAseP_RNA", NA_real_)
+              .cq_sd_RP_RNA   = safe_col(mic, "Cq_sd_RNAseP_RNA", NA_real_),
+              # Consolidated status for one-row-per-sample mode
+              .status_consolidated = .data[[status_col_consolidated]],
+              # Per-run status for all-runs mode
+              .status_per_run      = .data[[status_col_per_run]],
+              # Retest info
+              .mic_n_tests = safe_col(mic, "mic_n_tests", NA_integer_),
+              .mic_is_discordant = safe_col(mic, "mic_is_discordant", NA)
             )
 
-          mic_summary <- mic_prep %>%
-            dplyr::group_by(SampleID) %>%
-            dplyr::summarise(
-              mic_run_date    = suppressWarnings(as.Date(dplyr::first(.mic_date_raw))),
-              mic_barcode     = dplyr::first(.mic_barcode),
-              mic_numero      = dplyr::first(.mic_numero),
-              mic_result      = mic_result_code(dplyr::first(.mic_status)),
-              mic_177T        = fmt_cq(dplyr::first(.cq_mean_177T),
-                                       dplyr::first(.cq_sd_177T), use_mean_sd),
-              mic_18S2        = fmt_cq(dplyr::first(.cq_mean_18S2),
-                                       dplyr::first(.cq_sd_18S2), use_mean_sd),
-              mic_RNAseP_DNA  = fmt_cq(dplyr::first(.cq_mean_RP_DNA),
-                                       dplyr::first(.cq_sd_RP_DNA), use_mean_sd),
-              mic_RNAseP_RNA  = fmt_cq(dplyr::first(.cq_mean_RP_RNA),
-                                       dplyr::first(.cq_sd_RP_RNA), use_mean_sd),
-              # Keep raw means for RNA interpretation
-              .raw_177T       = dplyr::first(.cq_mean_177T),
-              .raw_18S2       = dplyr::first(.cq_mean_18S2),
-              .raw_RP_DNA     = dplyr::first(.cq_mean_RP_DNA),
-              .raw_RP_RNA     = dplyr::first(.cq_mean_RP_RNA),
-              .groups = "drop"
-            ) %>%
-            dplyr::mutate(
-              mic_tryp_rna  = classify_tryp_rna(.raw_177T, .raw_18S2, tryp_delta),
-              mic_human_rna = classify_human_rna(.raw_RP_DNA, .raw_RP_RNA, human_delta),
-              mic_remark    = mic_auto_remark(mic_result, mic_tryp_rna, mic_human_rna,
-                                              .raw_RP_DNA, .raw_RP_RNA),
-              .mic_lab_norm = tolower(trimws(as.character(SampleID)))
-            ) %>%
-            dplyr::select(-SampleID, -.raw_177T, -.raw_18S2, -.raw_RP_DNA, -.raw_RP_RNA)
+          if (all_runs) {
+            # ---- ALL RUNS MODE: one row per run per sample -------------------
+            mic_detail <- mic_prep %>%
+              dplyr::mutate(
+                mic_run_date   = .mic_date_parsed,
+                mic_barcode    = .mic_barcode,
+                mic_numero     = .mic_numero,
+                mic_run_id     = .mic_run_id,
+                mic_result     = mic_result_code(.status_per_run),
+                mic_177T       = fmt_cq(.cq_mean_177T, .cq_sd_177T, use_mean_sd),
+                mic_18S2       = fmt_cq(.cq_mean_18S2, .cq_sd_18S2, use_mean_sd),
+                mic_RNAseP_DNA = fmt_cq(.cq_mean_RP_DNA, .cq_sd_RP_DNA, use_mean_sd),
+                mic_RNAseP_RNA = fmt_cq(.cq_mean_RP_RNA, .cq_sd_RP_RNA, use_mean_sd),
+                mic_tryp_rna   = classify_tryp_rna(.cq_mean_177T, .cq_mean_18S2, tryp_delta),
+                mic_human_rna  = classify_human_rna(.cq_mean_RP_DNA, .cq_mean_RP_RNA, human_delta),
+                mic_remark     = mic_auto_remark(mic_result, mic_tryp_rna, mic_human_rna,
+                                                 .cq_mean_RP_DNA, .cq_mean_RP_RNA),
+                # Tag retests
+                mic_remark = dplyr::if_else(
+                  !is.na(.mic_n_tests) & .mic_n_tests > 1,
+                  paste0(dplyr::coalesce(mic_remark, ""),
+                         dplyr::if_else(
+                           !is.na(.mic_is_discordant) & .mic_is_discordant,
+                           " [RETEST - discordant]",
+                           " [RETEST]"
+                         )),
+                  mic_remark
+                ),
+                .mic_lab_norm = tolower(trimws(as.character(SampleID)))
+              ) %>%
+              dplyr::select(
+                .mic_lab_norm, mic_run_date, mic_barcode, mic_numero, mic_run_id,
+                mic_result, mic_177T, mic_18S2, mic_RNAseP_DNA, mic_RNAseP_RNA,
+                mic_tryp_rna, mic_human_rna, mic_remark
+              )
 
-          base <- base %>%
-            dplyr::left_join(mic_summary, by = c(".lab_id_norm" = ".mic_lab_norm"))
+            base <- base %>%
+              dplyr::left_join(mic_detail, by = c(".lab_id_norm" = ".mic_lab_norm"),
+                               relationship = "many-to-many")
+
+          } else {
+            # ---- CONSOLIDATED MODE: one row per sample (latest run) ----------
+            mic_summary <- mic_prep %>%
+              dplyr::arrange(SampleID, dplyr::desc(.mic_date_parsed)) %>%
+              dplyr::group_by(SampleID) %>%
+              dplyr::summarise(
+                # Latest run date (first after desc sort)
+                mic_run_date    = dplyr::first(.mic_date_parsed),
+                mic_barcode     = dplyr::first(.mic_barcode),
+                mic_numero      = dplyr::first(.mic_numero),
+                # Consolidated status (handles retests: any positive = positive)
+                mic_result      = mic_result_code(dplyr::first(.status_consolidated)),
+                # Cq values from latest run
+                mic_177T        = fmt_cq(dplyr::first(.cq_mean_177T),
+                                         dplyr::first(.cq_sd_177T), use_mean_sd),
+                mic_18S2        = fmt_cq(dplyr::first(.cq_mean_18S2),
+                                         dplyr::first(.cq_sd_18S2), use_mean_sd),
+                mic_RNAseP_DNA  = fmt_cq(dplyr::first(.cq_mean_RP_DNA),
+                                         dplyr::first(.cq_sd_RP_DNA), use_mean_sd),
+                mic_RNAseP_RNA  = fmt_cq(dplyr::first(.cq_mean_RP_RNA),
+                                         dplyr::first(.cq_sd_RP_RNA), use_mean_sd),
+                .raw_177T       = dplyr::first(.cq_mean_177T),
+                .raw_18S2       = dplyr::first(.cq_mean_18S2),
+                .raw_RP_DNA     = dplyr::first(.cq_mean_RP_DNA),
+                .raw_RP_RNA     = dplyr::first(.cq_mean_RP_RNA),
+                .n_tests        = dplyr::first(.mic_n_tests),
+                .is_discordant  = dplyr::first(.mic_is_discordant),
+                .groups = "drop"
+              ) %>%
+              dplyr::mutate(
+                mic_tryp_rna  = classify_tryp_rna(.raw_177T, .raw_18S2, tryp_delta),
+                mic_human_rna = classify_human_rna(.raw_RP_DNA, .raw_RP_RNA, human_delta),
+                mic_remark    = mic_auto_remark(mic_result, mic_tryp_rna, mic_human_rna,
+                                                .raw_RP_DNA, .raw_RP_RNA),
+                # Tag retests in remark
+                mic_remark = dplyr::if_else(
+                  !is.na(.n_tests) & .n_tests > 1,
+                  paste0(dplyr::coalesce(mic_remark, ""),
+                         dplyr::if_else(
+                           !is.na(.is_discordant) & .is_discordant,
+                           sprintf(" [retested %dx - discordant]", .n_tests),
+                           sprintf(" [retested %dx]", .n_tests)
+                         )),
+                  mic_remark
+                ),
+                .mic_lab_norm = tolower(trimws(as.character(SampleID)))
+              ) %>%
+              dplyr::select(
+                .mic_lab_norm, mic_run_date, mic_barcode, mic_numero,
+                mic_result, mic_177T, mic_18S2, mic_RNAseP_DNA, mic_RNAseP_RNA,
+                mic_tryp_rna, mic_human_rna, mic_remark
+              )
+
+            base <- base %>%
+              dplyr::left_join(mic_summary, by = c(".lab_id_norm" = ".mic_lab_norm"))
+          }
         }
       }
 
@@ -283,35 +367,75 @@ mod_results_export_server <- function(id,
                     "mic_result", "mic_177T", "mic_18S2",
                     "mic_RNAseP_DNA", "mic_RNAseP_RNA",
                     "mic_tryp_rna", "mic_human_rna", "mic_remark")
+      if (isTRUE(input$show_all_runs)) {
+        mic_cols <- c(mic_cols, "mic_run_id")
+      }
       for (col in mic_cols) {
         if (!col %in% names(base)) base[[col]] <- NA
       }
 
-      # ----- Build final output with nice column names ----------------------
-      out <- base %>%
-        dplyr::transmute(
-          `Numéro labo`        = `Numéro labo`,
-          Etude                = Etude,
-          `Structure sanitaire` = `Structure sanitaire`,
-          `Zone de santé`      = `Zone de santé`,
-          Province             = Province,
-          Responsable          = `Responsable`,
-          Contact              = Contact,
-          `Code-barres KPS`    = `Code-barres KPS`,
-          `Date envoi INRB`    = `Date envoi INRB`,
-          # Biologie moléculaire
-          `Date analyse (Mol)`    = mic_run_date,
-          `Numéro labo (Mol)`     = mic_numero,
-          `Code-barres KPS (Mol)` = mic_barcode,
-          `Résultat final (Mol)`  = mic_result,
-          `177T`                  = mic_177T,
-          `18S2`                  = mic_18S2,
-          `RNAseP-DNA`            = mic_RNAseP_DNA,
-          `RNAseP-RNA`            = mic_RNAseP_RNA,
-          `Tryp RNA content`      = mic_tryp_rna,
-          `Human RNA quality`     = mic_human_rna,
-          Remarques               = dplyr::coalesce(mic_remark, .bb_remarks)
+      # Replace NA Cq with "-" for tested samples (has result but no Cq)
+      base <- base %>%
+        dplyr::mutate(
+          mic_177T       = dash_na(mic_177T, mic_result),
+          mic_18S2       = dash_na(mic_18S2, mic_result),
+          mic_RNAseP_DNA = dash_na(mic_RNAseP_DNA, mic_result),
+          mic_RNAseP_RNA = dash_na(mic_RNAseP_RNA, mic_result)
         )
+
+      # ----- Build final output with nice column names ----------------------
+      if (isTRUE(input$show_all_runs)) {
+        out <- base %>%
+          dplyr::transmute(
+            `Numéro labo`        = `Numéro labo`,
+            Etude                = Etude,
+            `Structure sanitaire` = `Structure sanitaire`,
+            `Zone de santé`      = `Zone de santé`,
+            Province             = Province,
+            Responsable          = `Responsable`,
+            Contact              = Contact,
+            `Code-barres KPS`    = `Code-barres KPS`,
+            `Date envoi INRB`    = `Date envoi INRB`,
+            # Biologie moléculaire — all runs
+            `Date analyse (Mol)`    = mic_run_date,
+            `Run (Mol)`             = mic_run_id,
+            `Numéro labo (Mol)`     = mic_numero,
+            `Code-barres KPS (Mol)` = mic_barcode,
+            `Résultat final (Mol)`  = mic_result,
+            `177T`                  = mic_177T,
+            `18S2`                  = mic_18S2,
+            `RNAseP-DNA`            = mic_RNAseP_DNA,
+            `RNAseP-RNA`            = mic_RNAseP_RNA,
+            `Tryp RNA content`      = mic_tryp_rna,
+            `Human RNA quality`     = mic_human_rna,
+            Remarques               = dplyr::coalesce(mic_remark, .bb_remarks)
+          )
+      } else {
+        out <- base %>%
+          dplyr::transmute(
+            `Numéro labo`        = `Numéro labo`,
+            Etude                = Etude,
+            `Structure sanitaire` = `Structure sanitaire`,
+            `Zone de santé`      = `Zone de santé`,
+            Province             = Province,
+            Responsable          = `Responsable`,
+            Contact              = Contact,
+            `Code-barres KPS`    = `Code-barres KPS`,
+            `Date envoi INRB`    = `Date envoi INRB`,
+            # Biologie moléculaire — consolidated
+            `Date analyse (Mol)`    = mic_run_date,
+            `Numéro labo (Mol)`     = mic_numero,
+            `Code-barres KPS (Mol)` = mic_barcode,
+            `Résultat final (Mol)`  = mic_result,
+            `177T`                  = mic_177T,
+            `18S2`                  = mic_18S2,
+            `RNAseP-DNA`            = mic_RNAseP_DNA,
+            `RNAseP-RNA`            = mic_RNAseP_RNA,
+            `Tryp RNA content`      = mic_tryp_rna,
+            `Human RNA quality`     = mic_human_rna,
+            Remarques               = dplyr::coalesce(mic_remark, .bb_remarks)
+          )
+      }
 
       out
     })
@@ -323,8 +447,10 @@ mod_results_export_server <- function(id,
       df <- export_data()
       n_total <- nrow(df)
       n_mic   <- sum(!is.na(df$`Résultat final (Mol)`))
-      paste0(n_total, " samples total | ",
-             n_mic, " with MIC results")
+      n_retest <- sum(grepl("\\[retest|\\[RETEST", df$Remarques, ignore.case = TRUE), na.rm = TRUE)
+      paste0(n_total, " rows | ",
+             n_mic, " with MIC results",
+             if (n_retest > 0) paste0(" | ", n_retest, " retested") else "")
     })
 
     output$preview_table <- DT::renderDataTable({
@@ -347,8 +473,9 @@ mod_results_export_server <- function(id,
     # ========================================================================
     output$download_xlsx <- downloadHandler(
       filename = function() {
+        suffix <- if (isTRUE(input$show_all_runs)) " all runs" else ""
         paste0(format(Sys.Date(), "%y%m%d"),
-               " Registre résultats analyses KPS.xlsx")
+               " Registre résultats analyses KPS", suffix, ".xlsx")
       },
       content = function(file) {
         df <- export_data()
@@ -397,20 +524,24 @@ mod_results_export_server <- function(id,
         )
 
         # ---- Row 1: Group headers ------------------------------------------
-        # Biobank columns: 1-9 (no group header)
-        # MIC group: columns 10-21
-        mic_start <- 10
-        mic_end   <- 21
-        openxlsx::mergeCells(wb, sheet_name, cols = mic_start:mic_end, rows = 1)
-        openxlsx::writeData(wb, sheet_name, "Biologie moléculaire",
-                            startCol = mic_start, startRow = 1)
-        openxlsx::addStyle(wb, sheet_name, group_style,
-                           rows = 1, cols = mic_start:mic_end, gridExpand = TRUE)
+        col_names <- names(df)
+        n_cols    <- length(col_names)
+
+        # MIC group: from "Date analyse (Mol)" to "Remarques"
+        mic_start <- which(col_names == "Date analyse (Mol)")
+        mic_end   <- n_cols
+        if (length(mic_start) == 1) {
+          openxlsx::mergeCells(wb, sheet_name, cols = mic_start:mic_end, rows = 1)
+          openxlsx::writeData(wb, sheet_name, "Biologie moléculaire",
+                              startCol = mic_start, startRow = 1)
+          openxlsx::addStyle(wb, sheet_name, group_style,
+                             rows = 1, cols = mic_start:mic_end, gridExpand = TRUE)
+        }
 
         # ---- Row 2: Column headers -----------------------------------------
-        col_names <- names(df)
         display_names <- col_names
         display_names[display_names == "Date analyse (Mol)"]    <- "Date analyse"
+        display_names[display_names == "Run (Mol)"]             <- "Run"
         display_names[display_names == "Numéro labo (Mol)"]     <- "Numéro labo"
         display_names[display_names == "Code-barres KPS (Mol)"] <- "Code-barres KPS"
         display_names[display_names == "Résultat final (Mol)"]  <- "Résultat final"
@@ -420,7 +551,7 @@ mod_results_export_server <- function(id,
                               startCol = i, startRow = 2)
         }
         openxlsx::addStyle(wb, sheet_name, header_style,
-                           rows = 2, cols = seq_along(col_names), gridExpand = TRUE)
+                           rows = 2, cols = seq_len(n_cols), gridExpand = TRUE)
 
         # ---- Row 3+: Data --------------------------------------------------
         if (nrow(df) > 0) {
@@ -428,12 +559,11 @@ mod_results_export_server <- function(id,
                               startCol = 1, startRow = 3,
                               colNames = FALSE)
 
-          n_data <- nrow(df)
-          data_rows <- 3:(2 + n_data)
+          data_rows <- 3:(2 + nrow(df))
 
           openxlsx::addStyle(wb, sheet_name, data_style,
                              rows = data_rows,
-                             cols = seq_along(col_names),
+                             cols = seq_len(n_cols),
                              gridExpand = TRUE)
 
           # Date columns
@@ -453,35 +583,31 @@ mod_results_export_server <- function(id,
           }
         }
 
-        # ---- Column widths -------------------------------------------------
-        col_widths <- c(
-          12,  # Numéro labo
-          8,   # Etude
-          30,  # Structure sanitaire
-          18,  # Zone de santé
-          18,  # Province
-          25,  # Responsable
-          15,  # Contact
-          16,  # Code-barres KPS
-          16,  # Date envoi INRB
-          15,  # Date analyse (Mol)
-          12,  # Numéro labo (Mol)
-          16,  # Code-barres KPS (Mol)
-          14,  # Résultat final (Mol)
-          16,  # 177T
-          16,  # 18S2
-          16,  # RNAseP-DNA
-          16,  # RNAseP-RNA
-          18,  # Tryp RNA content
-          18,  # Human RNA quality
-          40   # Remarques
+        # ---- Column widths (dynamic based on actual columns) ---------------
+        width_map <- c(
+          "Numéro labo" = 12, "Etude" = 8,
+          "Structure sanitaire" = 30, "Zone de santé" = 18,
+          "Province" = 18, "Responsable" = 25,
+          "Contact" = 15, "Code-barres KPS" = 16,
+          "Date envoi INRB" = 16,
+          "Date analyse (Mol)" = 15, "Run (Mol)" = 14,
+          "Numéro labo (Mol)" = 12,
+          "Code-barres KPS (Mol)" = 16,
+          "Résultat final (Mol)" = 14,
+          "177T" = 16, "18S2" = 16,
+          "RNAseP-DNA" = 16, "RNAseP-RNA" = 16,
+          "Tryp RNA content" = 18, "Human RNA quality" = 18,
+          "Remarques" = 42
         )
-        for (i in seq_along(col_widths)) {
-          openxlsx::setColWidths(wb, sheet_name, cols = i, widths = col_widths[i])
+        for (i in seq_along(col_names)) {
+          w <- width_map[col_names[i]]
+          if (is.na(w)) w <- 14
+          openxlsx::setColWidths(wb, sheet_name, cols = i, widths = w)
         }
 
-        # Freeze panes: first 2 rows + first 9 columns
-        openxlsx::freezePane(wb, sheet_name, firstActiveRow = 3, firstActiveCol = 10)
+        # Freeze panes
+        openxlsx::freezePane(wb, sheet_name, firstActiveRow = 3,
+                             firstActiveCol = if (length(mic_start)) mic_start else 10)
 
         openxlsx::saveWorkbook(wb, file, overwrite = TRUE)
       }

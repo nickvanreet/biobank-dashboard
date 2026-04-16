@@ -155,19 +155,35 @@ mod_results_export_server <- function(id,
     }
 
     mic_auto_remark <- function(result, tryp_rna, human_rna,
-                                cq_rp_dna, cq_rp_rna) {
+                                cq_rp_dna, cq_rp_rna,
+                                cq_177T, cq_18S2) {
       dplyr::case_when(
         is.na(result) ~ NA_character_,
+        # Failed
         result == "F" & is.na(cq_rp_dna) ~
           "extraction fail: no human DNA detected",
         result == "F" ~
           "insufficient blood quantity or RNA control failed",
+        # Negative — but check for sub-threshold signal
+        result == "N" & !is.na(cq_177T) & !is.na(cq_18S2) & human_rna == "Degraded" ~
+          "weak 177T + 18S2 signal below threshold; degraded RNA",
+        result == "N" & !is.na(cq_177T) & !is.na(cq_18S2) ~
+          "weak 177T + 18S2 signal below threshold",
+        result == "N" & !is.na(cq_177T) & human_rna == "Degraded" ~
+          "weak 177T signal below threshold; degraded RNA",
+        result == "N" & !is.na(cq_177T) ~
+          "weak 177T signal below threshold",
+        result == "N" & !is.na(cq_18S2) & human_rna == "Degraded" ~
+          "weak 18S2 signal below threshold; degraded RNA",
+        result == "N" & !is.na(cq_18S2) ~
+          "weak 18S2 signal below threshold",
         result == "N" & human_rna == "Degraded" ~
           "no trypanosome DNA or RNA detected; degraded RNA",
         result == "N" & human_rna == "No RNA" ~
           "no trypanosome DNA or RNA detected; RNA control failed",
         result == "N" ~
           "no trypanosome DNA or RNA detected",
+        # Positive
         result == "P" & tryp_rna == "High" ~
           "trypanosome DNA and RNA detected",
         result == "P" & tryp_rna == "DNA only" ~
@@ -176,6 +192,7 @@ mod_results_export_server <- function(id,
           "trypanosome RNA detected (no DNA)",
         result == "P" ~
           "trypanosome DNA detected",
+        # Suspect
         result == "S" ~
           "suspect: weak signal, repeat recommended",
         TRUE ~ NA_character_
@@ -279,7 +296,8 @@ mod_results_export_server <- function(id,
                 mic_tryp_rna   = classify_tryp_rna(.cq_mean_177T, .cq_mean_18S2, tryp_delta),
                 mic_human_rna  = classify_human_rna(.cq_mean_RP_DNA, .cq_mean_RP_RNA, human_delta),
                 mic_remark     = mic_auto_remark(mic_result, mic_tryp_rna, mic_human_rna,
-                                                 .cq_mean_RP_DNA, .cq_mean_RP_RNA),
+                                                 .cq_mean_RP_DNA, .cq_mean_RP_RNA,
+                                                 .cq_mean_177T, .cq_mean_18S2),
                 # Tag retests
                 mic_remark = dplyr::if_else(
                   !is.na(.mic_n_tests) & .mic_n_tests > 1,
@@ -304,18 +322,32 @@ mod_results_export_server <- function(id,
                                relationship = "many-to-many")
 
           } else {
-            # ---- CONSOLIDATED MODE: one row per sample (latest run) ----------
+            # ---- CONSOLIDATED MODE: one row per sample -----------------------
+            # Sort: positive runs first, then latest date. This ensures that
+            # when the consolidated result is Positive (any positive = positive),
+            # we show the Cq values from the actual positive run, not the latest
+            # (potentially negative) retest run.
+            call_priority <- function(call) {
+              dplyr::case_when(
+                grepl("Positive|Detected|Trypanozoon", call, TRUE) ~ 1L,
+                grepl("Suspect|Borderline|Indeterminate", call, TRUE) ~ 2L,
+                grepl("Negative", call, TRUE) ~ 3L,
+                TRUE ~ 4L
+              )
+            }
+
             mic_summary <- mic_prep %>%
-              dplyr::arrange(SampleID, dplyr::desc(.mic_date_parsed)) %>%
+              dplyr::mutate(.call_rank = call_priority(.status_per_run)) %>%
+              dplyr::arrange(SampleID, .call_rank, dplyr::desc(.mic_date_parsed)) %>%
               dplyr::group_by(SampleID) %>%
               dplyr::summarise(
-                # Latest run date (first after desc sort)
+                # First = most informative run (positive > suspect > negative)
                 mic_run_date    = dplyr::first(.mic_date_parsed),
                 mic_barcode     = dplyr::first(.mic_barcode),
                 mic_numero      = dplyr::first(.mic_numero),
                 # Consolidated status (handles retests: any positive = positive)
                 mic_result      = mic_result_code(dplyr::first(.status_consolidated)),
-                # Cq values from latest run
+                # Cq values from the most informative run
                 mic_177T        = fmt_cq(dplyr::first(.cq_mean_177T),
                                          dplyr::first(.cq_sd_177T), use_mean_sd),
                 mic_18S2        = fmt_cq(dplyr::first(.cq_mean_18S2),
@@ -336,7 +368,8 @@ mod_results_export_server <- function(id,
                 mic_tryp_rna  = classify_tryp_rna(.raw_177T, .raw_18S2, tryp_delta),
                 mic_human_rna = classify_human_rna(.raw_RP_DNA, .raw_RP_RNA, human_delta),
                 mic_remark    = mic_auto_remark(mic_result, mic_tryp_rna, mic_human_rna,
-                                                .raw_RP_DNA, .raw_RP_RNA),
+                                                .raw_RP_DNA, .raw_RP_RNA,
+                                                .raw_177T, .raw_18S2),
                 # Tag retests in remark
                 mic_remark = dplyr::if_else(
                   !is.na(.n_tests) & .n_tests > 1,

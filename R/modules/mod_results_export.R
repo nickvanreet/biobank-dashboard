@@ -102,11 +102,9 @@ mod_results_export_server <- function(id,
         return(gsub("\\.", ",", formatC(mean_val, format = "f", digits = 1)))
       }
       m <- gsub("\\.", ",", formatC(round(mean_val, 1), format = "f", digits = 1))
-      s <- if (is.na(sd_val) || sd_val == 0) {
-        "0"
-      } else {
-        gsub("\\.", ",", formatC(round(sd_val, 1), format = "f", digits = 1))
-      }
+      # SD=0 or NA means single replicate — don't report SD
+      if (is.na(sd_val) || sd_val == 0) return(m)
+      s <- gsub("\\.", ",", formatC(round(sd_val, 1), format = "f", digits = 1))
       paste0(m, " +/- ", s)
     }
 

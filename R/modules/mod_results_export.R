@@ -152,6 +152,60 @@ mod_results_export_server <- function(id,
       )
     }
 
+    # ========================================================================
+    # ELISA / iELISA HELPERS
+    # ========================================================================
+
+    # Map ELISA status to short code
+    elisa_result_code <- function(status) {
+      dplyr::case_when(
+        grepl("Positive", status, ignore.case = TRUE) ~ "P",
+        grepl("Borderline", status, ignore.case = TRUE) ~ "B",
+        grepl("Negative", status, ignore.case = TRUE) ~ "N",
+        grepl("Invalid", status, ignore.case = TRUE) ~ "Inv",
+        is.na(status) ~ NA_character_,
+        TRUE ~ status
+      )
+    }
+
+    # Format percentage with comma decimal separator (FR locale)
+    fmt_pct <- function(val) {
+      dplyr::if_else(
+        is.na(val), NA_character_,
+        gsub("\\.", ",", formatC(round(val, 1), format = "f", digits = 1))
+      )
+    }
+
+    # Format OD value
+    fmt_od <- function(val) {
+      dplyr::if_else(
+        is.na(val), NA_character_,
+        gsub("\\.", ",", formatC(round(val, 3), format = "f", digits = 3))
+      )
+    }
+
+    # Auto-remark for ELISA/iELISA
+    elisa_auto_remark <- function(result, n_tests, is_discordant) {
+      retest_tag <- dplyr::case_when(
+        is.na(n_tests) | n_tests <= 1 ~ "",
+        !is.na(is_discordant) & is_discordant ~
+          sprintf(" [retested %dx - discordant]", n_tests),
+        TRUE ~ sprintf(" [retested %dx]", n_tests)
+      )
+      remark <- dplyr::case_when(
+        is.na(result) ~ NA_character_,
+        result == "Inv" ~ "invalid plate or sample QC failed",
+        result == "B" ~ "borderline: repeat recommended",
+        TRUE ~ NA_character_
+      )
+      # Only add retest tag if there's something to tag or there's a remark
+      dplyr::case_when(
+        !is.na(remark) ~ paste0(remark, retest_tag),
+        nchar(retest_tag) > 0 ~ trimws(retest_tag),
+        TRUE ~ NA_character_
+      )
+    }
+
     mic_auto_remark <- function(result, tryp_rna, human_rna,
                                 cq_rp_dna, cq_rp_rna,
                                 cq_177T, cq_18S2) {
@@ -395,7 +449,7 @@ mod_results_export_server <- function(id,
         if (!col %in% names(base)) base[[col]] <- NA
       }
 
-      # Replace NA Cq with "-" for tested samples (has result but no Cq)
+      # Replace NA Cq with en-dash for tested samples (has result but no Cq)
       base <- base %>%
         dplyr::mutate(
           mic_177T       = dash_na(mic_177T, mic_result),
@@ -404,58 +458,271 @@ mod_results_export_server <- function(id,
           mic_RNAseP_RNA = dash_na(mic_RNAseP_RNA, mic_result)
         )
 
-      # ----- Build final output with nice column names ----------------------
+      # =====================================================================
+      # ELISA-PE
+      # =====================================================================
+      if ("elisa_pe" %in% input$tests_to_include && !is.null(elisa_pe_df)) {
+        epe <- tryCatch(elisa_pe_df(), error = function(e) NULL)
+        if (!is.null(epe) && nrow(epe) > 0) {
+          epe <- epe %>% dplyr::filter(sample_type == "sample" | is.na(sample_type))
+          if (nrow(epe) > 0) {
+            # Use latest run result (consistent with MIC approach)
+            status_col <- if ("elisa_pe_status_final" %in% names(epe))
+              "elisa_pe_status_final" else "status_final"
+            n_tests_col <- if ("elisa_pe_n_tests" %in% names(epe))
+              "elisa_pe_n_tests" else NULL
+            disc_col <- if ("elisa_pe_is_discordant" %in% names(epe))
+              "elisa_pe_is_discordant" else NULL
+
+            epe_prep <- epe %>%
+              dplyr::mutate(
+                .epe_date = suppressWarnings(as.Date(test_date)),
+                .epe_lab_norm = tolower(trimws(as.character(numero_labo))),
+                .epe_barcode = as.character(code_barres_kps),
+                .epe_numero  = as.character(numero_labo),
+                .epe_status  = .data[[status_col]],
+                .epe_pp      = PP_percent,
+                .epe_dod     = DOD,
+                .epe_n_tests = if (!is.null(n_tests_col)) .data[[n_tests_col]] else NA_integer_,
+                .epe_disc    = if (!is.null(disc_col)) .data[[disc_col]] else NA
+              )
+
+            epe_summary <- epe_prep %>%
+              dplyr::arrange(.epe_lab_norm, dplyr::desc(.epe_date)) %>%
+              dplyr::group_by(.epe_lab_norm) %>%
+              dplyr::summarise(
+                epe_date    = dplyr::first(.epe_date),
+                epe_numero  = dplyr::first(.epe_numero),
+                epe_barcode = dplyr::first(.epe_barcode),
+                epe_result  = elisa_result_code(dplyr::first(.epe_status)),
+                epe_pp      = dplyr::first(.epe_pp),
+                epe_dod     = dplyr::first(.epe_dod),
+                .epe_n_tests = dplyr::first(.epe_n_tests),
+                .epe_disc    = dplyr::first(.epe_disc),
+                .groups = "drop"
+              ) %>%
+              dplyr::mutate(
+                epe_pp_fmt  = fmt_pct(epe_pp),
+                epe_dod_fmt = fmt_od(epe_dod),
+                epe_remark  = elisa_auto_remark(epe_result, .epe_n_tests, .epe_disc)
+              )
+
+            base <- base %>%
+              dplyr::left_join(
+                epe_summary %>% dplyr::select(.epe_lab_norm, epe_date, epe_numero, epe_barcode,
+                                              epe_result, epe_pp_fmt, epe_dod_fmt, epe_remark),
+                by = c(".lab_id_norm" = ".epe_lab_norm")
+              )
+          }
+        }
+      }
+
+      epe_cols <- c("epe_date", "epe_numero", "epe_barcode", "epe_result",
+                     "epe_pp_fmt", "epe_dod_fmt", "epe_remark")
+      for (col in epe_cols) {
+        if (!col %in% names(base)) base[[col]] <- NA
+      }
+
+      # =====================================================================
+      # ELISA-VSG
+      # =====================================================================
+      if ("elisa_vsg" %in% input$tests_to_include && !is.null(elisa_vsg_df)) {
+        evsg <- tryCatch(elisa_vsg_df(), error = function(e) NULL)
+        if (!is.null(evsg) && nrow(evsg) > 0) {
+          evsg <- evsg %>% dplyr::filter(sample_type == "sample" | is.na(sample_type))
+          if (nrow(evsg) > 0) {
+            status_col <- if ("elisa_vsg_status_final" %in% names(evsg))
+              "elisa_vsg_status_final" else "status_final"
+            n_tests_col <- if ("elisa_vsg_n_tests" %in% names(evsg))
+              "elisa_vsg_n_tests" else NULL
+            disc_col <- if ("elisa_vsg_is_discordant" %in% names(evsg))
+              "elisa_vsg_is_discordant" else NULL
+
+            evsg_prep <- evsg %>%
+              dplyr::mutate(
+                .evsg_date = suppressWarnings(as.Date(test_date)),
+                .evsg_lab_norm = tolower(trimws(as.character(numero_labo))),
+                .evsg_barcode = as.character(code_barres_kps),
+                .evsg_numero  = as.character(numero_labo),
+                .evsg_status  = .data[[status_col]],
+                .evsg_pp      = PP_percent,
+                .evsg_dod     = DOD,
+                .evsg_n_tests = if (!is.null(n_tests_col)) .data[[n_tests_col]] else NA_integer_,
+                .evsg_disc    = if (!is.null(disc_col)) .data[[disc_col]] else NA
+              )
+
+            evsg_summary <- evsg_prep %>%
+              dplyr::arrange(.evsg_lab_norm, dplyr::desc(.evsg_date)) %>%
+              dplyr::group_by(.evsg_lab_norm) %>%
+              dplyr::summarise(
+                evsg_date    = dplyr::first(.evsg_date),
+                evsg_numero  = dplyr::first(.evsg_numero),
+                evsg_barcode = dplyr::first(.evsg_barcode),
+                evsg_result  = elisa_result_code(dplyr::first(.evsg_status)),
+                evsg_pp      = dplyr::first(.evsg_pp),
+                evsg_dod     = dplyr::first(.evsg_dod),
+                .evsg_n_tests = dplyr::first(.evsg_n_tests),
+                .evsg_disc    = dplyr::first(.evsg_disc),
+                .groups = "drop"
+              ) %>%
+              dplyr::mutate(
+                evsg_pp_fmt  = fmt_pct(evsg_pp),
+                evsg_dod_fmt = fmt_od(evsg_dod),
+                evsg_remark  = elisa_auto_remark(evsg_result, .evsg_n_tests, .evsg_disc)
+              )
+
+            base <- base %>%
+              dplyr::left_join(
+                evsg_summary %>% dplyr::select(.evsg_lab_norm, evsg_date, evsg_numero, evsg_barcode,
+                                               evsg_result, evsg_pp_fmt, evsg_dod_fmt, evsg_remark),
+                by = c(".lab_id_norm" = ".evsg_lab_norm")
+              )
+          }
+        }
+      }
+
+      evsg_cols <- c("evsg_date", "evsg_numero", "evsg_barcode", "evsg_result",
+                      "evsg_pp_fmt", "evsg_dod_fmt", "evsg_remark")
+      for (col in evsg_cols) {
+        if (!col %in% names(base)) base[[col]] <- NA
+      }
+
+      # =====================================================================
+      # iELISA
+      # =====================================================================
+      if ("ielisa" %in% input$tests_to_include && !is.null(ielisa_df)) {
+        iel <- tryCatch(ielisa_df(), error = function(e) NULL)
+        if (!is.null(iel) && nrow(iel) > 0) {
+          status_col <- if ("ielisa_status_final" %in% names(iel))
+            "ielisa_status_final" else "status_final"
+          n_tests_col <- if ("ielisa_n_tests" %in% names(iel))
+            "ielisa_n_tests" else NULL
+          disc_col <- if ("ielisa_is_discordant" %in% names(iel))
+            "ielisa_is_discordant" else NULL
+
+          iel_prep <- iel %>%
+            dplyr::mutate(
+              .iel_date = suppressWarnings(as.Date(plate_date)),
+              .iel_lab_norm = tolower(trimws(as.character(numero_labo))),
+              .iel_barcode = as.character(code_barres_kps),
+              .iel_numero  = as.character(numero_labo),
+              .iel_status  = .data[[status_col]],
+              .iel_inh_13  = pct_inh_f1_13,
+              .iel_inh_15  = pct_inh_f1_15,
+              .iel_n_tests = if (!is.null(n_tests_col)) .data[[n_tests_col]] else NA_integer_,
+              .iel_disc    = if (!is.null(disc_col)) .data[[disc_col]] else NA
+            )
+
+          iel_summary <- iel_prep %>%
+            dplyr::arrange(.iel_lab_norm, dplyr::desc(.iel_date)) %>%
+            dplyr::group_by(.iel_lab_norm) %>%
+            dplyr::summarise(
+              iel_date    = dplyr::first(.iel_date),
+              iel_numero  = dplyr::first(.iel_numero),
+              iel_barcode = dplyr::first(.iel_barcode),
+              iel_result  = elisa_result_code(dplyr::first(.iel_status)),
+              iel_inh_13  = dplyr::first(.iel_inh_13),
+              iel_inh_15  = dplyr::first(.iel_inh_15),
+              .iel_n_tests = dplyr::first(.iel_n_tests),
+              .iel_disc    = dplyr::first(.iel_disc),
+              .groups = "drop"
+            ) %>%
+            dplyr::mutate(
+              iel_inh_13_fmt = fmt_pct(iel_inh_13),
+              iel_inh_15_fmt = fmt_pct(iel_inh_15),
+              iel_remark     = elisa_auto_remark(iel_result, .iel_n_tests, .iel_disc)
+            )
+
+          base <- base %>%
+            dplyr::left_join(
+              iel_summary %>% dplyr::select(.iel_lab_norm, iel_date, iel_numero, iel_barcode,
+                                            iel_result, iel_inh_13_fmt, iel_inh_15_fmt, iel_remark),
+              by = c(".lab_id_norm" = ".iel_lab_norm")
+            )
+        }
+      }
+
+      iel_cols <- c("iel_date", "iel_numero", "iel_barcode", "iel_result",
+                     "iel_inh_13_fmt", "iel_inh_15_fmt", "iel_remark")
+      for (col in iel_cols) {
+        if (!col %in% names(base)) base[[col]] <- NA
+      }
+
+      # =====================================================================
+      # BUILD FINAL OUTPUT with display column names
+      # =====================================================================
+      # Combine remarks from all tests (only non-NA, semicolon-separated)
+      base <- base %>%
+        dplyr::rowwise() %>%
+        dplyr::mutate(
+          .all_remarks = {
+            parts <- c()
+            if (!is.na(mic_remark))  parts <- c(parts, mic_remark)
+            if (!is.na(epe_remark))  parts <- c(parts, paste0("PE: ", epe_remark))
+            if (!is.na(evsg_remark)) parts <- c(parts, paste0("VSG: ", evsg_remark))
+            if (!is.na(iel_remark))  parts <- c(parts, paste0("iELISA: ", iel_remark))
+            if (length(parts) > 0) paste(parts, collapse = "; ") else NA_character_
+          },
+          .all_remarks = dplyr::coalesce(.all_remarks, .bb_remarks)
+        ) %>%
+        dplyr::ungroup()
+
+      # Base biobank columns (always present)
+      out <- base %>%
+        dplyr::transmute(
+          `Numéro labo`         = `Numéro labo`,
+          Etude                 = Etude,
+          `Structure sanitaire` = `Structure sanitaire`,
+          `Zone de santé`       = `Zone de santé`,
+          Province              = Province,
+          Responsable           = `Responsable`,
+          Contact               = Contact,
+          `Code-barres KPS`     = `Code-barres KPS`,
+          `Date envoi INRB`     = `Date envoi INRB`,
+          # MIC
+          `Date analyse (Mol)`    = mic_run_date,
+          `Numéro labo (Mol)`     = mic_numero,
+          `Code-barres KPS (Mol)` = mic_barcode,
+          `Résultat final (Mol)`  = mic_result,
+          `177T`                  = mic_177T,
+          `18S2`                  = mic_18S2,
+          `RNAseP-DNA`            = mic_RNAseP_DNA,
+          `RNAseP-RNA`            = mic_RNAseP_RNA,
+          `Tryp RNA content`      = mic_tryp_rna,
+          `Human RNA quality`     = mic_human_rna,
+          # ELISA-PE
+          `Date analyse (PE)`     = epe_date,
+          `Numéro labo (PE)`      = epe_numero,
+          `Code-barres KPS (PE)`  = epe_barcode,
+          `Résultat final (PE)`   = epe_result,
+          `PP% (PE)`              = epe_pp_fmt,
+          `DOD (PE)`              = epe_dod_fmt,
+          # ELISA-VSG
+          `Date analyse (VSG)`    = evsg_date,
+          `Numéro labo (VSG)`     = evsg_numero,
+          `Code-barres KPS (VSG)` = evsg_barcode,
+          `Résultat final (VSG)`  = evsg_result,
+          `PP% (VSG)`             = evsg_pp_fmt,
+          `DOD (VSG)`             = evsg_dod_fmt,
+          # iELISA
+          `Date analyse (iELISA)`    = iel_date,
+          `Numéro labo (iELISA)`     = iel_numero,
+          `Code-barres KPS (iELISA)` = iel_barcode,
+          `Résultat final (iELISA)`  = iel_result,
+          `%Inh L1.3`               = iel_inh_13_fmt,
+          `%Inh L1.5`               = iel_inh_15_fmt,
+          # Remarks
+          Remarques = .all_remarks
+        )
+
+      # Add Run column for all-runs mode (MIC only)
       if (isTRUE(input$show_all_runs)) {
-        out <- base %>%
-          dplyr::transmute(
-            `Numéro labo`        = `Numéro labo`,
-            Etude                = Etude,
-            `Structure sanitaire` = `Structure sanitaire`,
-            `Zone de santé`      = `Zone de santé`,
-            Province             = Province,
-            Responsable          = `Responsable`,
-            Contact              = Contact,
-            `Code-barres KPS`    = `Code-barres KPS`,
-            `Date envoi INRB`    = `Date envoi INRB`,
-            # Biologie moléculaire — all runs
-            `Date analyse (Mol)`    = mic_run_date,
-            `Run (Mol)`             = mic_run_id,
-            `Numéro labo (Mol)`     = mic_numero,
-            `Code-barres KPS (Mol)` = mic_barcode,
-            `Résultat final (Mol)`  = mic_result,
-            `177T`                  = mic_177T,
-            `18S2`                  = mic_18S2,
-            `RNAseP-DNA`            = mic_RNAseP_DNA,
-            `RNAseP-RNA`            = mic_RNAseP_RNA,
-            `Tryp RNA content`      = mic_tryp_rna,
-            `Human RNA quality`     = mic_human_rna,
-            Remarques               = dplyr::coalesce(mic_remark, .bb_remarks)
-          )
-      } else {
-        out <- base %>%
-          dplyr::transmute(
-            `Numéro labo`        = `Numéro labo`,
-            Etude                = Etude,
-            `Structure sanitaire` = `Structure sanitaire`,
-            `Zone de santé`      = `Zone de santé`,
-            Province             = Province,
-            Responsable          = `Responsable`,
-            Contact              = Contact,
-            `Code-barres KPS`    = `Code-barres KPS`,
-            `Date envoi INRB`    = `Date envoi INRB`,
-            # Biologie moléculaire — consolidated
-            `Date analyse (Mol)`    = mic_run_date,
-            `Numéro labo (Mol)`     = mic_numero,
-            `Code-barres KPS (Mol)` = mic_barcode,
-            `Résultat final (Mol)`  = mic_result,
-            `177T`                  = mic_177T,
-            `18S2`                  = mic_18S2,
-            `RNAseP-DNA`            = mic_RNAseP_DNA,
-            `RNAseP-RNA`            = mic_RNAseP_RNA,
-            `Tryp RNA content`      = mic_tryp_rna,
-            `Human RNA quality`     = mic_human_rna,
-            Remarques               = dplyr::coalesce(mic_remark, .bb_remarks)
-          )
+        mic_run_id_col <- base$mic_run_id
+        # Insert after Date analyse (Mol)
+        pos <- which(names(out) == "Date analyse (Mol)")
+        if (length(pos) == 1) {
+          out <- tibble::add_column(out, `Run (Mol)` = mic_run_id_col, .after = pos)
+        }
       }
 
       out
@@ -467,11 +734,16 @@ mod_results_export_server <- function(id,
     output$summary_text <- renderText({
       df <- export_data()
       n_total <- nrow(df)
-      n_mic   <- sum(!is.na(df$`Résultat final (Mol)`))
-      n_retest <- sum(grepl("\\[retest|\\[RETEST", df$Remarques, ignore.case = TRUE), na.rm = TRUE)
-      paste0(n_total, " rows | ",
-             n_mic, " with MIC results",
-             if (n_retest > 0) paste0(" | ", n_retest, " retested") else "")
+      parts <- c(paste0(n_total, " rows"))
+      if ("Résultat final (Mol)" %in% names(df))
+        parts <- c(parts, paste0(sum(!is.na(df$`Résultat final (Mol)`)), " MIC"))
+      if ("Résultat final (PE)" %in% names(df))
+        parts <- c(parts, paste0(sum(!is.na(df$`Résultat final (PE)`)), " PE"))
+      if ("Résultat final (VSG)" %in% names(df))
+        parts <- c(parts, paste0(sum(!is.na(df$`Résultat final (VSG)`)), " VSG"))
+      if ("Résultat final (iELISA)" %in% names(df))
+        parts <- c(parts, paste0(sum(!is.na(df$`Résultat final (iELISA)`)), " iELISA"))
+      paste(parts, collapse = " | ")
     })
 
     output$preview_table <- DT::renderDataTable({
@@ -548,24 +820,41 @@ mod_results_export_server <- function(id,
         col_names <- names(df)
         n_cols    <- length(col_names)
 
-        # MIC group: from "Date analyse (Mol)" to "Remarques"
-        mic_start <- which(col_names == "Date analyse (Mol)")
-        mic_end   <- n_cols
-        if (length(mic_start) == 1) {
-          openxlsx::mergeCells(wb, sheet_name, cols = mic_start:mic_end, rows = 1)
-          openxlsx::writeData(wb, sheet_name, "Biologie moléculaire",
-                              startCol = mic_start, startRow = 1)
-          openxlsx::addStyle(wb, sheet_name, group_style,
-                             rows = 1, cols = mic_start:mic_end, gridExpand = TRUE)
+        # Define test groups: label, start column, end column
+        group_defs <- list(
+          list(label = "Biologie mol\u00e9culaire",
+               start = "Date analyse (Mol)",
+               end   = "Human RNA quality"),
+          list(label = "ELISA indirect PE",
+               start = "Date analyse (PE)",
+               end   = "DOD (PE)"),
+          list(label = "ELISA indirect VSG",
+               start = "Date analyse (VSG)",
+               end   = "DOD (VSG)"),
+          list(label = "iELISA",
+               start = "Date analyse (iELISA)",
+               end   = "%Inh L1.5")
+        )
+
+        for (gdef in group_defs) {
+          gs <- which(col_names == gdef$start)
+          ge <- which(col_names == gdef$end)
+          if (length(gs) == 1 && length(ge) == 1) {
+            openxlsx::mergeCells(wb, sheet_name, cols = gs:ge, rows = 1)
+            openxlsx::writeData(wb, sheet_name, gdef$label,
+                                startCol = gs, startRow = 1)
+            openxlsx::addStyle(wb, sheet_name, group_style,
+                               rows = 1, cols = gs:ge, gridExpand = TRUE)
+          }
         }
 
         # ---- Row 2: Column headers -----------------------------------------
+        # Strip the "(Mol)", "(PE)", etc. suffixes for display
         display_names <- col_names
-        display_names[display_names == "Date analyse (Mol)"]    <- "Date analyse"
-        display_names[display_names == "Run (Mol)"]             <- "Run"
-        display_names[display_names == "Numéro labo (Mol)"]     <- "Numéro labo"
-        display_names[display_names == "Code-barres KPS (Mol)"] <- "Code-barres KPS"
-        display_names[display_names == "Résultat final (Mol)"]  <- "Résultat final"
+        display_names <- gsub(" \\(Mol\\)$", "", display_names)
+        display_names <- gsub(" \\(PE\\)$", "", display_names)
+        display_names <- gsub(" \\(VSG\\)$", "", display_names)
+        display_names <- gsub(" \\(iELISA\\)$", "", display_names)
 
         for (i in seq_along(display_names)) {
           openxlsx::writeData(wb, sheet_name, display_names[i],
@@ -588,7 +877,7 @@ mod_results_export_server <- function(id,
                              gridExpand = TRUE)
 
           # Date columns
-          date_cols <- which(col_names %in% c("Date envoi INRB", "Date analyse (Mol)"))
+          date_cols <- which(grepl("^Date", col_names))
           if (length(date_cols)) {
             openxlsx::addStyle(wb, sheet_name, date_style,
                                rows = data_rows, cols = date_cols,
@@ -611,14 +900,27 @@ mod_results_export_server <- function(id,
           "Province" = 18, "Responsable" = 25,
           "Contact" = 15, "Code-barres KPS" = 16,
           "Date envoi INRB" = 16,
+          # MIC
           "Date analyse (Mol)" = 15, "Run (Mol)" = 14,
-          "Numéro labo (Mol)" = 12,
-          "Code-barres KPS (Mol)" = 16,
+          "Numéro labo (Mol)" = 12, "Code-barres KPS (Mol)" = 16,
           "Résultat final (Mol)" = 14,
           "177T" = 16, "18S2" = 16,
           "RNAseP-DNA" = 16, "RNAseP-RNA" = 16,
           "Tryp RNA content" = 18, "Human RNA quality" = 18,
-          "Remarques" = 42
+          # ELISA-PE
+          "Date analyse (PE)" = 15, "Numéro labo (PE)" = 12,
+          "Code-barres KPS (PE)" = 16, "Résultat final (PE)" = 14,
+          "PP% (PE)" = 10, "DOD (PE)" = 10,
+          # ELISA-VSG
+          "Date analyse (VSG)" = 15, "Numéro labo (VSG)" = 12,
+          "Code-barres KPS (VSG)" = 16, "Résultat final (VSG)" = 14,
+          "PP% (VSG)" = 10, "DOD (VSG)" = 10,
+          # iELISA
+          "Date analyse (iELISA)" = 15, "Numéro labo (iELISA)" = 12,
+          "Code-barres KPS (iELISA)" = 16, "Résultat final (iELISA)" = 14,
+          "%Inh L1.3" = 12, "%Inh L1.5" = 12,
+          # Remarks
+          "Remarques" = 50
         )
         for (i in seq_along(col_names)) {
           w <- width_map[col_names[i]]
@@ -626,9 +928,14 @@ mod_results_export_server <- function(id,
           openxlsx::setColWidths(wb, sheet_name, cols = i, widths = w)
         }
 
-        # Freeze panes
-        openxlsx::freezePane(wb, sheet_name, firstActiveRow = 3,
-                             firstActiveCol = if (length(mic_start)) mic_start else 10)
+        # Freeze panes — freeze at first test section
+        first_test_col <- min(which(grepl("^Date analyse", col_names)), Inf)
+        if (is.finite(first_test_col)) {
+          openxlsx::freezePane(wb, sheet_name, firstActiveRow = 3,
+                               firstActiveCol = first_test_col)
+        } else {
+          openxlsx::freezePane(wb, sheet_name, firstActiveRow = 3)
+        }
 
         openxlsx::saveWorkbook(wb, file, overwrite = TRUE)
       }

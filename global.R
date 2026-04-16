@@ -243,6 +243,10 @@ cat("✓ Predictive Analytics module loaded\n")
 source("R/modules/mod_study_comparison.R")
 cat("✓ Study Comparison module loaded\n")
 
+# Lab Results Export module (assembles results from all test modules)
+source("R/modules/mod_results_export.R")
+cat("✓ Results Export module loaded\n")
+
 # Geographic visualization module
 source("R/modules/mod_12_geographic.R")
 cat("✓ Geographic module loaded\n")

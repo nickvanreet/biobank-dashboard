@@ -70,7 +70,10 @@ ui <- do.call(
         icon  = icon("chart-line"),
         mod_study_comparison_ui("study_comparison"),
         mod_predictive_analytics_ui("predictive_analytics")
-      )
+      ),
+
+      # ── Export ──────────────────────────────────────────��───────────────
+      mod_results_export_ui("results_export")
     )
   )
 )
@@ -295,6 +298,16 @@ server <- function(input, output, session) {
     elisa_vsg_df = elisa_vsg_data$samples,
     ielisa_df = ielisa_data$samples,
     filters = data$filters
+  )
+
+  # Lab Results Export module (assembles results file for CRT upload)
+  mod_results_export_server(
+    "results_export",
+    biobank_df   = data$clean_data,
+    mic_df       = mic_data$qpcr_samples,
+    elisa_pe_df  = elisa_pe_data$samples,
+    elisa_vsg_df = elisa_vsg_data$samples,
+    ielisa_df    = ielisa_data$samples
   )
 
   # Session management
